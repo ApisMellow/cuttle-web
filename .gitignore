@@ -1,0 +1,26 @@
+# OS noise
+.DS_Store
+
+# Node / Vite / Svelte
+node_modules/
+dist/
+.vite/
+.svelte-kit/
+
+# Go build output
+/bin/
+*.test
+*.out
+
+# WASM build artifacts
+/build/
+*.wasm
+
+# Editor noise
+.idea/
+*.swp
+
+# Local env / config
+.env
+.env.*
+*.local.*
