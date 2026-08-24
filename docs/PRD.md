@@ -37,7 +37,7 @@ The Go engine in `Cuttle-card-game` is a pure, well-tested state machine:
 - No accounts, auth, or server-side persistence.
 - No matchmaking or public games.
 - No native app (the stack must keep a Capacitor/TWA door open, nothing more).
-- No bitmap/generated card art — card faces are clean vector/CSS/SVG. (A generated-art theme layer — table background, card backs, cuttlefish mascot — is a v2+ candidate.)
+- ~~No bitmap/generated card art — card faces are clean vector/CSS/SVG. (A generated-art theme layer — table background, card backs, cuttlefish mascot — is a v2+ candidate.)~~ *Superseded 2026-08-23 — see §10 Amendment A-1. Vector/SVG faces remain the functional baseline; generated art is now in scope as a theme layer built by its own loop phase.*
 - No tutorial or guided hints — a rules reference screen only.
 - No persistent match history — the win tally lives only for the browser session.
 
@@ -51,7 +51,7 @@ The Go engine in `Cuttle-card-game` is a pure, well-tested state machine:
 | A4 | **Frontend: Svelte 5 + TypeScript + Vite + vite-plugin-pwa. DOM/CSS/SVG rendering — no canvas.** | ~25 board elements; CSS transforms give 60fps card animation free; SVG faces are crisp at any DPI; Playwright gets real selectors (the autonomous playtest judge depends on this). Pin the official Svelte 5 LLM docs file in the repo for dev-agent reliability. |
 | A5 | **Packaging: single Go binary serving the built frontend via `embed.FS`.** Local dev and production are the same binary. | One deployment unit for the project's whole life; v2 adds WebSocket handlers to the same binary. |
 | A6 | **Hosting: Fly.io**, shared-cpu-1x with auto-stop/auto-start machines (≪ $2/mo; ~300 ms–2 s wake). Deploy-on-push via GitHub Action. | Replit needs a $15/mo VM for WebSockets; Render free tier's 30–60 s cold start ruins the join flow. |
-| A7 | **Engine imported as a Go module dependency** from `github.com/ApisMellow/Cuttle-card-game`. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
+| A7 | **Engine imported as a Go module dependency** from the Cuttle-card-game repo — actual module path `github.com/ApisMellow/cuttle` *(corrected — §10 A-2)*. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
 
 ## 6. V1 functional requirements
 
@@ -109,6 +109,30 @@ Each requirement below becomes one or more entries in the implementation loop's 
 ## 9. Risks and mitigations
 
 - **WASM bridge friction** (Go↔JS lifecycle, `wasm_exec.js` glue): mitigate by building the bridge + envelope contract as the loop's first milestone, with a headless smoke test that plays a full random game through the WASM build in Node.
+- **Art-style drift across a 53-asset fan-out** (P-ART): mitigate by the style-lock gate — nothing fans out until the reference set is human-approved, every generation is conditioned on the locked references, and a consistency judge scores each asset against the lock before it counts.
 - **Svelte 5 agent drift** (runes vs legacy syntax): pin Svelte 5 LLM docs in-repo; judge gate includes `svelte-check`.
 - **Curtain UX tedium:** the curtain flow is required for correctness but must not feel like a chore — R20's recap and a fast tap-through are the mitigation; the playtest judge explicitly scores handoff friction.
 - **Engine pending-state assumptions:** R14's spec note; the spec session must enumerate the engine's actual pending states before requirements are finalized.
+
+## 10. Amendments
+
+Amendments record post-P0 decisions by David. Requirement IDs stay stable; amendments only add or supersede.
+
+### A-1 — Generated card art in scope, as its own loop phase (2026-08-23, David)
+
+The §4 non-goal "no bitmap/generated card art" is superseded. Generated art for the cards is part of the project, built by a **dedicated loop phase (P-ART, defined in `docs/loop-workflow.md` §11)** because the work is massively parallel once a reference style is locked: a small reference set is generated first, approved by the agent coordinator **and a supervisory human (David)**, and only then does the full-deck generation fan out.
+
+Constraints preserved from the original decision:
+
+- **Vector/SVG/CSS card faces remain the functional baseline** (A4, R19). The game is complete and playable with no bitmap art at all.
+- **Generated art is a theme layer** — a swappable skin over the baseline renderer, never a dependency of game logic or of any R1–R20 acceptance criterion.
+
+New requirements (decomposed into ledger entries like R1–R20):
+
+- **R21 — Art direction & style lock.** An art-direction brief and reference set exist: card-face template (layout, rank/suit indices, legibility at in-game size), one court-card sample, card back, table background, and mascot candidate. The reference set is approved by the agent coordinator and by David (explicit human gate). The approved set plus a written style-lock document become the conditioning inputs for all subsequent generation.
+- **R22 — Full-deck generation.** All 52 card faces plus card back (and approved auxiliary assets) are generated against the style lock in parallel batches; every asset passes a consistency judge scoring against the lock; regeneration on failure. The complete theme meets an asset budget of ≤ 4 MB compressed, loaded lazily so R18's first-load/offline budget is unaffected.
+- **R23 — Theme-layer integration.** The art theme is wired behind the theme seam defined in `docs/SPEC.md`: user-facing toggle, automatic fallback to the SVG baseline if assets are missing or fail to load, and full playability with the theme off. Default theme state is David's call at ship time.
+
+### A-2 — A7 module-path correction (2026-08-23, factual)
+
+A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. Local development uses a `replace` directive pointing at `~/dev/Cuttle`; whether to publish the module at its declared path or vendor-pin is an open decision (SPEC §8 OQ-3, David's call).

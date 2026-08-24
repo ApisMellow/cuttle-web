@@ -20,12 +20,14 @@ This document specifies the autonomous, loop-based multi-agent workflow that imp
 
 | Phase | Session | Output |
 |---|---|---|
-| P0 — PRD | done (this one) | `docs/PRD.md`, this file |
-| P1 — Spec | fresh session, reads PRD | `docs/SPEC.md` (technical spec: JSON envelope schema, component breakdown, redacted-view rules, curtain state machine, test strategy) + `docs/requirements.yaml` (the ledger, seeded from PRD R1–R20 broken into machine-checkable items) + repo scaffold |
+| P0 — PRD | done | `docs/PRD.md`, this file |
+| P1a — Spec docs | done (2026-08-23) | `docs/SPEC.md` (technical spec: JSON envelope schema, component breakdown, redacted-view rules, curtain state machine, test strategy) + `docs/requirements.yaml` (the ledger, seeded from PRD R1–R23 broken into machine-checkable items) + PRD/workflow amendments. **No code is written in P1a.** |
+| P1b — Walking skeleton | fresh dispatch, reads SPEC | Repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script) and the WASM bridge smoke test (headless full random game through the compiled engine). **Assigned to a Codex developer agent** on its own feature branch; test authoring per SPEC §test-strategy is Codex's. Git ceremony via the DevOps agent; local only. |
 | P2 — Loop | fresh orchestrator session(s) | working software; loop runs until ledger is green |
+| P-ART — Card art pipeline | own launches, §11; unblocked by R21's human gate | Style-locked reference set, then the massively parallel full-deck generation + consistency QA (PRD §10 A-1, R21–R23) |
 | P3 — Ship | after David plays it | Fly.io deploy, PR ceremony |
 
-P1 also builds the **walking skeleton** before the loop starts: repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script) and the WASM bridge smoke test (headless full random game through the compiled engine). The loop needs a running skeleton to iterate on; scaffolding inside round 1 wastes a round.
+The walking skeleton (P1b) is built before the loop starts because the loop needs a running skeleton to iterate on; scaffolding inside round 1 wastes a round. P-ART may run concurrently with P2 once R21 is verified — its assets integrate through the theme seam (SPEC) and never block R1–R20 work.
 
 ## 3. State on disk
 
@@ -50,7 +52,7 @@ requirements:
     acceptance:            # machine-checkable, written in P1
       - "e2e: tapping a hand card with legal scuttles highlights exactly the engine-legal targets (scripted fixture game, 3 positions)"
       - "e2e: tapping a non-highlighted card does not stage a move"
-    verify: [e2e-test]     # unit-test | e2e-test | screenshot-judge | bridge-smoke
+    verify: [e2e-test]     # unit-test | e2e-test | screenshot-judge | bridge-smoke | image-judge | human-approval
     status: verified       # todo | in-progress | implemented | verified | stalled
     evidence: "round-03: playwright run 47/47 green; judge verdict accept (round-03.md §R9.2)"
     fails: 0               # consecutive rounds this item failed a gate
@@ -66,6 +68,9 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 | **Developer** (N per round) | Implements assigned requirement IDs in an isolated git worktree, TDD, returns a branch + test evidence. | Sonnet/Opus-class |
 | **Code reviewer** | Reviews a submission's diff against SPEC + acceptance criteria; flags correctness, contract violations (envelope/move-index/redaction), and drift. | Sonnet/Opus-class |
 | **Playtest judge** | Runs the built app in a browser at phone viewport (Playwright, 390×844), plays real moves, screenshots, and rules each `screenshot-judge` acceptance criterion accept/revise with written reasons. Also scores UX regressions (tap targets, overflow, curtain leaks). | **Strongest available** — taste and rules-correctness verdicts are where model quality pays |
+| **Skeleton/test author (P1b)** | Builds the walking skeleton and authors the test suites defined in SPEC's test strategy, on its own feature branch. | **Codex** (dispatched via dispatch-codex) |
+| **Art generators (P-ART)** | Generate reference candidates, then the full-deck fan-out conditioned on the locked references. Parallel batches; each worker gets the style lock + its asset list, nothing else. | Image-generation tooling (photographer-agent pipeline); orchestration model Sonnet-class |
+| **Art consistency judge (P-ART)** | Scores every generated asset against the style lock (accept/regenerate, written reasons); samples cross-asset pairs for drift. | **Strongest available vision model** — consistency verdicts are the phase's quality gate |
 
 Dispatch briefs are curated: they name exact requirement IDs with acceptance criteria verbatim, the SPEC sections that bind them, the files in scope, and explicit out-of-scope lines. Developers never "scan the repo for what to do."
 
@@ -137,3 +142,20 @@ The loop ends a launch when **any** of:
 - Mark a requirement `verified` without recorded evidence from this launch or a prior one.
 - Push to a remote, merge to `main`, or open a PR before a §6 terminator fires.
 - Reinterpret a requirement's acceptance criteria. Ambiguity discovered mid-loop → the item is stalled with a note; criteria changes are a David decision at relaunch.
+
+## 11. P-ART — card art pipeline
+
+Added 2026-08-23 per PRD §10 Amendment A-1 (R21–R23). P-ART is its own loop phase because its shape is unlike code rounds: one small serial stage, one **human gate**, then a massively parallel fan-out. It runs as separate launches so principle 1.4 (no human gates *within* a launch) is preserved — the human gate sits **between** launches.
+
+### Stages
+
+1. **ART-1 — References (one launch).** Generate the art-direction brief and reference candidate set: card-face template (rank/suit legibility at in-game size is the binding constraint), one court-card sample, card back, table background, mascot candidate. A handful of style directions, a few candidates each. Output: candidates + a draft style-lock document (palette, line weight, framing, texture, negative rules).
+2. **ART-GATE — Style lock (human gate, ends the launch).** The agent coordinator culls to a recommended set, then **David approves or redirects**. `human-approval` evidence = David's recorded pick. R21 flips to `verified` only on his approval. Rejection → ART-1 relaunches with his notes.
+3. **ART-2 — Fan-out (one or more launches, fully autonomous).** All 52 faces + card back + approved auxiliaries, generated in parallel batches, every generation conditioned on the locked references. Batch size and concurrency are the art orchestrator's call; each worker receives the style lock and its asset list only.
+4. **ART-3 — QA + integration.** Consistency judge scores every asset against the style lock (`image-judge`); failures regenerate (fails-counter and stall rules from §5 apply per asset group). Accepted assets are normalized (naming, dimensions, compression, ≤ 4 MB total budget per R22) and land behind the theme seam (R23) via a normal developer work item in the P2 loop.
+
+### Ledger and git
+
+- R21–R23 live in `docs/requirements.yaml` like everything else; ART round logs go to `docs/loop-log/art-round-NN.md`.
+- Art work happens on `art/` branches, merged to `loop/integration` by the DevOps agent. Local only, no pushes, nothing to `main` — same §7 discipline. Generated assets are committed (they are deliverables, not build artifacts); keep per-asset sizes honest so the repo stays clonable.
+- P-ART may run concurrently with P2 code rounds after R21 is verified. The only coupling point is the R23 integration item, which is an ordinary P2 work item.
