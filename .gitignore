@@ -4,6 +4,9 @@
 # Node / Vite / Svelte
 node_modules/
 dist/
+!web/dist/
+web/dist/*
+!web/dist/index.html
 .vite/
 .svelte-kit/
 
@@ -15,6 +18,7 @@ dist/
 # WASM build artifacts
 /build/
 *.wasm
+web/static/wasm_exec.js
 
 # Editor noise
 .idea/

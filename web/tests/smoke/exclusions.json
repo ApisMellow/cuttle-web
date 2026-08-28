@@ -1,0 +1,25 @@
+{
+  "spec": "docs/SPEC.md §2.10 E-1/E-2",
+  "seeds": [
+    {
+      "seed": "6",
+      "defect": "E-1",
+      "observed": "step 6: offered 7: play 9♣ as one-off, Apply returned ILLEGAL_MOVE"
+    },
+    {
+      "seed": "110",
+      "defect": "E-1",
+      "observed": "step 5: offered 7: play A♦ as point card, Apply returned ILLEGAL_MOVE"
+    },
+    {
+      "seed": "142",
+      "defect": "E-1",
+      "observed": "step 5: offered 7: play 8♥ as permanent, Apply returned ILLEGAL_MOVE"
+    },
+    {
+      "seed": "176",
+      "defect": "E-1",
+      "observed": "step 6: offered 7: play 4♦ as point card, Apply returned ILLEGAL_MOVE"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "start": 1,
+  "count": 240,
+  "description": "Fixed inclusive seed range [start, start+count), filtered only by exclusions.json"
+}
