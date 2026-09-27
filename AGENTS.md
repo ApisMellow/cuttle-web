@@ -57,7 +57,5 @@ attached evidence.
 ## Git conventions
 
 - All writes happen on a feature branch, never directly on docs branches.
-- Commit attribution: `Co-authored-by: GLM 5.3 Flash <glm@zed.dev>` (the
-  involved model). Amend unpushed commits rather than stacking fix commits.
 - Open questions OQ-3 (module publish vs replace) and OQ-9 (snapshot
   redaction) are David's calls — surface them, do not resolve them.
