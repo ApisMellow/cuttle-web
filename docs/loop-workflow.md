@@ -50,7 +50,7 @@ requirements:
     prd: R9
     title: "Scuttle targets highlight on tap"
     acceptance:            # machine-checkable, written in P1
-      - "e2e: tapping a hand card with legal scuttles highlights exactly the engine-legal targets (scripted fixture game, 3 positions)"
+      - "e2e: tapping a hand card with legal scuttles highlights exactly the engine-legal targets (scripted scenario game, 3 positions)"
       - "e2e: tapping a non-highlighted card does not stage a move"
     verify: [e2e-test]     # unit-test | e2e-test | screenshot-judge | bridge-smoke | image-judge | human-approval
     status: verified       # todo | in-progress | implemented | verified | stalled
