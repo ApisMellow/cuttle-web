@@ -384,7 +384,7 @@ export interface AppliedMove {
   card: Card | null;
   description: string;              // Move.Describe evaluated against the PRE-state
   seq: number;                      // 1-based, monotonic for the game
-  subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick, else null (§2.8).
+  subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
                                      // Public to both viewers. (amended 2026-09-26)
 }
 
