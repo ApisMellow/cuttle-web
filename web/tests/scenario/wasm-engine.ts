@@ -29,6 +29,7 @@ interface CuttleGlobals {
   __cuttleNewGame?: (json: string) => string;
   __cuttleLegalMoves?: () => string;
   __cuttleApply?: (index: number) => string;
+  __cuttleView?: (viewer: number) => string;
 }
 
 const cuttleGlobal = globalThis as typeof globalThis & CuttleGlobals;
@@ -78,7 +79,13 @@ export async function createWasmEngine(): Promise<ScenarioEngine> {
       return call(cuttleGlobal.__cuttleLegalMoves);
     },
     apply(index) {
-      return call(cuttleGlobal.__cuttleApply, index);
+      // apply returns the MOVER's view; the replayer needs the incoming
+      // actor's legal moves, which the real UI fetches with view() after
+      // the curtain reveal (SPEC §3.3 rule 4).
+      const applied = call(cuttleGlobal.__cuttleApply, index);
+      const state = applied.state as { active?: number } | undefined;
+      if (applied.ok !== true || state?.active === undefined) return applied;
+      return call(cuttleGlobal.__cuttleView, state.active);
     },
   };
 }

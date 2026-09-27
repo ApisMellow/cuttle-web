@@ -27,13 +27,48 @@ type MoveView struct {
 
 // AppliedMove is one history entry. Its description is computed against the
 // PRE-state at apply time and never regenerated (§2.7).
+//
+// Index is held for every entry but emitted only to the entry's mover: for
+// anyone else it is omitted (absent, not null), because the position in the
+// mover's legal-move list encodes hidden information (a pending 3's
+// ScrapIndex; the size of the option list, which depends on the hidden
+// hand). See redactHistory.
+//
+// SubKind is the SubMove's kind (MoveSevenPick only), or null (§4.3's
+// needsSyntheticAck reads it).
 type AppliedMove struct {
-	Index       int             `json:"index"`
-	By          engine.PlayerID `json:"by"`
-	Kind        engine.MoveKind `json:"kind"`
-	Card        *card.Card      `json:"card"`
-	Description string          `json:"description"`
-	Seq         int             `json:"seq"`
+	Index       *int             `json:"index,omitempty"`
+	By          engine.PlayerID  `json:"by"`
+	Kind        engine.MoveKind  `json:"kind"`
+	SubKind     *engine.MoveKind `json:"subKind"`
+	Card        *card.Card       `json:"card"`
+	Description string           `json:"description"`
+	Seq         int              `json:"seq"`
+}
+
+// redactHistory copies history for one viewer, dropping Index from every
+// entry that viewer did not make.
+func redactHistory(history []AppliedMove, viewer engine.PlayerID) []AppliedMove {
+	out := make([]AppliedMove, 0, len(history))
+	for _, h := range history {
+		if h.By != viewer {
+			h.Index = nil
+		} else if h.Index != nil {
+			idx := *h.Index
+			h.Index = &idx
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// subKindOf returns the SubMove's kind, or nil when there is no SubMove.
+func subKindOf(m engine.Move) *engine.MoveKind {
+	if m.SubMove == nil {
+		return nil
+	}
+	k := m.SubMove.Kind
+	return &k
 }
 
 // Envelope is the ok:true result of every bridge call except snapshot.
@@ -116,11 +151,11 @@ func buildEnvelope(state engine.GameState, history []AppliedMove, viewer engine.
 		State:        viewFor(state, viewer),
 		LegalMoves:   []MoveView{},
 		Descriptions: []string{},
-		History:      append([]AppliedMove{}, history...),
+		History:      redactHistory(history, viewer),
 		Seq:          len(history),
 	}
-	if len(history) > 0 {
-		last := history[len(history)-1]
+	if len(env.History) > 0 {
+		last := env.History[len(env.History)-1]
 		env.LastMove = &last
 	}
 	if viewer == state.Active && state.Phase != engine.PhaseGameOver {

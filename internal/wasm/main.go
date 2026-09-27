@@ -24,7 +24,7 @@ func registerBridgeFunctions(b *Bridge) {
 	register("__cuttleDescribe", func([]js.Value) string { return b.Describe() })
 	register("__cuttleView", func(args []js.Value) string { return b.View(argAt(args, 0)) })
 	register("__cuttleSnapshot", func([]js.Value) string { return b.Snapshot() })
-	register("__cuttleRestore", func(args []js.Value) string { return b.Restore(argAt(args, 0)) })
+	register("__cuttleRestore", func(args []js.Value) string { return b.Restore(argAt(args, 0), argAt(args, 1)) })
 }
 
 // register installs one global. The Bridge methods already recover panics;

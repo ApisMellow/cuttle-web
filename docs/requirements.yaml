@@ -15,7 +15,7 @@ requirements:
       - "unit-test: deck construction is suit-major (Clubs..Spades), rank-minor (Ace..King) canonical order before shuffle (SPEC §2.6 step 1)"
     verify: [bridge-smoke, unit-test]
     status: implemented
-    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest)."
+    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest)."
     fails: 0
 
   - id: R1.2
@@ -62,7 +62,7 @@ requirements:
       - "e2e-test: scenario `stalemate` — three consecutive passes reach phase 4, winner null, and the stalemate result screen renders (PRD R2, SPEC §7.3)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: "PARTIAL — Go derivation half done: TestR2_2a_StalemateDerivedFromPhaseAndWinner, TestR2_2b_ThreePassesReachStalemateThroughBridge. Open: TS unit check and e2e scenario `stalemate`."
+    evidence: "PARTIAL — Go derivation half done: TestR2_2a_StalemateDerivedFromPhaseAndWinner, TestR2_2b_ThreePassesReachStalemateThroughBridge (drives passes via apply + view(active)). Open: TS unit check and e2e scenario `stalemate`."
     fails: 0
 
   - id: R2.3
@@ -198,7 +198,7 @@ requirements:
       - "unit-test: viewFor() table-driven test asserts opponent.hand === null whenever viewerHasGlasses is false, across every phase (SPEC §3.2)"
     verify: [unit-test]
     status: implemented
-    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R7.2
@@ -218,7 +218,7 @@ requirements:
       - "unit-test: a serialized-view grep for any card identity from state.Deck fails to match in either viewer's PlayerView, in every phase, for a sampled position set (SPEC §3.2 deckCount rule, §7.1 'blunt instrument' grep test)"
     verify: [unit-test]
     status: implemented
-    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R7.4
@@ -228,7 +228,7 @@ requirements:
       - "unit-test: normalization and view tests assert opponent.hand uses null (not visible) vs [] (visible and empty) and this distinction survives snapshot round-trip and store updates (SPEC §2.8(b) deliberate exception, §3.2)"
     verify: [unit-test]
     status: todo
-    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip, TestSPEC2_8_NilSlicesAreEmptyArrays. Open: TS normalization/store-update half (Batch 3+)."
+    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. Open: TS normalization/store-update half (Batch 3+)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -521,7 +521,7 @@ requirements:
       - "unit-test: viewFor() sets sevenRevealed non-null only when phase===PhaseSevenChoosing && viewer===state.active; it is null for the opponent's view of the same position (PRD R16, SPEC §3.2)"
     verify: [unit-test]
     status: implemented
-    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R16.2

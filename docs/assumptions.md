@@ -90,13 +90,45 @@ per section so a later batch can see the reasoning without re-deriving it.
   arguments (string → string, number → float64, undefined/null/missing → nil,
   anything else → an "unsupported" marker) and returns the Bridge's string.
 
-- **Which viewer the non-`view` calls return (§2.4, §2.7).** `newGame`,
-  `legalMoves`, `apply`, `describe` and `restore` return the envelope for
-  `state.Active`, the actor (§4.1). The SPEC doesn't name the viewer for
-  these calls. The smoke test and the scenario replayer drive whole games
-  from `apply`'s return value, which only works if that envelope carries the
-  new actor's legal moves. `__cuttleView(p)` is the only call that picks
-  another viewer.
+- **Which viewer each call returns (§2.4, §2.7; David-approved change,
+  Batch 1 follow-up).**
+  - `apply` returns the **mover's** view (viewer = pre-apply `Active`). The UI
+    fetches the incoming actor's envelope with `__cuttleView(newActor)` after
+    the curtain reveal (§3.3 rule 4). The goal is that no mutating call loads
+    the hand of a player who isn't holding the phone into the JS heap.
+  - `legalMoves` and `describe` return `state.Active`'s envelope. They are the
+    actor's own queries.
+  - **Decided by David, 2026-09-26:** `newGame` returns the first actor's
+    view (`state.Active` after the deal). Whoever starts the game is the
+    first player, so there is no opening curtain.
+  - **Decided by David, 2026-09-26:** the signature is now
+    `__cuttleRestore(snapshotJson, viewerId)`, and it returns `viewerId`'s
+    envelope. TS passes its persisted `Snapshot.viewer` (§5.7), and the UI
+    puts the persisted curtain back up before rendering anything (R4.2).
+    A `viewerId` other than exactly 0 or 1 is `BAD_REQUEST`, with the held
+    state unchanged.
+  - `view(p)` returns `p`'s envelope.
+  - `web/tests/smoke/bridge-smoke.mjs` and
+    `web/tests/scenario/wasm-engine.ts` now follow `apply` with
+    `view(state.active)`, which is what the UI will do. The smoke test also
+    asserts that `apply`'s viewer is the mover.
+
+- **`history[].index` / `lastMove.index` are omitted for non-movers (§3.2;
+  David-approved).** The bridge holds every index. Each envelope drops
+  `index` (the key is absent, not null) from entries whose `by` is not the
+  viewer, because the index encodes a pending 3's ScrapIndex and the size of
+  the mover's option list. The snapshot keeps the full history, and `restore`
+  requires every entry to carry an index.
+
+- **`AppliedMove.subKind` (§2.7, §4.3; David-approved).** It holds the
+  SubMove's `MoveKind` as a bare number, or `null` when there is no SubMove
+  (§2.8(d) pointer style). It is always present and visible to both viewers.
+  The SubMove's kind is public once it is played, and the synthetic-ack side
+  needs it.
+
+- **`restore` requires `Pending` to be present if and only if the phase is 1,
+  2 or 3 (§2.9 `BAD_REQUEST`).** A mismatch is rejected and the held state is
+  unchanged.
 
 - **`describe` is the same envelope as `legalMoves` (§2.4).** A2 names both
   and the SPEC gives `describe` no distinct payload. Descriptions already sit
@@ -161,3 +193,19 @@ per section so a later batch can see the reasoning without re-deriving it.
   `Card/Owner/JackStack/JackOwners/Controller`, so the bridge now emits
   those. `JackOwners` is now `[]int`, a real array rather than base64 (§2.8a).
   This corrects the code to match the SPEC; the SPEC itself is unchanged.
+
+- **History `subKind` validation on restore (§2.7, §2.9; re-review minor,
+  2026-09-26).** A non-null `subKind` is accepted only on a `SevenPick`
+  entry. A `SevenPick` with `subKind: null` is also valid: engine v0.2.0's
+  `legalSevenPickMoves` dead-end fallback emits `SevenPick` with no SubMove
+  ("7: no legal play — scrap X"). The reviewer's stricter rule (non-null
+  exactly when the kind is `SevenPick`) contradicts the engine, so it was
+  escalated rather than applied. `snapshotVersion` stays 1 because no
+  snapshot shape has been released yet.
+
+- **The actor's envelope must render before commit (§2.9; re-review minor).**
+  When a mutating call returns a non-actor viewer (`apply`, or `restore` with
+  a non-actor `viewerId`), `commit` also renders the actor's envelope before
+  it assigns the state. The builder is the package variable `renderEnvelope`
+  so that a test can make it fail and prove nothing commits. Production never
+  reassigns it.

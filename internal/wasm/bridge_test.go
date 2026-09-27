@@ -23,6 +23,10 @@ func okEnvelope(t *testing.T, wire string) Envelope {
 	}
 	assertKeys(t, "Envelope", generic, "ok", "state", "legalMoves", "descriptions", "lastMove", "history", "seq")
 	assertNoNullArrays(t, generic, "envelope")
+	// §2.8(e) at the wire: no Rank-0 card anywhere (moves, SubMove, history, lastMove).
+	if strings.Contains(wire, `"Rank":0,`) {
+		t.Fatalf("envelope carries a Rank-0 card: %s", wire)
+	}
 	var env Envelope
 	if err := json.Unmarshal([]byte(wire), &env); err != nil {
 		t.Fatal(err)
@@ -89,12 +93,20 @@ func playRandom(t *testing.T, b *Bridge, seed uint64, visit func(env Envelope, w
 			t.Fatalf("seed %d step %d: no legal moves in phase %d", seed, step, env.State.Phase)
 		}
 		idx := int(rng() % uint32(len(env.LegalMoves)))
-		wire = b.Apply(float64(idx))
-		next := okEnvelope(t, wire)
-		if next.Seq != env.Seq+1 {
-			t.Fatalf("seed %d step %d: seq %d -> %d", seed, step, env.Seq, next.Seq)
+		mover := env.State.Active
+		applied := okEnvelope(t, b.Apply(float64(idx)))
+		if applied.Seq != env.Seq+1 {
+			t.Fatalf("seed %d step %d: seq %d -> %d", seed, step, env.Seq, applied.Seq)
 		}
-		env = next
+		if applied.State.Viewer != mover {
+			t.Fatalf("seed %d step %d: apply returned viewer %d, want the mover %d", seed, step, applied.State.Viewer, mover)
+		}
+		// The UI fetches the incoming actor's view after the curtain reveal (§3.3 rule 4).
+		wire = b.View(float64(applied.State.Active))
+		env = okEnvelope(t, wire)
+		if env.Seq != applied.Seq {
+			t.Fatalf("seed %d step %d: view seq %d != apply seq %d", seed, step, env.Seq, applied.Seq)
+		}
 	}
 	t.Fatalf("seed %d did not terminate", seed)
 	return env
@@ -167,7 +179,7 @@ func TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames(t *testing.T) {
 	wins, stalemates := 0, 0
 	for seed := uint64(1); seed <= 60; seed++ {
 		b := newBridge()
-		var prevHistory []AppliedMove
+		var prevHistory []AppliedMove // unredacted, from the snapshot
 		final := playRandom(t, b, seed, func(env Envelope, _ string) {
 			if env.State.Viewer != env.State.Active {
 				t.Fatalf("seed %d: mutating/read calls must return the actor's view", seed)
@@ -194,14 +206,39 @@ func TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames(t *testing.T) {
 				if env.LastMove == nil || !reflect.DeepEqual(*env.LastMove, env.History[len(env.History)-1]) {
 					t.Fatalf("seed %d: lastMove != last history entry", seed)
 				}
-				// History is append-only: earlier entries are frozen.
-				if !reflect.DeepEqual(env.History[:len(prevHistory)], prevHistory) {
+				// History is append-only: earlier entries, including every
+				// mover's own index, are frozen. Compared on the unredacted
+				// snapshot history.
+				var snap snapshotWire
+				if err := json.Unmarshal([]byte(b.Snapshot()), &snap); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(snap.History[:len(prevHistory)], prevHistory) {
 					t.Fatalf("seed %d: history rewritten", seed)
+				}
+				for i, h := range snap.History {
+					if h.Index == nil {
+						t.Fatalf("seed %d: snapshot history[%d] lost its index", seed, i)
+					}
+				}
+				// The envelope's own entries match the snapshot exactly; others only lack index.
+				for i, h := range env.History {
+					want := snap.History[i]
+					if h.By != env.State.Viewer {
+						want.Index = nil
+					}
+					if !reflect.DeepEqual(h, want) {
+						t.Fatalf("seed %d: envelope history[%d] = %+v, want %+v", seed, i, h, want)
+					}
 				}
 			} else if env.LastMove != nil {
 				t.Fatalf("seed %d: lastMove without history", seed)
 			}
-			prevHistory = env.History
+			var snap snapshotWire
+			if err := json.Unmarshal([]byte(b.Snapshot()), &snap); err != nil {
+				t.Fatal(err)
+			}
+			prevHistory = snap.History
 		})
 		if final.State.Winner == nil {
 			stalemates++
@@ -226,7 +263,7 @@ func TestSPEC2_7_AppliedMoveRecordsPreState(t *testing.T) {
 		Phase:  engine.PhaseNormal,
 	}
 	b := newBridge()
-	env := okEnvelope(t, b.Restore(snapshotOf(t, st)))
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	idx := -1
 	for i, d := range env.Descriptions {
 		if d == "scuttle opponent's 5♥ with 9♣" {
@@ -237,14 +274,34 @@ func TestSPEC2_7_AppliedMoveRecordsPreState(t *testing.T) {
 		t.Fatalf("scuttle not offered: %q", env.Descriptions)
 	}
 	after := okEnvelope(t, b.Apply(float64(idx)))
-	want := AppliedMove{Index: idx, By: engine.P1, Kind: engine.MoveScuttle,
+	want := AppliedMove{Index: &idx, By: engine.P1, Kind: engine.MoveScuttle,
 		Card: &card.Card{Rank: card.Nine, Suit: card.Clubs}, Description: "scuttle opponent's 5♥ with 9♣", Seq: 1}
 	if after.LastMove == nil || !reflect.DeepEqual(*after.LastMove, want) {
 		t.Fatalf("lastMove = %+v, want %+v", after.LastMove, want)
 	}
-	// The post-state viewer is the new actor.
-	if after.State.Viewer != engine.P2 || after.State.Active != engine.P2 {
-		t.Fatalf("post-apply envelope must be the new actor's view: %+v", after.State)
+}
+
+// Change 2: apply returns the MOVER's view (pre-apply Active), so a
+// mutating call never loads the incoming player's hand into the JS heap.
+func TestSPEC2_7_ApplyReturnsMoverView(t *testing.T) {
+	b := newGame42(t)
+	incoming := append([]card.Card(nil), b.game.state.Players[engine.P2].Hand...)
+	wire := b.Apply(0.0) // P1 draws; P2 becomes active
+	after := okEnvelope(t, wire)
+	if after.State.Viewer != engine.P1 || after.State.Active != engine.P2 {
+		t.Fatalf("apply envelope viewer %d active %d, want viewer 0 active 1", after.State.Viewer, after.State.Active)
+	}
+	if len(after.LegalMoves) != 0 || after.State.Opponent.Hand != nil || len(after.State.You.Hand) != 6 {
+		t.Fatalf("mover's envelope must carry no moves and only the mover's hand: %+v", after)
+	}
+	for _, hidden := range incoming {
+		if strings.Contains(wire, cardJSON(hidden)) {
+			t.Fatalf("apply wire leaked the incoming player's card %s", hidden)
+		}
+	}
+	// The incoming actor's moves come from view(newActor), as the UI will call it.
+	if next := okEnvelope(t, b.View(1.0)); len(next.LegalMoves) == 0 {
+		t.Fatal("incoming actor's view must carry legal moves")
 	}
 }
 
@@ -287,7 +344,7 @@ func TestSPEC2_4_SnapshotRestoreRoundTrip(t *testing.T) {
 	}
 
 	restored := newBridge()
-	got := okEnvelope(t, restored.Restore(snap))
+	got := okEnvelope(t, restored.Restore(snap, float64(b.game.state.Active)))
 	want := okEnvelope(t, b.LegalMoves())
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("restored envelope differs:\n%+v\n%+v", got, want)
@@ -358,33 +415,39 @@ func TestSPEC2_9_BadRequest(t *testing.T) {
 	b := newGame42(t)
 	before := b.Snapshot()
 	for name, wire := range map[string]string{
-		"newGame non-string":     b.NewGame(42.0),
-		"newGame undefined":      b.NewGame(nil),
-		"newGame malformed":      b.NewGame(`{"seed":`),
-		"newGame not object":     b.NewGame(`[1]`),
-		"newGame trailing":       b.NewGame(`{"seed":"1"} {}`),
-		"newGame seed alpha":     b.NewGame(`{"seed":"abc"}`),
-		"newGame seed negative":  b.NewGame(`{"seed":"-1"}`),
-		"newGame seed empty":     b.NewGame(`{"seed":""}`),
-		"newGame dealer 2":       b.NewGame(`{"seed":"1","dealer":2}`),
-		"newGame dealer string":  b.NewGame(`{"seed":"1","dealer":"1"}`),
-		"newGame unknown field":  b.NewGame(`{"seed":"1","deck":[]}`),
-		"newGame names 3":        b.NewGame(`{"names":["a","b","c"]}`),
-		"apply string":           b.Apply("0"),
-		"apply fraction":         b.Apply(1.5),
-		"apply undefined":        b.Apply(nil),
-		"apply object":           b.Apply(unsupportedArg{Kind: "object"}),
-		"view 2":                 b.View(2.0),
-		"view string":            b.View("0"),
-		"view fraction":          b.View(0.5),
-		"restore non-string":     b.Restore(1.0),
-		"restore malformed":      b.Restore(`{`),
-		"restore wrong version":  b.Restore(`{"v":2,"state":{},"history":[],"seed":"1","dealer":0}`),
-		"restore missing state":  b.Restore(`{"v":1,"history":[],"seed":"1","dealer":0}`),
-		"restore bad active":     b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1)),
-		"restore bad phase":      b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1)),
-		"restore rank 0 in hand": b.Restore(snapshotOf(t, engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{{}}}}})),
-		"restore bad history":    b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"description":"draw a card","seq":2}]`, 1)),
+		"newGame non-string":       b.NewGame(42.0),
+		"newGame undefined":        b.NewGame(nil),
+		"newGame malformed":        b.NewGame(`{"seed":`),
+		"newGame not object":       b.NewGame(`[1]`),
+		"newGame trailing":         b.NewGame(`{"seed":"1"} {}`),
+		"newGame seed alpha":       b.NewGame(`{"seed":"abc"}`),
+		"newGame seed negative":    b.NewGame(`{"seed":"-1"}`),
+		"newGame seed empty":       b.NewGame(`{"seed":""}`),
+		"newGame dealer 2":         b.NewGame(`{"seed":"1","dealer":2}`),
+		"newGame dealer string":    b.NewGame(`{"seed":"1","dealer":"1"}`),
+		"newGame unknown field":    b.NewGame(`{"seed":"1","deck":[]}`),
+		"newGame names 3":          b.NewGame(`{"names":["a","b","c"]}`),
+		"apply string":             b.Apply("0"),
+		"apply fraction":           b.Apply(1.5),
+		"apply undefined":          b.Apply(nil),
+		"apply object":             b.Apply(unsupportedArg{Kind: "object"}),
+		"view 2":                   b.View(2.0),
+		"view string":              b.View("0"),
+		"view fraction":            b.View(0.5),
+		"restore viewer 2":         b.Restore(snapshotOf(t, engine.GameState{}), 2.0),
+		"restore viewer fraction":  b.Restore(snapshotOf(t, engine.GameState{}), 0.5),
+		"restore viewer string":    b.Restore(snapshotOf(t, engine.GameState{}), "0"),
+		"restore viewer missing":   b.Restore(snapshotOf(t, engine.GameState{}), nil),
+		"restore non-string":       b.Restore(1.0, 0.0),
+		"restore malformed":        b.Restore(`{`, 0.0),
+		"restore wrong version":    b.Restore(`{"v":2,"state":{},"history":[],"seed":"1","dealer":0}`, 0.0),
+		"restore missing state":    b.Restore(`{"v":1,"history":[],"seed":"1","dealer":0}`, 0.0),
+		"restore bad active":       b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1), 0.0),
+		"restore bad phase":        b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1), 0.0),
+		"restore rank 0 in hand":   b.Restore(snapshotOf(t, engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{{}}}}}), 0.0),
+		"restore history no index": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"by":0,"kind":0,"card":null,"subKind":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore subKind on draw":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":4,"card":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore bad history":      b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"description":"draw a card","seq":2}]`, 1), 0.0),
 	} {
 		errCode(t, wire, "BAD_REQUEST")
 		if b.Snapshot() != before {
@@ -421,7 +484,7 @@ func TestSPEC2_9_IllegalMove(t *testing.T) {
 		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Five, card.Hearts)}},
 	}
 	b := newBridge()
-	env := okEnvelope(t, b.Restore(snapshotOf(t, st)))
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	want := []string{"7: play 5♥ as one-off", "7: play 5♥ as point card"}
 	if !reflect.DeepEqual(env.Descriptions, want) {
 		t.Fatalf("descriptions = %q, want %q", env.Descriptions, want)
@@ -456,7 +519,7 @@ func TestSPEC2_9_NoLegalMoves(t *testing.T) {
 		t.Fatal("precondition: engine must offer no moves here")
 	}
 	b := newBridge()
-	env := okEnvelope(t, b.Restore(snapshotOf(t, st)))
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 1.0))
 	if len(env.LegalMoves) != 0 || env.State.Phase != engine.PhaseAwaitingDiscard {
 		t.Fatalf("restore envelope = %+v", env)
 	}
@@ -477,12 +540,13 @@ func TestSPEC2_9_NoLegalMoves(t *testing.T) {
 func TestR2_2b_ThreePassesReachStalemateThroughBridge(t *testing.T) {
 	st := engine.GameState{Players: [2]engine.PlayerState{{}, {}}, Phase: engine.PhaseNormal}
 	b := newBridge()
-	env := okEnvelope(t, b.Restore(snapshotOf(t, st)))
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	for i := 0; i < 3; i++ {
 		if !reflect.DeepEqual(env.Descriptions, []string{"pass"}) || env.State.Stalemate {
 			t.Fatalf("pass %d: descriptions %q stalemate %v", i, env.Descriptions, env.State.Stalemate)
 		}
-		env = okEnvelope(t, b.Apply(0.0))
+		okEnvelope(t, b.Apply(0.0))
+		env = okEnvelope(t, b.View(float64(b.game.state.Active)))
 	}
 	if env.State.Phase != engine.PhaseGameOver || env.State.Winner != nil || !env.State.Stalemate {
 		t.Fatalf("after three passes: phase %d winner %v stalemate %v", env.State.Phase, env.State.Winner, env.State.Stalemate)
@@ -538,11 +602,252 @@ func TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip(t *testing.T) {
 		{engine.GameState{Players: [2]engine.PlayerState{{}, {}}, Deck: []card.Card{c(card.Two, card.Spades)}}, `"handCount":0,"hand":null`},
 	} {
 		first := newBridge()
-		okEnvelope(t, first.Restore(snapshotOf(t, tc.state)))
+		okEnvelope(t, first.Restore(snapshotOf(t, tc.state), 0.0))
 		second := newBridge()
-		okEnvelope(t, second.Restore(first.Snapshot()))
+		okEnvelope(t, second.Restore(first.Snapshot(), 0.0))
 		if wire := second.View(0.0); !strings.Contains(wire, tc.want) {
 			t.Fatalf("after snapshot round trip want %s in %s", tc.want, wire)
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Batch 1 follow-up: David-approved contract changes and reviewer minors.
+// ---------------------------------------------------------------------------
+
+// Change 1: history[].index / lastMove.index are omitted for every viewer
+// other than that move's mover. Reviewer's repro: a 3's index (3) encodes
+// its ScrapIndex and the size of the mover's option list.
+func TestSPEC3_2_IndexRedactedForNonMover(t *testing.T) {
+	for _, oppHasTwo := range []bool{true, false} {
+		oppHand := []card.Card{c(card.Five, card.Diamonds)}
+		if oppHasTwo {
+			oppHand = append(oppHand, c(card.Two, card.Hearts)) // opens a real AwaitingCounter window
+		}
+		st := engine.GameState{
+			Players: [2]engine.PlayerState{
+				{Hand: []card.Card{c(card.Three, card.Clubs)}},
+				{Hand: oppHand},
+			},
+			Deck:   []card.Card{c(card.King, card.Hearts), c(card.Six, card.Clubs)},
+			Scrap:  []card.Card{c(card.Two, card.Clubs), c(card.Nine, card.Hearts), c(card.Ace, card.Spades)},
+			Active: engine.P1,
+			Phase:  engine.PhaseNormal,
+		}
+		b := newBridge()
+		env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
+		want := []string{"draw a card", "play 3♣ as one-off", "play 3♣ as one-off", "play 3♣ as one-off", "play 3♣ as point card"}
+		if !reflect.DeepEqual(env.Descriptions, want) {
+			t.Fatalf("precondition: descriptions = %q", env.Descriptions)
+		}
+		mover := okEnvelope(t, b.Apply(3.0)) // the 3 taking scrap[2]
+		if mover.LastMove == nil || mover.LastMove.Index == nil || *mover.LastMove.Index != 3 {
+			t.Fatalf("mover must see its own index 3, got %+v", mover.LastMove)
+		}
+		if oppHasTwo && b.game.state.Phase != engine.PhaseAwaitingCounter {
+			t.Fatalf("precondition: expected AwaitingCounter, got %d", b.game.state.Phase)
+		}
+		oppWire := b.View(1.0)
+		opp := decodeGeneric(t, oppWire)
+		last := opp["lastMove"].(map[string]any)
+		if _, present := last["index"]; present {
+			t.Fatalf("oppHasTwo=%v: lastMove.index leaked to non-mover: %s", oppHasTwo, oppWire)
+		}
+		if _, present := opp["history"].([]any)[0].(map[string]any)["index"]; present {
+			t.Fatalf("oppHasTwo=%v: history[0].index leaked to non-mover", oppHasTwo)
+		}
+
+		// P2 acts; each viewer sees only their own moves' indices.
+		p2 := okEnvelope(t, b.View(1.0))
+		okEnvelope(t, b.Apply(float64(len(p2.LegalMoves)-1)))
+		for viewer := 0; viewer < 2; viewer++ {
+			hist := decodeGeneric(t, b.View(float64(viewer)))["history"].([]any)
+			for i, h := range hist {
+				entry := h.(map[string]any)
+				_, present := entry["index"]
+				if mine := int(entry["by"].(float64)) == viewer; present != mine {
+					t.Fatalf("oppHasTwo=%v viewer %d history[%d] by %v: index present=%v", oppHasTwo, viewer, i, entry["by"], present)
+				}
+			}
+		}
+	}
+}
+
+// Change 3: AppliedMove.subKind is the SubMove's kind, or null.
+func TestSPEC2_7_SubKindOnAppliedMove(t *testing.T) {
+	st := engine.GameState{
+		Players: [2]engine.PlayerState{
+			{Hand: []card.Card{c(card.Three, card.Clubs)}},
+			{Hand: []card.Card{c(card.Six, card.Hearts)}},
+		},
+		Deck:    []card.Card{c(card.King, card.Hearts)},
+		Active:  engine.P1,
+		Phase:   engine.PhaseSevenChoosing,
+		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Five, card.Hearts)}},
+	}
+	b := newBridge()
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
+	if env.Descriptions[0] != "7: play 5♥ as one-off" {
+		t.Fatalf("precondition: %q", env.Descriptions)
+	}
+	wire := b.Apply(0.0)
+	after := okEnvelope(t, wire)
+	if after.LastMove.SubKind == nil || *after.LastMove.SubKind != engine.MoveOneOff || after.LastMove.Kind != engine.MoveSevenPick {
+		t.Fatalf("lastMove = %+v, want kind 7 subKind 4", after.LastMove)
+	}
+	if !strings.Contains(wire, `"subKind":4`) {
+		t.Fatalf("subKind must be a bare number: %s", wire)
+	}
+	// Both viewers see subKind; it is public once played (§4.3 needs it on the ack side).
+	if !strings.Contains(b.View(1.0), `"subKind":4`) {
+		t.Fatal("non-mover must see subKind")
+	}
+
+	plain := newGame42(t)
+	drew := plain.Apply(0.0)
+	if !strings.Contains(drew, `"subKind":null`) {
+		t.Fatalf("no SubMove => subKind null: %s", drew)
+	}
+}
+
+// Minor 4: Pending is present iff phase is 1, 2 or 3.
+func TestSPEC2_9_RestorePendingMatchesPhase(t *testing.T) {
+	b := newGame42(t)
+	before := b.Snapshot()
+	pending := &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Four, card.Clubs)}
+	w := engine.P1
+	for phase := engine.PhaseNormal; phase <= engine.PhaseGameOver; phase++ {
+		needs := phase == engine.PhaseAwaitingCounter || phase == engine.PhaseSevenChoosing || phase == engine.PhaseAwaitingDiscard
+		st := engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{c(card.Ace, card.Clubs)}}, {Hand: []card.Card{c(card.Two, card.Clubs)}}}, Phase: phase}
+		if phase == engine.PhaseGameOver {
+			st.Winner = &w
+		}
+		// Mismatched direction first: pending absent where required, present where forbidden.
+		bad := st
+		if !needs {
+			bad.Pending = pending
+		}
+		errCode(t, b.Restore(snapshotOf(t, bad), 0.0), "BAD_REQUEST")
+		if b.Snapshot() != before {
+			t.Fatalf("phase %d: held state changed on BAD_REQUEST", phase)
+		}
+		// Matched direction is accepted.
+		good := st
+		if needs {
+			good.Pending = pending
+		}
+		if m := decodeGeneric(t, newBridge().Restore(snapshotOf(t, good), 0.0)); m["ok"] != true {
+			t.Fatalf("phase %d: consistent pending rejected: %v", phase, m)
+		}
+	}
+}
+
+// David's decision (2026-09-26): restore(snapshotJson, viewerId) returns
+// viewerId's envelope; TS passes Snapshot.viewer and re-raises the persisted
+// curtain before rendering (R4.2).
+func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
+	b := newGame42(t)
+	okEnvelope(t, b.Apply(0.0)) // P1 draws; P2 (incoming) is now active
+	snap := b.Snapshot()
+	incoming := b.game.state.Players[engine.P2].Hand
+	moverHand := b.game.state.Players[engine.P1].Hand
+
+	// Mid-curtain reload: the mover still holds the phone.
+	moverWire := newBridge().Restore(snap, 0.0)
+	mover := okEnvelope(t, moverWire)
+	if mover.State.Viewer != engine.P1 || len(mover.LegalMoves) != 0 {
+		t.Fatalf("mover restore: viewer %d moves %d", mover.State.Viewer, len(mover.LegalMoves))
+	}
+	for _, hidden := range incoming {
+		if strings.Contains(moverWire, cardJSON(hidden)) {
+			t.Fatalf("mover restore leaked incoming player's card %s", hidden)
+		}
+	}
+
+	// Post-reveal reload: the actor holds the phone and sees their own hand.
+	actorWire := newBridge().Restore(snap, 1.0)
+	actor := okEnvelope(t, actorWire)
+	if actor.State.Viewer != engine.P2 || !reflect.DeepEqual(actor.State.You.Hand, incoming) || len(actor.LegalMoves) == 0 {
+		t.Fatalf("actor restore: %+v", actor.State)
+	}
+	for _, hidden := range moverHand {
+		if strings.Contains(mustJSON(t, actor.State), cardJSON(hidden)) {
+			t.Fatalf("actor restore leaked the mover's card %s", hidden)
+		}
+	}
+
+	// Bad viewerId: BAD_REQUEST, held state unchanged.
+	before := b.Snapshot()
+	for _, bad := range []any{-1.0, 2.0, 0.5, "1", nil, true} {
+		errCode(t, b.Restore(snap, bad), "BAD_REQUEST")
+		if b.Snapshot() != before {
+			t.Fatalf("viewer %v: held state changed", bad)
+		}
+	}
+}
+
+// David's decision (2026-09-26): newGame returns the first actor's view;
+// whoever starts the game is the first player, no opening curtain.
+func TestSPEC2_4_NewGameReturnsFirstActorView(t *testing.T) {
+	for _, dealer := range []int{0, 1} {
+		b := newBridge()
+		env := okEnvelope(t, b.NewGame(mustJSON(t, map[string]any{"seed": "42", "dealer": dealer})))
+		first := engine.PlayerID(dealer).Other()
+		if env.State.Viewer != first || env.State.Active != first || len(env.LegalMoves) == 0 || len(env.State.You.Hand) != 5 {
+			t.Fatalf("dealer %d: newGame envelope viewer %d active %d", dealer, env.State.Viewer, env.State.Active)
+		}
+	}
+}
+
+// Minor 2: a mutating call commits only if the ACTOR's envelope also
+// renders, even when it returns a different viewer's envelope.
+func TestSPEC2_9_CommitRequiresActorEnvelope(t *testing.T) {
+	b := newGame42(t)
+	before := b.Snapshot()
+	snap := func() string {
+		s := newBridge()
+		okEnvelope(t, s.NewGame(`{"seed":"7","dealer":0}`))
+		return s.Snapshot()
+	}()
+	actorOf := decodeGeneric(t, snap)["state"].(map[string]any)["Active"].(float64)
+
+	orig := renderEnvelope
+	defer func() { renderEnvelope = orig }()
+	renderEnvelope = func(st engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
+		if viewer == st.Active {
+			panic("actor envelope failed")
+		}
+		return orig(st, h, viewer)
+	}
+	errCode(t, b.Restore(snap, 1-actorOf), "INTERNAL") // restore as non-actor
+	errCode(t, b.Apply(0.0), "INTERNAL")               // apply returns the mover's view; actor's must render too
+	renderEnvelope = orig
+	if b.Snapshot() != before {
+		t.Fatal("held state committed although the actor's envelope failed")
+	}
+}
+
+// Minor 1 boundary: the engine's dead-end SevenPick has no SubMove, so its
+// subKind is null and a snapshot holding it must still restore.
+func TestSPEC2_7_SubKindNullForDeadEndSevenPick(t *testing.T) {
+	st := engine.GameState{
+		Players: [2]engine.PlayerState{
+			{Hand: []card.Card{c(card.Three, card.Clubs)}},
+			{Hand: []card.Card{c(card.Six, card.Hearts)}},
+		},
+		Deck:    []card.Card{c(card.King, card.Hearts)},
+		Active:  engine.P1,
+		Phase:   engine.PhaseSevenChoosing,
+		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Jack, card.Diamonds), c(card.Jack, card.Spades)}},
+	}
+	b := newBridge()
+	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
+	if env.Descriptions[0] != "7: no legal play — scrap J♦" {
+		t.Fatalf("precondition: %q", env.Descriptions)
+	}
+	after := okEnvelope(t, b.Apply(0.0))
+	if after.LastMove.Kind != engine.MoveSevenPick || after.LastMove.SubKind != nil {
+		t.Fatalf("dead-end SevenPick: %+v", after.LastMove)
+	}
+	okEnvelope(t, newBridge().Restore(b.Snapshot(), 0.0))
 }

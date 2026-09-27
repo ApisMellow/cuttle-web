@@ -89,10 +89,10 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 
 | SPEC § | Test(s) | Layer |
 |---|---|---|
-| §2.4 function surface, read calls don't mutate, snapshot/restore | `TestSPEC2_4_ReadCallsDoNotMutate`<br>`TestSPEC2_4_SnapshotRestoreRoundTrip` | go unit + bridge-smoke |
+| §2.4 function surface, read calls don't mutate, snapshot/restore | `TestSPEC2_4_ReadCallsDoNotMutate`<br>`TestSPEC2_4_SnapshotRestoreRoundTrip`<br>`TestSPEC2_4_RestoreReturnsNamedViewer`<br>`TestSPEC2_4_NewGameReturnsFirstActorView` | go unit + bridge-smoke |
 | §2.6 seed string, random seed/dealer, pinned dealStream | `TestSPEC2_6_SeedIsDecimalStringUint64`<br>`TestSPEC2_6_OmittedSeedAndDealerAreRandom`<br>`TestSPEC2_6_DealStreamIsPinned` | go unit |
-| §2.7 envelope invariants and wire shape | `TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames`<br>`TestSPEC2_7_AppliedMoveRecordsPreState`<br>`TestSPEC2_7_ViewLegalMovesOnlyForActor`<br>`TestSPEC2_7_PointEntryWireKeys`<br>`TestSPEC2_7_PlayerViewWireKeys`<br>`TestSPEC2_7_MoveWireShape` | go unit |
+| §2.7 envelope invariants and wire shape | `TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames`<br>`TestSPEC2_7_AppliedMoveRecordsPreState`<br>`TestSPEC2_7_ApplyReturnsMoverView`<br>`TestSPEC2_7_SubKindOnAppliedMove`<br>`TestSPEC2_7_SubKindNullForDeadEndSevenPick`<br>`TestSPEC2_7_ViewLegalMovesOnlyForActor`<br>`TestSPEC2_7_PointEntryWireKeys`<br>`TestSPEC2_7_PlayerViewWireKeys`<br>`TestSPEC2_7_MoveWireShape` | go unit |
 | §2.8 normalization | `TestSPEC2_8_JackOwnersArray`<br>`TestSPEC2_8_NilSlicesAreEmptyArrays`<br>`TestSPEC2_8_FrozenIDsSortedDropFalse`<br>`TestSPEC2_8_Rank0CardIsNull`<br>`TestSPEC2_8_WinnerBareNumber`<br>`TestSPEC2_8_GlassesAndNormalization` | go unit |
-| §2.9 errors | `TestSPEC2_9_ErrorShape`<br>`TestSPEC2_9_NoGame`<br>`TestSPEC2_9_BadRequest`<br>`TestSPEC2_9_IndexOutOfRange`<br>`TestSPEC2_9_IllegalMove`<br>`TestSPEC2_9_NoLegalMoves`<br>`TestSPEC2_9_InternalOnPanic` | go unit |
-| §3.2 redaction | `TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex`<br>`TestSPEC3_2_PendingOmitsScrapIndex`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit |
+| §2.9 errors | `TestSPEC2_9_ErrorShape`<br>`TestSPEC2_9_NoGame`<br>`TestSPEC2_9_BadRequest`<br>`TestSPEC2_9_IndexOutOfRange`<br>`TestSPEC2_9_IllegalMove`<br>`TestSPEC2_9_NoLegalMoves`<br>`TestSPEC2_9_InternalOnPanic`<br>`TestSPEC2_9_RestorePendingMatchesPhase`<br>`TestSPEC2_9_CommitRequiresActorEnvelope` | go unit |
+| §3.2 redaction | `TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex`<br>`TestSPEC3_2_PendingOmitsScrapIndex`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly`<br>`TestSPEC3_2_IndexRedactedForNonMover` | go unit |
 | §2.3 readiness, main never returns | smoke: boots the real compiled Go WASM bridge and keeps it alive | bridge-smoke |

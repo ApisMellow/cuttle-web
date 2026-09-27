@@ -140,12 +140,18 @@ test('plays at least 200 fixed seeds to a terminal state through offered indices
       }
       const index = random() % envelope.legalMoves.length;
       const beforeSeq = envelope.seq;
-      envelope = call('__cuttleApply', index);
-      if (!envelope.ok) {
-        defects.push({ seed, step, ...envelope });
+      const mover = envelope.state.active;
+      const applied = call('__cuttleApply', index);
+      if (!applied.ok) {
+        defects.push({ seed, step, ...applied });
         break;
       }
-      assert.equal(envelope.seq, beforeSeq + 1, `seed ${seed} step ${step}: seq did not increment once`);
+      assertEnvelope(applied);
+      assert.equal(applied.seq, beforeSeq + 1, `seed ${seed} step ${step}: seq did not increment once`);
+      // apply returns the mover's view; the incoming actor's comes from view() (§3.3 rule 4).
+      assert.equal(applied.state.viewer, mover, `seed ${seed} step ${step}: apply must return the mover's view`);
+      envelope = call('__cuttleView', applied.state.active);
+      assert.equal(envelope.seq, applied.seq, `seed ${seed} step ${step}: view seq differs from apply seq`);
     }
     if (!envelope.ok || envelope.state.phase !== 4) continue;
     if (envelope.state.winner === null) stalemates += 1;
@@ -175,7 +181,9 @@ test('redacts both player views and survives snapshot restore', async () => {
     }
   }
 
-  const restored = call('__cuttleRestore', JSON.stringify(snapshot));
+  // restore(snapshotJson, viewerId): TS passes its persisted Snapshot.viewer.
+  const restored = call('__cuttleRestore', JSON.stringify(snapshot), active.state.viewer);
   assertEnvelope(restored);
   assert.equal(restored.seq, active.seq);
+  assert.equal(restored.state.viewer, active.state.viewer);
 });

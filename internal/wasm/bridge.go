@@ -107,7 +107,9 @@ func (b *Bridge) NewGame(arg any) string {
 			dealer = engine.PlayerID(r & 1)
 		}
 		next := &session{state: dealNewGame(seed, dealer), history: []AppliedMove{}, seed: seed, dealer: dealer}
-		return b.commit(next)
+		// The first actor's view: whoever starts the game is the first
+		// player, so there is no opening curtain (David, 2026-09-26).
+		return b.commit(next, next.state.Active)
 	})
 }
 
@@ -171,14 +173,18 @@ func (b *Bridge) Apply(arg any) string {
 			return errorJSON(codeInternal, "engine.Apply: "+err.Error(), nil)
 		}
 		history := append(append([]AppliedMove{}, b.game.history...), AppliedMove{
-			Index:       index,
+			Index:       &index,
 			By:          pre.Active,
 			Kind:        move.Kind,
+			SubKind:     subKindOf(move),
 			Card:        cardOrNil(move.Card),
 			Description: description,
 			Seq:         len(b.game.history) + 1,
 		})
-		return b.commit(&session{state: post, history: history, seed: b.game.seed, dealer: b.game.dealer})
+		// The mover's view, not the incoming actor's: a mutating call never
+		// loads the hand of a player who is not holding the phone. The UI
+		// fetches the new actor's envelope with view() after the reveal.
+		return b.commit(&session{state: post, history: history, seed: b.game.seed, dealer: b.game.dealer}, pre.Active)
 	})
 }
 
@@ -246,12 +252,20 @@ func (b *Bridge) Snapshot() string {
 	})
 }
 
-func (b *Bridge) Restore(arg any) string {
+// Restore replaces the held game and returns the envelope for viewerId,
+// which TS supplies from its persisted Snapshot.viewer (David, 2026-09-26).
+// The UI re-raises any persisted curtain before rendering it (R4.2).
+func (b *Bridge) Restore(arg, viewerArg any) string {
 	return guard(func() string {
 		raw, ok := arg.(string)
 		if !ok {
 			return errorJSON(codeBadRequest, "restore expects a SnapshotJson string", nil)
 		}
+		v, ok := viewerArg.(float64)
+		if !ok || (v != 0 && v != 1) {
+			return errorJSON(codeBadRequest, "restore expects viewerId 0 or 1", nil)
+		}
+		viewer := engine.PlayerID(v)
 		var snap restoreWire
 		if err := decodeStrict(raw, &snap); err != nil {
 			return errorJSON(codeBadRequest, "malformed snapshot: "+err.Error(), nil)
@@ -275,7 +289,7 @@ func (b *Bridge) Restore(arg any) string {
 		if err := validateHistory(snap.History); err != nil {
 			return errorJSON(codeBadRequest, "invalid snapshot history: "+err.Error(), nil)
 		}
-		return b.commit(&session{state: *snap.State, history: snap.History, seed: seed, dealer: engine.PlayerID(*snap.Dealer)})
+		return b.commit(&session{state: *snap.State, history: snap.History, seed: seed, dealer: engine.PlayerID(*snap.Dealer)}, viewer)
 	})
 }
 
@@ -283,7 +297,7 @@ func (b *Bridge) Restore(arg any) string {
 // Internals.
 // ---------------------------------------------------------------------------
 
-// commit builds the actor's envelope for a candidate session and only then
+// commit builds the given viewer's envelope for a candidate session and only then
 // makes it the held state, so a failure while rendering leaves the previous
 // state untouched (§2.9: on ok:false the held state is unchanged).
 //
@@ -291,14 +305,28 @@ func (b *Bridge) Restore(arg any) string {
 // returns the truthful envelope (legalMoves: []); the move is real and its
 // history must not be lost. LegalMoves/Describe/Apply then raise
 // NO_LEGAL_MOVES for that position.
-func (b *Bridge) commit(next *session) string {
-	out, err := json.Marshal(buildEnvelope(next.state, next.history, next.state.Active))
+//
+// When the returned viewer is not the actor, the actor's envelope (what
+// LegalMoves/Describe will serve) is rendered too, so the state commits only
+// if both render.
+func (b *Bridge) commit(next *session, viewer engine.PlayerID) string {
+	out, err := json.Marshal(renderEnvelope(next.state, next.history, viewer))
 	if err != nil {
 		return errorJSON(codeInternal, "encoding failed: "+err.Error(), nil)
+	}
+	if actor := next.state.Active; viewer != actor {
+		if _, err := json.Marshal(renderEnvelope(next.state, next.history, actor)); err != nil {
+			return errorJSON(codeInternal, "actor envelope encoding failed: "+err.Error(), nil)
+		}
 	}
 	b.game = next
 	return string(out)
 }
+
+// renderEnvelope is the envelope builder commit uses. It is a variable only
+// so a test can prove commit refuses to assign state when the actor's
+// envelope fails to render; production never reassigns it.
+var renderEnvelope = buildEnvelope
 
 func noGame() string {
 	return errorJSON(codeNoGame, "no game: call newGame or restore first", nil)
@@ -337,6 +365,10 @@ func validateState(s engine.GameState) error {
 	}
 	if s.Winner != nil && *s.Winner > engine.P2 {
 		return fmt.Errorf("Winner %d out of range", *s.Winner)
+	}
+	needsPending := s.Phase == engine.PhaseAwaitingCounter || s.Phase == engine.PhaseSevenChoosing || s.Phase == engine.PhaseAwaitingDiscard
+	if needsPending != (s.Pending != nil) {
+		return fmt.Errorf("Pending must be present exactly in phases 1-3 (phase %d, pending present %v)", s.Phase, s.Pending != nil)
 	}
 	if s.PassesInARow < 0 {
 		return fmt.Errorf("PassesInARow %d negative", s.PassesInARow)
@@ -410,8 +442,17 @@ func validateHistory(history []AppliedMove) error {
 		if h.Seq != i+1 {
 			return fmt.Errorf("history[%d].seq = %d, want %d", i, h.Seq, i+1)
 		}
-		if h.By > engine.P2 || h.Kind > engine.MovePass || h.Index < 0 {
+		if h.Index == nil || *h.Index < 0 {
+			return fmt.Errorf("history[%d].index missing or negative (snapshots hold unredacted history)", i)
+		}
+		if h.By > engine.P2 || h.Kind > engine.MovePass || (h.SubKind != nil && *h.SubKind > engine.MovePass) {
 			return fmt.Errorf("history[%d] has out-of-range fields", i)
+		}
+		// subKind only on SevenPick. A SevenPick may still have a null
+		// subKind: the engine's dead-end fallback (legalSevenPickMoves)
+		// emits SevenPick with no SubMove ("7: no legal play — scrap X").
+		if h.SubKind != nil && h.Kind != engine.MoveSevenPick {
+			return fmt.Errorf("history[%d].subKind is set on a non-SevenPick move", i)
 		}
 		if h.Card != nil {
 			if err := validCards(fmt.Sprintf("history[%d].card", i), []card.Card{*h.Card}); err != nil {
