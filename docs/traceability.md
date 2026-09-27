@@ -1,0 +1,98 @@
+# Traceability
+
+A view of `docs/requirements.yaml`, which remains the single source of truth.
+Regenerate this file when the ledger changes; do not edit statuses here.
+
+Layers: `go unit` = `go test ./internal/wasm`; `bridge-smoke` =
+`npm --prefix web run test:smoke`. The `verify` column is the ledger's
+required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
+
+## Ledger IDs
+
+| ID | Title | Test(s) | Layer | verify | Status |
+|---|---|---|---|---|---|
+| R1.1 | Golden-seed deal matches SPEC scenario | `TestR1_1a_GoldenSeedDeal`<br>`TestR1_1b_CanonicalDeckOrder`<br>`TestR1_1c_GoldenDealThroughBridge`<br>`smoke: reproduces the seed-42 golden deal byte-for-byte` | go unit + bridge-smoke | bridge-smoke, unit-test | implemented |
+| R1.2 | Dealer alternates across rematch/session | — | — | unit-test, e2e-test | todo |
+| R1.3 | Deal counts, first-player, and default names | — | — | e2e-test | todo |
+| R2.1 | Win detection and King-lowered threshold display | `TestR2_1a_ScoreboardFromEngineHelpers` | go unit (Go half) | unit-test, e2e-test | todo (PARTIAL) |
+| R2.2 | Three-pass stalemate detection | `TestR2_2a_StalemateDerivedFromPhaseAndWinner`<br>`TestR2_2b_ThreePassesReachStalemateThroughBridge` | go unit (Go half) | unit-test, e2e-test | todo (PARTIAL) |
+| R2.3 | Result screen names win vs stalemate | — | — | e2e-test | todo |
+| R3.1 | Rematch alternates dealer | — | — | e2e-test | todo |
+| R3.2 | Session win tally displays and increments | — | — | e2e-test | todo |
+| R3.3 | Tally does not survive reload | — | — | unit-test, e2e-test | todo |
+| R4.1 | Mid-game reload restores state | — | — | e2e-test | todo |
+| R4.2 | Mid-curtain reload restores curtain, not board | — | — | e2e-test | todo |
+| R4.3 | New-game confirm before abandoning | — | — | e2e-test | todo |
+| R4.4 | Snapshot version mismatch discards cleanly | — | — | unit-test | todo |
+| R5.1 | All board zones visible on one portrait screen | — | — | screenshot-judge | todo |
+| R5.2 | Score bar always visible | — | — | e2e-test | todo |
+| R6.1 | Scrap pile browsable by either player, any time | — | — | e2e-test | todo |
+| R7.1 | Opponent hand hidden without glasses-8 | `TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit | unit-test | implemented |
+| R7.2 | Opponent hand face-up under glasses-8 | — | — | e2e-test | todo |
+| R7.3 | Deck contents never transmitted | `TestR7_3a_DeckNeverTransmittedEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand` | go unit | unit-test | implemented |
+| R7.4 | opponent.hand null-vs-empty distinguished through every layer | `TestR7_4a_OpponentHandNullVersusEmptyOnWire`<br>`TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip` | go unit (bridge half) | unit-test | todo (PARTIAL) |
+| R8.1 | Frozen marker visible to owner | — | — | e2e-test | todo |
+| R8.2 | Frozen marker derived from frozenHandIndices only | `TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze` | go unit (bridge half) | unit-test | todo (PARTIAL) |
+| R9.1 | Tap highlights exactly legal targets, all move kinds | — | — | e2e-test | todo |
+| R9.2 | Tapping a highlighted target stages; confirm commits | — | — | e2e-test | todo |
+| R9.3 | No-legal-play cards render dimmed but inspectable | — | — | e2e-test | todo |
+| R9.4 | Tapping non-highlighted area clears selection | — | — | e2e-test | todo |
+| R10.1 | Deck tap draws when legal | — | — | e2e-test | todo |
+| R10.2 | Pass control shown only when sole legal move | — | — | e2e-test | todo |
+| R11.1 | Completeness: every legal index reachable | — | — | e2e-test | todo |
+| R11.2 | Soundness: no tap stages an illegal index | — | — | e2e-test | todo |
+| R11.3 | Ambiguity chooser resolves multi-candidate slots | — | — | e2e-test | todo |
+| R11.4 | Zero legal-move-contract breaks across random corpus | — | — | bridge-smoke, e2e-test | todo |
+| R12.1 | No single tap ever applies a move | — | — | e2e-test | todo |
+| R12.2 | Board inert during apply; no double-submit | — | — | e2e-test | todo |
+| R13.1 | Curtain fires exactly per actor-change predicate | — | — | unit-test | todo |
+| R13.2 | Curtain shows zero state; board unmounted | — | — | e2e-test | todo |
+| R13.3 | Reveal gate: hold-with-abort and two-step fallback | — | — | unit-test, e2e-test | todo |
+| R13.4 | Curtain tap targets ≥44px; no auto-advance | — | — | e2e-test | todo |
+| R14.1 | Real counter window renders correctly | — | — | e2e-test | todo |
+| R14.2 | Synthetic ack indistinguishable from real decline | — | — | e2e-test, unit-test | todo |
+| R14.3 | Counter chain parity and repeated curtains | — | — | unit-test, e2e-test | todo |
+| R14.4 | Seven's synthetic-ack round trip | — | — | e2e-test | todo |
+| R15.1 | Four curtains to opponent for discard | — | — | e2e-test | todo |
+| R15.2 | One-card and empty-hand discard branches | — | — | unit-test | todo |
+| R15.3 | Curtain returns to discarder with no leak | — | — | e2e-test | todo |
+| R16.1 | Seven-reveal shown only to acting player | `TestR16_1a_SevenRevealedOnlyToActorWhileChoosing` | go unit | unit-test | implemented |
+| R16.2 | Unchosen seven card never re-shown | — | — | unit-test | todo |
+| R16.3 | Seven sub-move plays via normal affordances | — | — | e2e-test | todo |
+| R17.1 | Rules content built from engine RULES.md | — | — | e2e-test | todo |
+| R17.2 | Rules reachable from menu without disturbing game | — | — | e2e-test | todo |
+| R18.1 | WASM gzip size budget | — | — | bridge-smoke | todo |
+| R18.2 | Precache manifest includes engine assets | — | — | bridge-smoke | todo |
+| R18.3 | Full offline run after first load | — | — | e2e-test | todo |
+| R18.4 | Installable PWA manifest | — | — | e2e-test | todo |
+| R19.1 | No horizontal scroll at 360-430px | — | — | e2e-test | todo |
+| R19.2 | All tap targets ≥44px | — | — | e2e-test | todo |
+| R19.3 | CSS-transform-only animations; reduced-motion playable | — | — | e2e-test, unit-test | todo |
+| R19.4 | Phone-viewport legibility | — | — | screenshot-judge | todo |
+| R20.1 | Last move description shown after each action | — | — | e2e-test | todo |
+| R20.2 | Recap formatter is per-viewer and redaction-safe | — | — | unit-test | todo |
+| R20.3 | Recap presentation and lastSeenSeq stamping | — | — | e2e-test | todo |
+| R21.1 | Reference candidate set generated | — | — | image-judge | todo |
+| R21.2 | Style-lock document authored | — | — | image-judge | todo |
+| R21.3 | David approves the reference set | — | — | human-approval | todo |
+| R22.1 | Full 52-face + back fan-out generation | — | — | image-judge | todo |
+| R22.2 | Consistency judge scoring with regeneration | — | — | image-judge | todo |
+| R22.3 | Complete theme asset budget ≤4MB | — | — | unit-test | todo |
+| R22.4 | Bitmap assets are runtime-cached, not precached | — | — | e2e-test | todo |
+| R23.1 | Theme seam contract wiring | — | — | unit-test, e2e-test | todo |
+| R23.2 | User-facing theme toggle, persisted | — | — | e2e-test | todo |
+| R23.3 | Automatic fallback to vector baseline | — | — | e2e-test | todo |
+| R23.4 | Full playability with theme off | — | — | e2e-test | todo |
+| R23.5 | Theme-swap visual consistency | — | — | screenshot-judge | todo |
+
+## SPEC contracts not traced to a ledger ID
+
+| SPEC § | Test(s) | Layer |
+|---|---|---|
+| §2.4 function surface, read calls don't mutate, snapshot/restore | `TestSPEC2_4_ReadCallsDoNotMutate`<br>`TestSPEC2_4_SnapshotRestoreRoundTrip` | go unit + bridge-smoke |
+| §2.6 seed string, random seed/dealer, pinned dealStream | `TestSPEC2_6_SeedIsDecimalStringUint64`<br>`TestSPEC2_6_OmittedSeedAndDealerAreRandom`<br>`TestSPEC2_6_DealStreamIsPinned` | go unit |
+| §2.7 envelope invariants and wire shape | `TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames`<br>`TestSPEC2_7_AppliedMoveRecordsPreState`<br>`TestSPEC2_7_ViewLegalMovesOnlyForActor`<br>`TestSPEC2_7_PointEntryWireKeys`<br>`TestSPEC2_7_PlayerViewWireKeys`<br>`TestSPEC2_7_MoveWireShape` | go unit |
+| §2.8 normalization | `TestSPEC2_8_JackOwnersArray`<br>`TestSPEC2_8_NilSlicesAreEmptyArrays`<br>`TestSPEC2_8_FrozenIDsSortedDropFalse`<br>`TestSPEC2_8_Rank0CardIsNull`<br>`TestSPEC2_8_WinnerBareNumber`<br>`TestSPEC2_8_GlassesAndNormalization` | go unit |
+| §2.9 errors | `TestSPEC2_9_ErrorShape`<br>`TestSPEC2_9_NoGame`<br>`TestSPEC2_9_BadRequest`<br>`TestSPEC2_9_IndexOutOfRange`<br>`TestSPEC2_9_IllegalMove`<br>`TestSPEC2_9_NoLegalMoves`<br>`TestSPEC2_9_InternalOnPanic` | go unit |
+| §3.2 redaction | `TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex`<br>`TestSPEC3_2_PendingOmitsScrapIndex`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit |
+| §2.3 readiness, main never returns | smoke: boots the real compiled Go WASM bridge and keeps it alive | bridge-smoke |

@@ -10,12 +10,15 @@ import (
 // The PlayerView wire types (SPEC §2.7, §3). The raw engine.GameState never
 // crosses the WASM boundary; everything a viewer may see is derived here.
 
+// PointEntryView keeps the engine's PascalCase field names (SPEC §2.7
+// PointEntry). JackOwners is re-typed to []int: []engine.PlayerID is []byte
+// to encoding/json and would cross the wire as base64 (§2.8a).
 type PointEntryView struct {
-	Card       card.Card         `json:"card"`
-	Owner      engine.PlayerID   `json:"owner"`
-	JackStack  []card.Card       `json:"jackStack"`
-	JackOwners []engine.PlayerID `json:"jackOwners"`
-	Controller engine.PlayerID   `json:"controller"`
+	Card       card.Card       `json:"Card"`
+	Owner      engine.PlayerID `json:"Owner"`
+	JackStack  []card.Card     `json:"JackStack"`
+	JackOwners []int           `json:"JackOwners"`
+	Controller engine.PlayerID `json:"Controller"`
 }
 
 type SideScore struct {
@@ -86,11 +89,20 @@ func pointEntryViews(entries []engine.PointEntry) []PointEntryView {
 			Card:       pe.Card,
 			Owner:      pe.Owner,
 			JackStack:  nonNil(pe.JackStack),
-			JackOwners: append([]engine.PlayerID(nil), pe.JackOwners...),
+			JackOwners: jackOwners(pe.JackOwners),
 			Controller: pe.Controller(),
 		})
 	}
 	return views
+}
+
+// jackOwners converts []PlayerID to a real numeric array, never nil (§2.8a/b).
+func jackOwners(owners []engine.PlayerID) []int {
+	out := make([]int, 0, len(owners))
+	for _, o := range owners {
+		out = append(out, int(o))
+	}
+	return out
 }
 
 func nonNil[T any](s []T) []T {

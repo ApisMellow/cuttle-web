@@ -7,7 +7,7 @@ import (
 	"github.com/ApisMellow/cuttle/engine"
 )
 
-func TestDealNewGameGoldenSeed42(t *testing.T) {
+func TestR1_1a_GoldenSeedDeal(t *testing.T) {
 	state := dealNewGame(42, engine.P2)
 
 	wantP1 := []card.Card{
@@ -44,7 +44,7 @@ func TestDealNewGameGoldenSeed42(t *testing.T) {
 	}
 }
 
-func TestCanonicalDeckIsSuitMajorRankMinor(t *testing.T) {
+func TestR1_1b_CanonicalDeckOrder(t *testing.T) {
 	deck := canonicalDeck()
 	if len(deck) != 52 {
 		t.Fatalf("deck length = %d, want 52", len(deck))
