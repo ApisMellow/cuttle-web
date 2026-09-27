@@ -178,11 +178,13 @@ All functions take and return **JSON strings** (A2). None take or return objects
 | `__cuttleDescribe()` | — | `Envelope` | no |
 | `__cuttleView(viewerId)` | `0 \| 1` | `Envelope` | no |
 | `__cuttleSnapshot()` | — | `SnapshotJson` (full, unredacted) | no |
-| `__cuttleRestore(snapshotJson)` | `SnapshotJson` | `Envelope` | yes |
+| `__cuttleRestore(snapshotJson, viewerId)` | `SnapshotJson, 0 \| 1` | `Envelope` | yes |
 
 **Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). This is what makes the v2 transport swap a swap: in v2 the same envelope arrives over a WebSocket from the server's copy of exactly this code.
 
 `__cuttleApply` takes an **index into the legal-move list of the current state** (A3). The bridge recomputes `engine.LegalMoves(state)` and bounds-checks the index. An out-of-range index is an error, not a panic. Illegal moves are unrepresentable because the client can only name a position in a list the engine produced.
+
+**Which viewer each call returns** *(amended 2026-09-26)*. `__cuttleApply` returns the envelope for the **pre-apply `Active`** (the mover). After the curtain reveal the UI fetches the incoming actor's envelope with `__cuttleView(newActor)` (§3.3 rule 4). `__cuttleNewGame` returns the envelope for the first actor (`state.Active` after the deal). Whoever starts the game is the first player, so there is no opening curtain. `__cuttleRestore(snapshotJson, viewerId)` returns the envelope for `viewerId`; TS passes its persisted `Snapshot.viewer` (§5.7) and puts the persisted curtain back up before rendering (R4.2). A `viewerId` that isn't exactly 0 or 1 is `BAD_REQUEST`, and the held state is unchanged. `__cuttleLegalMoves` and `__cuttleDescribe` return the envelope for `state.Active`, and `__cuttleView(p)` returns `p`'s. No mutating call returns the view of a player who is not holding the phone.
 
 ### 2.5 Enum values, pinned from source
 
@@ -375,12 +377,15 @@ export interface PlayerView {
 }
 
 export interface AppliedMove {
-  index: number;                    // index into the PRE-state legal-move list
+  index?: number;                   // index into the PRE-state legal-move list; present only
+                                     // when viewer === entry.by, else omitted (§3.2, amended 2026-09-26)
   by: PlayerId;                     // pre-state Active
   kind: MoveKind;
   card: Card | null;
   description: string;              // Move.Describe evaluated against the PRE-state
   seq: number;                      // 1-based, monotonic for the game
+  subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick, else null (§2.8).
+                                     // Public to both viewers. (amended 2026-09-26)
 }
 
 export interface Envelope {
@@ -403,6 +408,8 @@ export interface EngineError {
 
 export type BridgeResult = Envelope | EngineError;
 ```
+
+**Which viewer each call returns** *(amended 2026-09-26)*: see §2.4. No mutating call returns the view of a player who is not holding the phone.
 
 Invariants a reviewer checks:
 
@@ -533,6 +540,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `pending.card` / `.target` / `.playedBy` | `state.Pending` | present whenever `Pending != nil` — the played one-off is public the moment it is played (R14 requires the opponent to see it) |
 | `pending.counterChain` | `state.Pending.CounterChain` | public; every 2 in the chain was played face-up |
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
+| `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
 
 **`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra and gets no indication beyond the glasses-8 visibly sitting in the opponent's permanents row — which is correct, since a permanent on the board is public.
 
@@ -916,8 +924,9 @@ interface Snapshot {
 ```
 
 - Written after every successful `apply` and every curtain transition, synchronously, before the UI updates. A crash between apply and write must not lose a move.
-- **`engineState` is opaque to TypeScript.** It is produced by `__cuttleSnapshot()` and handed back to `__cuttleRestore()` verbatim. No TS code reads inside it — that would be the redaction bypass of §3.3(1) through the back door.
-- **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads.
+- **`engineState` is opaque to TypeScript.** It is produced by `__cuttleSnapshot()` and handed back to `__cuttleRestore()` as the first argument, verbatim. No TS code reads inside it — that would be the redaction bypass of §3.3(1) through the back door.
+- **`viewer` is passed to restore, not inferred.** `__cuttleRestore(engineState, viewer)` (§2.4) takes the persisted `viewer` field as its second argument and returns that player's envelope. *(amended 2026-09-26)*
+- **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
 - **Version mismatch (`v !== 1`) discards the snapshot** and returns to the home screen with a brief notice. No migration code in v1; a bump means the old game is gone. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
 - **The session tally is not persisted** (R3, PRD §4). It lives in `session.svelte.ts` and dies with the tab. A restored game restores the game only.
 - "New game" from the menu requires a confirm before clearing (R4), and the confirm names the in-progress game.
