@@ -41,6 +41,37 @@ No E-2 seed was encountered by the initial fixed 1–240 corpus under its
 committed move-selection PRNG. The bridge still reports `NO_LEGAL_MOVES` and
 the smoke invariant remains active for every non-excluded seed.
 
+## 2026-09-26 — E-1/E-2 resolved in engine v0.2.0; exclusions removed
+
+`go.mod` now requires `github.com/ApisMellow/cuttle v0.2.0` (Batch 0). An
+independent reviewer found that all four previously-excluded seeds (6, 110,
+142, 176) play cleanly on this engine version, and that the full committed
+240-seed corpus (`web/tests/smoke/corpus.json`, seeds 1-240) produces zero
+`ILLEGAL_MOVE`/`NO_LEGAL_MOVES` defects with no exclusions.
+
+Verified independently before removing anything: temporarily emptied
+`web/tests/smoke/exclusions.json`'s seed list and ran
+`npm --prefix web run test:smoke` against the full 240-seed corpus, twice.
+Both runs were green — 0 defects, wins and stalemates both occurred. Per
+SPEC §7.2(6) ("deleting the exclusion list is the whole re-enablement"),
+`web/tests/smoke/exclusions.json` has been deleted and the filtering code
+that read it removed from `web/tests/smoke/bridge-smoke.mjs`. The corpus
+test (now named `R11.4: full committed seed corpus reaches terminal state
+via offered indices with zero legal-move-contract breaks`) runs all 240
+seeds unfiltered.
+
+E-1's fix and E-2's handling are engine-side (v0.2.0 changelog, not
+inspected here — out of scope per this batch's brief: no engine edits). The
+dead-end scrap fallback for E-2 is visible bridge-side as a `SevenPick` move
+with `subKind: null` and description "7: no legal play — scrap X"
+(`docs/assumptions.md` Batch 1, "History `subKind` validation on restore").
+No E-2 case was hit in this 240-seed corpus, matching the note below that
+E-2 is rare (~0.3% in the original 4,000-game survey).
+
+If a future corpus expansion or reviewer ever reproduces either defect
+again, **stop and report** — do not re-add an exclusion list or work around
+it in web code (SPEC OQ-2's "no" still applies).
+
 ## Related low-severity frozen marker lifecycle
 
 A 9 played on the acting player's own Jack-stolen point can add a frozen mark

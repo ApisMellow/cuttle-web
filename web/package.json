@@ -11,7 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "test:unit": "vitest run",
-    "test:smoke": "node --test tests/smoke/**/*.mjs",
+    "test:smoke": "npm run build:wasm && node --test tests/smoke/**/*.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

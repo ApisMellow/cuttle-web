@@ -42,7 +42,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R11.1 | Completeness: every legal index reachable | — | — | e2e-test | todo |
 | R11.2 | Soundness: no tap stages an illegal index | — | — | e2e-test | todo |
 | R11.3 | Ambiguity chooser resolves multi-candidate slots | — | — | e2e-test | todo |
-| R11.4 | Zero legal-move-contract breaks across random corpus | — | — | bridge-smoke, e2e-test | todo |
+| R11.4 | Zero legal-move-contract breaks across random corpus | `smoke: R11.4: full committed seed corpus reaches terminal state via offered indices with zero legal-move-contract breaks` | bridge-smoke | bridge-smoke, e2e-test | todo (PARTIAL) |
 | R12.1 | No single tap ever applies a move | — | — | e2e-test | todo |
 | R12.2 | Board inert during apply; no double-submit | — | — | e2e-test | todo |
 | R13.1 | Curtain fires exactly per actor-change predicate | — | — | unit-test | todo |
@@ -61,7 +61,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R16.3 | Seven sub-move plays via normal affordances | — | — | e2e-test | todo |
 | R17.1 | Rules content built from engine RULES.md | — | — | e2e-test | todo |
 | R17.2 | Rules reachable from menu without disturbing game | — | — | e2e-test | todo |
-| R18.1 | WASM gzip size budget | — | — | bridge-smoke | todo |
+| R18.1 | WASM gzip size budget | `smoke: R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget` | bridge-smoke | bridge-smoke | implemented |
 | R18.2 | Precache manifest includes engine assets | — | — | bridge-smoke | todo |
 | R18.3 | Full offline run after first load | — | — | e2e-test | todo |
 | R18.4 | Installable PWA manifest | — | — | e2e-test | todo |
@@ -96,3 +96,5 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | §2.9 errors | `TestSPEC2_9_ErrorShape`<br>`TestSPEC2_9_NoGame`<br>`TestSPEC2_9_BadRequest`<br>`TestSPEC2_9_IndexOutOfRange`<br>`TestSPEC2_9_IllegalMove`<br>`TestSPEC2_9_NoLegalMoves`<br>`TestSPEC2_9_InternalOnPanic`<br>`TestSPEC2_9_RestorePendingMatchesPhase`<br>`TestSPEC2_9_CommitRequiresActorEnvelope` | go unit |
 | §3.2 redaction | `TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex`<br>`TestSPEC3_2_PendingOmitsScrapIndex`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly`<br>`TestSPEC3_2_IndexRedactedForNonMover` | go unit |
 | §2.3 readiness, main never returns | smoke: boots the real compiled Go WASM bridge and keeps it alive | bridge-smoke |
+| §7.2(5) redaction sampling across corpus positions | `smoke: §7.2(5): redaction holds across sampled positions in multiple corpus games` | bridge-smoke |
+| §2.4/§5.7 snapshot restore round-trip through the compiled bridge | `smoke: SPEC §2.4/§5.7: snapshot restore round-trip preserves seq and viewer` | bridge-smoke |

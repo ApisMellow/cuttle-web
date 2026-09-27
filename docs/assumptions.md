@@ -209,3 +209,77 @@ per section so a later batch can see the reasoning without re-deriving it.
   it assigns the state. The builder is the package variable `renderEnvelope`
   so that a test can make it fail and prove nothing commits. Production never
   reassigns it.
+
+## Batch 2 (bridge smoke)
+
+- **WASM gzip budget interpretation (R18.1, SPEC §7.6; revised 2026-09-26).**
+  SPEC §7.6/§2.2 say "1.5 MB" with no qualifier, so it is taken literally as
+  the stricter decimal reading: 1,500,000 bytes, not 1.5 MiB (1,572,864
+  bytes). The looser binary reading was tried first and reverted — it
+  quietly relaxes the acceptance criterion by ~72 KB, and where SPEC means a
+  binary unit it says so explicitly (§2.2's "806 KiB baseline"). Measured
+  gzipped size at engine v0.2.0 is ~988,532 bytes (Node's `zlib.gzipSync` at
+  level 9), comfortably under the stricter 1,500,000-byte budget too. The
+  check was proven red/green before landing: a deliberately low 100 KiB
+  threshold failed the assertion against the real artifact, then the real
+  budget passed — both verified by hand before writing the committed test.
+
+- **Gzip measured in-process, not shelled out.** `R18.1`'s test uses Node's
+  `node:zlib` `gzipSync(buf, { level: 9 })` rather than spawning the `gzip`
+  binary, so the check has no external-tool dependency and matches
+  `build-wasm.sh`'s own `-9` compression level. Node's gzip framing differs
+  slightly from GNU `gzip -9` (996,691 vs. 988,491 bytes on the same
+  artifact) — header/OS-byte differences, not compression quality — so the
+  budget has enough headroom that the ~1% delta doesn't matter.
+
+- **`test:smoke` builds the WASM bridge first (R11.4/R18.1 "fresh build"
+  requirement).** Changed `web/package.json`'s `test:smoke` script to
+  `npm run build:wasm && node --test tests/smoke/**/*.mjs` rather than
+  adding a separate build step to `scripts/ci.sh`. Before this change,
+  `ci.sh` ran `npm --prefix web run test:smoke` directly, so the gate could
+  pass against a stale `.wasm` left over from an earlier manual build.
+  Putting the build inside the npm script means every caller of
+  `npm run test:smoke` — `ci.sh`, a direct developer invocation, or a future
+  CI job — always tests fresh output, with one point of truth instead of
+  two that could drift out of sync.
+
+- **Exclusion re-enablement (R11.4, SPEC §2.10/§7.2(6)).** Confirmed by
+  running the full unfiltered 240-seed corpus twice (see
+  `docs/loop-log/engine-issues.md`, 2026-09-26 entry) before touching
+  anything: 0 defects, both endings occurred. Per §7.2(6)'s policy,
+  `web/tests/smoke/exclusions.json` is deleted outright (not emptied) and
+  the filtering code in `bridge-smoke.mjs` that read it is removed, rather
+  than leaving a permanently-empty exclusions file as a vestigial seam. If a
+  defect ever reappears, the file and the two lines of filtering code are a
+  small, obvious thing to re-add — SPEC §7.2(6) and this file both describe
+  the exact shape.
+
+- **Redaction sampling scope (§7.2(5)).** "Several corpus games" is read as
+  a fixed sample of 6 seeds spread across the 240-seed range (5, 45, 90,
+  135, 180, 225) rather than the full corpus, to keep the smoke suite's
+  runtime cost proportionate (SPEC §7.2: "Cost: seconds"). Within each
+  sampled game, every 5th step's position is checked for both viewers
+  against a same-position `__cuttleSnapshot()` ground truth: opponent hand
+  leak (respecting the glasses exception), deck-content leak, and
+  `history[].index` leak on the other player's entries. The test asserts at
+  least 20 positions were actually checked, as a guard against a future
+  refactor silently shrinking the sample to nothing.
+
+- **`assertNoLeak`'s glasses branch doesn't re-check hand-card absence.**
+  When `opponent.hand !== null` for a sampled position, the test asserts the
+  viewer has a glasses-8 in `you.permanents` (SPEC §3.2's `viewerHasGlasses`)
+  and does not additionally scan for the (now legitimately visible) hand
+  cards — that would be asserting the opposite of what glasses are for. Deck
+  and history-index checks still run unconditionally in every branch.
+
+- **Stray Go package under `web/node_modules` (item 6).** `go version`
+  reported `go1.25.2`, which supports the go.mod `ignore` directive
+  (`go help mod edit`'s `-ignore=path` flag). Ran
+  `go mod edit -ignore=web/node_modules`, which adds a single `ignore
+  web/node_modules` line to `go.mod`. Verified `go test ./...`,
+  `go build ./...`, and `go vet ./...` no longer see
+  `web/node_modules/flatted/golang/pkg/flatted` at all (previously
+  `go test ./...` printed `? ... [no test files]` for it). Chosen over
+  `.gitignore`-only exclusion (doesn't affect `go` tool package discovery,
+  only `git`) and over a build-tag/exclude-file approach (there's nothing to
+  tag — it's third-party vendored-by-npm source, not ours to edit).
