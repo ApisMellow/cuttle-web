@@ -19,8 +19,6 @@
   "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "vite.config.ts", "playwright.config.ts", "eslint.config.js"],
   "exclude": [
     "node_modules",
-    "dist",
-    "tests/unit/engine.test.ts",
-    "tests/unit/schema.test.ts"
+    "dist"
   ]
 }

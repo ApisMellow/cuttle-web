@@ -283,3 +283,84 @@ per section so a later batch can see the reasoning without re-deriving it.
   `.gitignore`-only exclusion (doesn't affect `go` tool package discovery,
   only `git`) and over a build-tag/exclude-file approach (there's nothing to
   tag — it's third-party vendored-by-npm source, not ours to edit).
+
+## Batch 3 (TS bridge boundary)
+
+- **Three files, not five.** SPEC §5.4 lists five bridge files
+  (`wasm.ts`, `raw.ts`, `engine.ts`, `types.ts`, `schema.ts`). Per this
+  batch's scope, only `wasm.ts`, `engine.ts`, and `schema.ts` were created.
+  `types.ts`'s content (the §2.7 wire types) lives in `schema.ts`, since
+  schema validation needs the types anyway and the task scope explicitly
+  named `schema.ts` as owning "types and runtime validation." `raw.ts`'s
+  thin per-global wrappers are folded directly into `engine.ts` — there was
+  no daylight between "a thin typed wrapper over a `__cuttle*` global" and
+  "the public API function for that call," so a separate pass-through layer
+  would have added a file without adding a seam. If a real v2 transport
+  swap (SPEC §5.4) later needs `engine.ts`'s public functions decoupled
+  from the raw global-calling mechanics, splitting `raw.ts` back out is a
+  small, obvious refactor with no behavior change.
+
+- **`wasm_exec.js` is loaded via a `<script src>` tag, not `import()`, in
+  `lib/bridge/wasm.ts` — a deviation from SPEC §2.3's illustrative code**
+  (logged here per the task's "record SPEC gaps" instruction; not a
+  `SPEC.md` edit). `await import('/wasm_exec.js')` — the SPEC's exact
+  snippet — fails under the pinned toolchain (`vite@8.3.1`) with: *"Cannot
+  import non-asset file /wasm_exec.js which is inside /public. JS/CSS files
+  inside /public are copied as-is on build and can only be referenced via
+  `<script src>` or `<link href>` in html."* Verified by running the
+  walking-skeleton e2e test against the literal SPEC snippet before
+  changing it — the dev server logs the error above and the page never
+  reaches `Engine ready`. A `document.createElement('script')` load
+  produces the identical side effect (`globalThis.Go` defined) without
+  going through Vite's module graph, and works unchanged in dev, build, and
+  preview. `resetEngineForTests()` is exported alongside `ensureEngine()`
+  as a test-only escape hatch (unused by any test in this batch, but the
+  memoization means nothing else can force a second boot without it).
+
+- **`web/tests/scenario/wasm-engine.ts` reuses `lib/bridge/engine.ts` for
+  every bridge *call* (item 7), but keeps its own Node-native boot
+  sequence rather than calling `lib/bridge/wasm.ts`'s `ensureEngine()`.**
+  Not clean to unify fully: `ensureEngine()`'s `<script src="/wasm_exec.js">`
+  load requires a real browser DOM actually executing injected script tags,
+  and its `fetch('/cuttle.wasm')` is relative to a page origin — neither
+  holds under `vitest`'s `jsdom` environment (jsdom does not execute
+  externally-loaded `<script src>` elements by default, and there is no
+  dev server backing a relative `fetch()` in a bare Node test run). The
+  existing `readFile`-based boot (already proven working, matching
+  `tests/smoke/bridge-smoke.mjs`) was kept unchanged for that reason. Once
+  booted, though, the *calls* (`newGame`, `legalMoves`, `apply`, via
+  `view`) now delegate to the real `engine.ts` wrappers instead of a
+  duplicated `call()` helper, which is the reuse the task asked for where
+  it's actually clean — the boot dance and the call surface are separable,
+  and only the former is inherently browser/server-shaped.
+
+- **`docs/requirements.yaml`/`docs/traceability.md` edited are the ones in
+  this repo (`~/dev/cuttle-web/docs/`), not the stale, all-`todo` copy in
+  the `cuttle-web-docs` sibling repo's `docs/p1b-decisions` branch.** The
+  latter is `SPEC.md`'s home and was read-only per this batch's
+  instructions; its `requirements.yaml`/`traceability.md` predate Batch 1/2
+  and don't reflect any of the `implemented`/`PARTIAL` work already landed
+  here. This repo's copies are the ones `loop-workflow.md` and every prior
+  batch's assumptions entries treat as the live ledger.
+
+- **R2.1/R2.2 TS halves scoped to `schema.ts`, not a store.** Both
+  ledger entries' `unit-test` acceptance bullets ("scoreboard fields …
+  never recomputed in TS", "`state.stalemate` … never independently
+  computed") describe a no-recomputation property that `schema.ts`'s
+  validate-only design already proves structurally: `parseBridgeResult`
+  never derives these fields, only checks their shape and passes the
+  parsed value through unchanged. Added vitest cases assert exactly that,
+  including a deliberately-inconsistent `stalemate` value to prove the
+  schema doesn't second-guess it. Both ledger entries stay `todo (PARTIAL)`
+  — their `e2e-test` bullets (`ResultScreen`, scenario fixtures
+  `win-with-kings`/`stalemate`) are UI-screen work out of scope for this
+  batch.
+
+- **R7.4's "store updates" clause is explicitly NOT closed by this batch.**
+  The acceptance text asks the null-vs-`[]` distinction to survive
+  "snapshot round-trip and store updates." This batch proves the
+  round-trip through `lib/bridge/{schema,engine}.ts` (parse, and a full
+  `restore()` call), but `lib/stores/game.svelte.ts` (SPEC §5.3) doesn't
+  exist yet — stores are explicitly out of scope here ("no … stores beyond
+  what the bridge needs"). `requirements.yaml`'s evidence field says so
+  directly so a later batch doesn't mistake this for closed.

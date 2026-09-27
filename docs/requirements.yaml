@@ -51,7 +51,7 @@ requirements:
       - "e2e-test: scenario `win-with-kings` — threshold display updates through 21/14/10/7/5 as Kings are played, and the result screen fires on hasWon (PRD R2, SPEC Appendix A)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: "PARTIAL — Go derivation half done: TestR2_1a_ScoreboardFromEngineHelpers (scoreboard = engine PointTotal/Threshold/KingCount/HasWon verbatim, both viewers). Open: TS no-recompute unit check and e2e scenario `win-with-kings`."
+    evidence: "PARTIAL — Go derivation half done: TestR2_1a_ScoreboardFromEngineHelpers (scoreboard = engine PointTotal/Threshold/KingCount/HasWon verbatim, both viewers). TS no-recompute unit check done: vitest \"R2.1: scoreboard fields cross verbatim from the engine's helpers, never recomputed in TS\" (web/tests/unit/schema.test.ts) — parseBridgeResult passes scoreboard through unchanged. Open: e2e scenario `win-with-kings` (ResultScreen, Batch 3+ out of scope)."
     fails: 0
 
   - id: R2.2
@@ -62,7 +62,7 @@ requirements:
       - "e2e-test: scenario `stalemate` — three consecutive passes reach phase 4, winner null, and the stalemate result screen renders (PRD R2, SPEC §7.3)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: "PARTIAL — Go derivation half done: TestR2_2a_StalemateDerivedFromPhaseAndWinner, TestR2_2b_ThreePassesReachStalemateThroughBridge (drives passes via apply + view(active)). Open: TS unit check and e2e scenario `stalemate`."
+    evidence: "PARTIAL — Go derivation half done: TestR2_2a_StalemateDerivedFromPhaseAndWinner, TestR2_2b_ThreePassesReachStalemateThroughBridge (drives passes via apply + view(active)). TS no-recompute unit check done: vitest \"R2.2: state.stalemate is passed through verbatim, never independently derived by the schema\" (web/tests/unit/schema.test.ts) — asserts the schema carries whatever value is on the wire (including a deliberately inconsistent one) rather than recomputing it. Open: e2e scenario `stalemate` (ResultScreen, Batch 3+ out of scope)."
     fails: 0
 
   - id: R2.3
@@ -228,7 +228,7 @@ requirements:
       - "unit-test: normalization and view tests assert opponent.hand uses null (not visible) vs [] (visible and empty) and this distinction survives snapshot round-trip and store updates (SPEC §2.8(b) deliberate exception, §3.2)"
     verify: [unit-test]
     status: todo
-    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. Open: TS normalization/store-update half (Batch 3+)."
+    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. Open: the store-update leg specifically (lib/stores/game.svelte.ts persistence round-trip) — stores are out of scope for Batch 3 (SPEC §5.3 is a later batch's work)."
     fails: 0
 
   # ---------------------------------------------------------------------
