@@ -18,7 +18,7 @@ web/dist/*
 # WASM build artifacts
 /build/
 *.wasm
-web/static/wasm_exec.js
+web/static/
 
 # Editor noise
 .idea/
@@ -28,3 +28,9 @@ web/static/wasm_exec.js
 .env
 .env.*
 *.local.*
+
+# Playwright / vitest reports and caches
+playwright-report/
+test-results/
+coverage/
+*.tsbuildinfo

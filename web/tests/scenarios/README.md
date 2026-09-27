@@ -1,6 +1,6 @@
-# Shared deterministic fixtures
+# Shared deterministic scenarios
 
-Every fixture is a decimal uint64 seed, dealer, names, and a sequence of
+Every scenario is a decimal uint64 seed, dealer, names, and a sequence of
 legal-move indices. Every move must include its engine-authored `expect`
 description so an upstream enumeration change fails loudly instead of silently
 repointing a script.

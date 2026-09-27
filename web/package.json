@@ -1,0 +1,35 @@
+{
+  "name": "cuttle-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:wasm": "../scripts/build-wasm.sh",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint": "eslint .",
+    "test:unit": "vitest run",
+    "test:smoke": "node --test tests/smoke/**/*.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/node": "^26.6.3",
+    "eslint": "^10.11.0",
+    "eslint-plugin-svelte": "^3.23.0",
+    "globals": "^17.12.0",
+    "jsdom": "^30.1.1",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "svelte-eslint-parser": "^1.8.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2",
+    "yaml": "^2.9.1"
+  }
+}
