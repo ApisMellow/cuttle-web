@@ -127,10 +127,16 @@
      budget leaves no room for the phone-tier inter-zone gap once the
      centre strip and hand rows use their own compact tokens. A 1px trim
      per gap (3 gaps between the board's 4 children) is inside what
-     design.md's compact tier already narrows several tokens for. */
+     design.md's compact tier already narrows several tokens for.
+     W18 (round-4, item 1): trimmed a further 1px — the 360x740 worst
+     case (an 8-card hand, which wraps to two rows at this width, PLUS a
+     Jack on both points rows) needed every spare pixel this and the
+     PointRow trims (`--jack-offset`, the deck-edge slack) together could
+     safely give back; see this item's hand-back for the fit numbers that
+     remain. */
   @media (max-height: 780px), (max-width: 374px) {
     .board {
-      gap: 6px;
+      gap: 5px;
     }
   }
 </style>

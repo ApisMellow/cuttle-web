@@ -22,7 +22,12 @@ function block(pattern: RegExp): string {
 describe('card geometry tokens (docs/design.md §5)', () => {
   it('phone defaults: hand 56, field 60, mini 32, aspect ~1.3 (W17, round-4)', () => {
     const root = block(/:root\s*\{([^}]*)\}/);
-    expect(root).toMatch(/--cuttle-card-aspect:\s*1\s*\/\s*1\.3\s*;/);
+    // W18 (round-4): the numeric ratio (read by PermanentRow's and
+    // PointRow's `calc()` arithmetic) is now the single source; the CSS
+    // `aspect-ratio` expression is derived from it with `var()` so the two
+    // can't drift apart — see card-geometry.css's header comment.
+    expect(root).toMatch(/--cuttle-card-aspect-ratio:\s*1\.3\s*;/);
+    expect(root).toMatch(/--cuttle-card-aspect:\s*1\s*\/\s*var\(--cuttle-card-aspect-ratio\)\s*;/);
     expect(root).toMatch(/--cuttle-card-width-hand:\s*56px\s*;/);
     expect(root).toMatch(/--cuttle-card-width-field:\s*60px\s*;/);
     expect(root).toMatch(/--cuttle-card-width-mini:\s*32px\s*;/);

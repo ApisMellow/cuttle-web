@@ -23,11 +23,18 @@
  * W17 (round-4, product owner direction 2026-09-28): cards run slightly
  * shorter than the original 2.5:3.5 (1.4) playing-card ratio, to give a
  * cascading Jack stack more room within the fixed row-height budgets
- * (design.md §6). `--cuttle-card-aspect` is the single tunable token for
- * this — width 1, height ~1.3 — so the ratio can move again with one edit.
+ * (design.md §6). `--cuttle-card-aspect-ratio` (a plain number, height ÷
+ * width) is the single tunable source; `--cuttle-card-aspect` — the ratio
+ * expression the CSS `aspect-ratio` property actually takes — is derived
+ * from it with `calc()` so the two can never drift apart. W18 (round-4):
+ * PermanentRow's reserved min-height reads the numeric token too (its own
+ * `* 1.4` literal was the old ratio, hard-coded a second time and now
+ * fixed), and PointRow's Jack-stack row growth (below) reads it for the
+ * same reason — one edit here moves every consumer.
  */
 :root {
-  --cuttle-card-aspect: 1 / 1.3;
+  --cuttle-card-aspect-ratio: 1.3;
+  --cuttle-card-aspect: 1 / var(--cuttle-card-aspect-ratio);
 
   --cuttle-card-width-hand: 56px;
   --cuttle-card-width-field: 60px;
