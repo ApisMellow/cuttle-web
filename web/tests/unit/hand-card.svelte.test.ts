@@ -21,6 +21,9 @@ interface RenderProps {
   handIndex: number;
   frozenHandIndices: number[];
   selected?: boolean;
+  highlighted?: boolean;
+  staged?: boolean;
+  dimmed?: boolean;
   onselect?: (handIndex: number) => void;
 }
 
@@ -192,5 +195,74 @@ describe('HandCard interaction and testids (SPEC §5.1, §5.9)', () => {
     const el = render({ card: CARDS[1], handIndex: 2, frozenHandIndices: [2] });
     const marker = frozenMarker(el);
     expect(marker?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+// P2 W9 (docs/design.md §7) — the explicit `highlighted`/`staged`/`dimmed`
+// props and the frozen > staged > highlighted > dimmed > normal precedence.
+function stagedTab(el: HTMLElement): Element | null {
+  return button(el).querySelector('[data-staged-tab]');
+}
+
+describe('HandCard staged/highlighted/dimmed states and their precedence (docs/design.md §7)', () => {
+  it('highlighted alone renders theme state "highlighted", same as selected', () => {
+    const el = render({ card: CARDS[0], handIndex: 0, frozenHandIndices: [], highlighted: true });
+    expect(faceState(el)).toBe('highlighted');
+  });
+
+  it('staged renders theme state "staged" and shows the ✓ tab', () => {
+    const el = render({ card: CARDS[0], handIndex: 0, frozenHandIndices: [], staged: true });
+    expect(faceState(el)).toBe('staged');
+    expect(stagedTab(el)).not.toBeNull();
+    expect(button(el).getAttribute('data-staged')).toBe('true');
+  });
+
+  it('dimmed renders theme state "dimmed" and stays tappable', () => {
+    const seen: number[] = [];
+    const el = render({ card: CARDS[0], handIndex: 4, frozenHandIndices: [], dimmed: true, onselect: (i) => seen.push(i) });
+    expect(faceState(el)).toBe('dimmed');
+    expect(button(el).getAttribute('data-dimmed')).toBe('true');
+    button(el).click();
+    flushSync();
+    expect(seen).toEqual([4]);
+  });
+
+  it('precedence: staged beats highlighted and dimmed', () => {
+    const el = render({
+      card: CARDS[0],
+      handIndex: 0,
+      frozenHandIndices: [],
+      staged: true,
+      highlighted: true,
+      dimmed: true,
+    });
+    expect(faceState(el)).toBe('staged');
+    expect(stagedTab(el)).not.toBeNull();
+    expect(frozenMarker(el)).toBeNull();
+  });
+
+  it('precedence: highlighted beats dimmed', () => {
+    const el = render({ card: CARDS[0], handIndex: 0, frozenHandIndices: [], highlighted: true, dimmed: true });
+    expect(faceState(el)).toBe('highlighted');
+  });
+
+  it('precedence: frozen beats staged, highlighted and dimmed all at once', () => {
+    const el = render({
+      card: CARDS[0],
+      handIndex: 0,
+      frozenHandIndices: [0],
+      staged: true,
+      highlighted: true,
+      dimmed: true,
+    });
+    expectFrozen(el, true);
+    expect(faceState(el)).toBe('frozen');
+    expect(stagedTab(el)).toBeNull();
+  });
+
+  it('none of the new flags set renders normal, unchanged from before this round', () => {
+    const el = render({ card: CARDS[0], handIndex: 0, frozenHandIndices: [] });
+    expect(faceState(el)).toBe('normal');
+    expect(stagedTab(el)).toBeNull();
   });
 });

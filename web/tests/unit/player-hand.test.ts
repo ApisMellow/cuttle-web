@@ -23,6 +23,9 @@ function renderPlayerHand(props: {
   frozenHandIndices: number[];
   selectedHandIndex: number | null;
   onselect: (handIndex: number) => void;
+  highlighted?: ReadonlySet<string>;
+  staged?: ReadonlySet<string>;
+  dimmedHandIndices?: ReadonlySet<number>;
 }): HTMLDivElement {
   host = document.createElement('div');
   instance = mount(PlayerHand, { target: host, props });
@@ -94,9 +97,75 @@ describe('PlayerHand (presentational, SPEC §5.2/§5.3)', () => {
     expect(seen).toEqual([2]);
   });
 
+  it('exposes the card count to its fan CSS as --hand-count (design §6: fan with equal overlap)', () => {
+    const eight = Array.from({ length: 8 }, (_, i) => ({ Rank: i + 1, Suit: 0 })) as Card[];
+    const el = renderPlayerHand({ cards: eight, frozenHandIndices: [], selectedHandIndex: null, onselect: () => {} });
+    const hand = el.querySelector<HTMLElement>('[data-testid="player-hand"]')!;
+    expect(hand.style.getPropertyValue('--hand-count')).toBe('8');
+    expect(el.querySelectorAll('[data-testid^="hand-card-"]').length).toBe(8);
+  });
+
   it('renders every card through the theme <Face> — one Face root (data-state) per hand card', () => {
     const el = renderPlayerHand({ cards: HAND, frozenHandIndices: [], selectedHandIndex: null, onselect: () => {} });
     const buttons = [...el.querySelectorAll('[data-testid^="hand-card-"]')];
     expect(buttons.map((b) => b.querySelectorAll('[data-state]').length)).toEqual([1, 1, 1]);
+  });
+});
+
+// P2 W9 (Board props contract) — highlighted/staged use the `hand:<index>`
+// key format; dimmedHandIndices is index-based, matching Board's
+// `dimmedHand: ReadonlySet<number>` directly.
+describe('PlayerHand forwards highlighted/staged/dimmed to the matching HandCard only (docs/design.md §7)', () => {
+  function faceState(card: Element | null): string | null | undefined {
+    return card?.querySelector('[data-state]')?.getAttribute('data-state');
+  }
+
+  it('highlighted checks the hand:<index> key and touches only that card', () => {
+    const el = renderPlayerHand({
+      cards: HAND,
+      frozenHandIndices: [],
+      selectedHandIndex: null,
+      onselect: () => {},
+      highlighted: new Set(['hand:1']),
+    });
+    expect(faceState(el.querySelector('[data-testid="hand-card-0"]'))).toBe('normal');
+    expect(faceState(el.querySelector('[data-testid="hand-card-1"]'))).toBe('highlighted');
+    expect(faceState(el.querySelector('[data-testid="hand-card-2"]'))).toBe('normal');
+  });
+
+  it('staged checks the hand:<index> key and touches only that card', () => {
+    const el = renderPlayerHand({
+      cards: HAND,
+      frozenHandIndices: [],
+      selectedHandIndex: null,
+      onselect: () => {},
+      staged: new Set(['hand:2']),
+    });
+    expect(faceState(el.querySelector('[data-testid="hand-card-2"]'))).toBe('staged');
+    expect(el.querySelector('[data-testid="hand-card-2"]')?.getAttribute('data-staged')).toBe('true');
+    expect(el.querySelector('[data-testid="hand-card-0"]')?.getAttribute('data-staged')).toBe('false');
+  });
+
+  it('dimmedHandIndices touches only the matching index and the card stays tappable', () => {
+    const seen: number[] = [];
+    const el = renderPlayerHand({
+      cards: HAND,
+      frozenHandIndices: [],
+      selectedHandIndex: null,
+      onselect: (i) => seen.push(i),
+      dimmedHandIndices: new Set([0]),
+    });
+    expect(faceState(el.querySelector('[data-testid="hand-card-0"]'))).toBe('dimmed');
+    expect(faceState(el.querySelector('[data-testid="hand-card-1"]'))).toBe('normal');
+    el.querySelector<HTMLButtonElement>('[data-testid="hand-card-0"]')?.click();
+    flushSync();
+    expect(seen).toEqual([0]);
+  });
+
+  it('omitting highlighted/staged/dimmedHandIndices entirely behaves exactly as before this round', () => {
+    const el = renderPlayerHand({ cards: HAND, frozenHandIndices: [], selectedHandIndex: null, onselect: () => {} });
+    for (const card of el.querySelectorAll('[data-testid^="hand-card-"]')) {
+      expect(faceState(card)).toBe('normal');
+    }
   });
 });
