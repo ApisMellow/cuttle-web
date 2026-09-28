@@ -249,9 +249,12 @@ Hard rejects. Each came up in rounds 1–2.
 - **Nothing of the previous holder survives a curtain:** not the envelope,
   not the view, not mover-only `index` in history or recap entries, not a
   closure or component-local copy.
-- **The board renders only at curtain `none` or a real ack**
-  (`{kind:'ack', synthetic:false}`), never merely because `view` is
-  non-null. Behind the curtain it is unmounted, not hidden.
+- **The board renders only at curtain `none`, never at `ack`** (real or
+  synthetic), and never merely because `view` is non-null. Behind the
+  curtain it is unmounted, not hidden. *(Amended 2026-09-28, W13 GameScreen
+  review: at a synthetic ack the one-off has already resolved and at a real
+  window it hasn't, so a board or `ScoreBar` at either would leak which case
+  it was, under R14.)*
 - **Handoff DOM:** only `handoffLabel(reason)` ("Your turn" / "Your
   response"), and zero game state: no counts, scores or scrap. The raw
   `HandoffReason` never reaches text, class, attribute, `data-*`, testid or

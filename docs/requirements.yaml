@@ -169,7 +169,7 @@ requirements:
     prd: R5
     title: "Score bar always visible"
     acceptance:
-      - "e2e-test: ScoreBar (both players' points + thresholds) is present and visible across every fixture checkpoint and every live CurtainState kind; only the handoff/reveal screens legitimately show zero game state by design (PRD R5, SPEC §4.5)"
+      - "e2e-test: ScoreBar (both players' points + thresholds) is present and visible across every fixture checkpoint and every live CurtainState kind; the handoff/reveal screens and the ack screen (real or synthetic) legitimately show zero game state by design — after a synthetic ack the scores already reflect the resolved one-off and at a real window they don't, so showing them would leak under R14 (PRD R5, SPEC §4.3, §4.5, amended 2026-09-28 per the W13 GameScreen review)"
     verify: [e2e-test]
     status: implemented
     evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): ScoreBar built and reviewed accept after re-review (round-03.md), 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e across every curtain kind deferred to round-4 (GameScreen/board integration, W13)."
