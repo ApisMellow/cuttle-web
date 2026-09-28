@@ -280,6 +280,30 @@ describe('StagingStore — genuine ambiguity opens the chooser (SPEC §6.4)', ()
     expect(store.staged).toEqual(new Set());
   });
 
+  it('N1: choose() refuses an index that is legal and in range but is not one of the chooser\'s options (SPEC §6.4)', () => {
+    // Index 2 (a Draw) is a real legal move for this position, so the
+    // bounds check alone would let it through. Only the option-membership
+    // check keeps the chooser from staging a move it never offered.
+    const legalMoves = [
+      move({ Kind: 1, HandIndex: 0, Card: { Rank: 2, Suit: 0 } }),
+      move({ Kind: 1, HandIndex: 0, Card: { Rank: 2, Suit: 1 } }),
+      move({ Kind: 0 }),
+    ];
+    const descriptions = ['play 2♣ as point card', 'play 2♦ as point card', 'draw a card'];
+    const store = new StagingStore(envOf(legalMoves, descriptions), neverApply);
+    store.tap('hand:0');
+    store.tap('zone:points');
+    expect(store.chooser?.candidates.map((c) => c.index)).toEqual([0, 1]);
+
+    store.choose(2);
+
+    expect(store.state).toBe('selected');
+    expect(store.chooser).not.toBeNull();
+    expect(store.stagedIndex).toBeNull();
+    expect(store.stagedDescription).toBeNull();
+    expect(store.staged).toEqual(new Set());
+  });
+
   it('cancel() from an open chooser returns to idle', () => {
     const legalMoves = [
       move({ Kind: 1, HandIndex: 0, Card: { Rank: 2, Suit: 0 } }),

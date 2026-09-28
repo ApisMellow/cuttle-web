@@ -378,5 +378,35 @@ describe('StagingStore — scrap pick for the 3 (R6)', () => {
     store.tap('zone:oneoff');
     expect(store.scrapPick).toBeNull();
     expect(store.stagedIndex).toBe(0);
+    expect(store.stagedDescription).toBe('play 3♣ as one-off, taking 5♠');
+  });
+
+  it('single-card scrap: a 3 revealed by a 7 names the card taken too', () => {
+    const env: StagingEnv = {
+      legalMoves: [
+        move({ Kind: MoveKind.SevenPick, Card: THREE_C, SubMove: move({ Kind: MoveKind.OneOff, Card: THREE_C }) }),
+      ],
+      descriptions: ['7: play 3♣ as one-off'],
+      revealed: [THREE_C],
+      scrap: [NINE_C],
+    };
+    const store = new StagingStore(fixed(env), neverApply);
+    store.tap('seven:0');
+    store.tap('zone:oneoff');
+    expect(store.stagedIndex).toBe(0);
+    expect(store.stagedDescription).toBe('7: play 3♣ as one-off, taking 9♣');
+  });
+
+  it('an untargeted one-off that is not a 3 keeps the engine text, whatever the scrap holds', () => {
+    const ACE_H: Card = { Rank: 1, Suit: 2 };
+    const env: StagingEnv = {
+      legalMoves: [move({ Kind: MoveKind.OneOff, HandIndex: 0, Card: ACE_H })],
+      descriptions: ['play A♥ as one-off'],
+      scrap: [FIVE_S],
+    };
+    const store = new StagingStore(fixed(env), neverApply);
+    store.tap('hand:0');
+    store.tap('zone:oneoff');
+    expect(store.stagedDescription).toBe('play A♥ as one-off');
   });
 });

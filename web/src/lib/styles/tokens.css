@@ -141,3 +141,10 @@
        fills in three discrete steps instead of a sweep (design.md §7). */
   }
 }
+
+/* W19: the browser's default 8px body margin made the page 16px taller than
+   the viewport around the 100dvh game screen. No component owns <body>, so
+   the one global reset lives here, next to the tokens App.svelte imports. */
+body {
+  margin: 0;
+}
