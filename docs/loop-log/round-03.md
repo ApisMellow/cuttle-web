@@ -94,6 +94,45 @@ Prep commit `19439dc` added the playbook, role agents, `docs/design.md`, and the
 
 ## Merges
 
+- W12 (shell) merged to `loop/integration` at `21aa9af`.
+- Docs rulings merged at `3a20b31`: Ace resolves by zone (R11.3), Jack stacking (design.md §6–§7), design calls confirmed (single dark table, 60px field width, mini recap faces), PRD A-3 Mythic theme.
+- Log commit `a6c5c90`.
+- W11 (staging) merged at `78d1663`. Took 1 revise cycle; the developer found a real bug, a `choose()` bounds check.
+- W9 (board) merged at `90bda7d`. Accepted after the Opus re-review.
+- W10 (curtain) merged at `a9c9ccb`. Took 2 revises. Its carry-over is now keyed on player id, and a required `player` prop was added.
+
+Post-integration gate at `a9c9ccb`: 9/9 PASS, with e2e 8/8.
+
 ## Ledger delta
 
+`meta.round` 2 → 3. 21 items move `todo` → `implemented` on round-3 acceptance evidence (each item's own worktree gate mapped every acceptance criterion to a passing test; full post-integration e2e evidence is round-4's job — see `docs/requirements.yaml` for the per-item strings):
+
+- W9 (board): R5.2, R8.1, R10.1
+- W10 (curtain): R13.2, R13.3, R13.4, R20.3
+- W11 (staging): R9.2, R9.3, R9.4, R10.2, R11.1, R11.2, R11.3, R12.1, R12.2
+- W12 (shell): R1.3, R2.3, R3.1, R3.2, R4.3
+
+Held at `todo` deliberately, despite being in a merged work item's scope: **R6.1** (W9 shipped only the scrap-pile tap affordance; the browsable list itself is round-4 item (f), ScrapBrowser) and **R9.1** (W9 shipped highlight *rendering* only; deriving highlights from `legalMoves` integrates with staging in round 4).
+
 ## Next-round intent
+
+Round 4: finish W13 (GameScreen integration, in progress), then CounterPrompt, DiscardPicker, SevenRevealPanel, and ScrapBrowser; the layout fixes surfaced by playtest (Jack-stacking strip visibility, the 360×740 hand overflow, the tally-chip overlap at 390px); the staging N1 bounds-check test; and the itemized carry-over cleanup. See "Round 4 plan" below. Once W13 lands, re-run the full mechanical + e2e gate on `loop/integration` and start flipping round-3's `implemented` items to `verified`.
+
+## Round 4 plan
+
+W13 (GameScreen integration) is already in progress.
+
+- **(a) Jack stacking with identity in the top strip.** Acceptance: at least 16px of strip visible at the 60 and 52px widths; rank and suit drawn only by the theme; an `elementFromPoint` probe on the strip glyph hits the point card; the newest Jack on top, with a test (kills M41b); tap key stays `point:<row>:<i>`; the row stays within 96/84px.
+- **(b) Fit at 360×740 with an 8-card hand overflows by 18px.** The centre strip is 97.4px against a budget of 80; trim at least 1px more elsewhere.
+- **(c) The tally chip partly covers the 5th point card at 390px wide.**
+- **(d) Staging N1.** Add a test that calls `choose()` with a legal index that isn't one of the chooser's options.
+- **(e) DiscardPicker and SevenRevealPanel.**
+- **(f) ScrapBrowser.**
+- **(g) Carry-over cleanup**, itemized from this round's verdicts:
+  - GameScreen integration plus CounterPrompt, with the real and synthetic ack identical (the round-3 batch's original carry-over, now W13).
+  - The shared snapshot-peek helper (App and Home both decode).
+  - Confirm the §2.10 stuck-state screen (already replacing the generic error boundary) survives GameScreen integration.
+  - The store comment on the curtain-before-screen ordering in `restore()`.
+  - W9's board carry-overs: tapping your own point card while `zone:points` is lit; Jack moves carry `JackTarget`, not `Target`.
+  - The handoff menu button (design §8) is still unbuilt.
+  - The Jack-fan/rank-visibility open design question from W9 is resolved by (a) above — no longer open.

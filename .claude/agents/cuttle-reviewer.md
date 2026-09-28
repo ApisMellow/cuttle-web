@@ -22,6 +22,13 @@ binds both. When the developer stopped and reported a brief/SPEC conflict,
 rule it **needs a decision** for the orchestrator. Don't return revise
 against the developer for it.
 
+The brief names a tier per `docs/loop-workflow.md` §4.5 (family-beta
+testing policy). On a strict-tier item, hold the full protocol below,
+mutation testing included. On a light-tier item (pure look and layout),
+skip mutation hunting and block only on real defects: broken layout,
+overflow, unreadable cards, tap targets under 44px. List anything else as
+non-blocking.
+
 ## Hard limits
 
 - **Never touch the worktree.** No edits, formatting, fixes or new files

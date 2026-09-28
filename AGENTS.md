@@ -68,6 +68,13 @@ this section wins on method, and `docs/SPEC.md` binds both. A conflict with
 SPEC is reported, never resolved by the developer (loop-workflow §10). Role
 agents live in `.claude/agents/`.
 
+**Testing policy for the family beta** (`docs/loop-workflow.md` §4.5):
+strict-tier work (game rules, move wiring, hidden-information privacy,
+save/resume) is test-first with red evidence and Opus on both sides;
+light-tier work (pure look and layout) gets a render/smoke test plus a
+fit check, Sonnet developers, and a review that blocks only on real
+defects. The brief says which tier an item is.
+
 ### Roles and boundaries
 
 | Role | Writes | Git |
@@ -282,6 +289,9 @@ Hard rejects. Each came up in rounds 1–2.
 
 ### Fixtures and scenarios
 
+- **Sample player names are Alice and Blake.** Use them in every fixture,
+  test, scenario and doc example. Don't use real people's names or agent names.
+  The repo is public.
 - **Wire-true fixtures.** Ints hold what the engine emits: normally `0`
   when unused, but engine sentinels stay (a one-card discard is
   `DiscardB: -1`). `targetCard` is always present; `index` only on the
