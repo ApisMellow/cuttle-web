@@ -88,8 +88,9 @@ test('R4: Resume restores the in-progress game after a reload', async ({ page })
 });
 
 // docs/design.md §10 testable rule 1 / this round's brief "Visual": no
-// horizontal scroll from 360 to 430 wide, on both screens this item owns.
-for (const width of [360, 390, 430]) {
+// horizontal scroll at 393 and 430 wide (iPhone 15 and larger; 360 dropped,
+// PRD §10 A-5), on both screens this item owns.
+for (const width of [393, 430]) {
   test(`no horizontal scroll at ${width}px wide (HomeScreen, GameScreen)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/');

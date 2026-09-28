@@ -25,14 +25,14 @@ Pure TypeScript logic, no components. Four work items, each in its own worktree 
 
 Review: Opus code reviewer on every submission. No playtest judge this round (no UI-visible items).
 
-## David decisions mid-round (2026-09-27)
+## ApisMellow decisions mid-round (2026-09-27)
 
-W1's developer found two R14 leaks in the SPEC itself. Both were escalated rather than reinterpreted (loop-workflow §10), and David ruled:
+W1's developer found two R14 leaks in the SPEC itself. Both were escalated rather than reinterpreted (loop-workflow §10), and ApisMellow ruled:
 
 1. **Handoff label (SPEC §4.5 amended).** The handoff screen is visible to the *acting* player, and §4.4's distinct reasons ("You may counter" / "Acknowledge" / "Choose discards") would reveal whether the opponent held a 2. Now: "Your turn" for `turn`/`seven-return`, one neutral "Your response" for `counter`/`acknowledge`/`discard`. The internal `HandoffReason` must not reach the DOM before the reveal gate.
 2. **Decline never shown in the recap (SPEC §4.6 amended).** A real decline writes history; a synthetic ack doesn't. Showing "NAME let it resolve." would leak the 2 and change the screen count. W3 was updated mid-flight.
 
-3. **`AppliedMove.targetCard` (SPEC §2.7 + §4.6 amended).** W3 showed two §4.6 rows can't be built: engine `Describe` omits the stolen card for a Jack steal ("play J♣ (steal opponent point)") and the target for one-offs ("play 9♥ as one-off"), and `AppliedMove` had no target. David chose the bridge fix: a public `targetCard: Card | null` from the pre-state. Round-2 work item (Go bridge + schema + restore validation + formatter update). R20.2 stays open until it lands.
+3. **`AppliedMove.targetCard` (SPEC §2.7 + §4.6 amended).** W3 showed two §4.6 rows can't be built: engine `Describe` omits the stolen card for a Jack steal ("play J♣ (steal opponent point)") and the target for one-offs ("play 9♥ as one-off"), and `AppliedMove` had no target. ApisMellow chose the bridge fix: a public `targetCard: Card | null` from the pre-state. Round-2 work item (Go bridge + schema + restore validation + formatter update). R20.2 stays open until it lands.
 
 Other findings routed:
 - `scripts/ci.sh` runs `test:unit` (which needs the built wasm for `scenario-replay.opening.test.ts`) before `test:smoke` builds it, so the gate fails on a fresh worktree. Pre-existing. Round-2 repair item.
@@ -44,12 +44,12 @@ Other findings routed:
 - **W1 (curtain) — revise, cycle 1.** Blocking: `CurtainContext` typed `pre`/`post` as full `PlayerView`, forcing the caller to hold the mover's hand across the curtain (§3.3 rule 4). Fix: narrow to `Pick<PlayerView,'active'|'phase'>`. Also folded in: `handoffLabel()` per the §4.5 amendment, paired real-vs-synthetic R14 walk test, dispose guard. Review otherwise confirmed ~18 §4.4 rows independently and all 8 developer assumptions sound.
 
 - **W1 (curtain) — accept** after revise cycle 1 (Opus re-review; reviewer mutation-tested the new label/paired/dispose tests on a scratch copy — each mutation caught). Carry-over for the Curtain UI item: HandoffPanel renders only `handoffLabel(reason)`, never the raw reason in text/class/`data-*`/`data-testid`, with a DOM assertion.
-- **W3 (recap) — revise, cycle 1.** Blocking: one-card discard (`hand[-1]`, engine apply.go:508-511) throws in the DiscardPair regex. Folded in: "discarded 1 card." wording (assumption; §4.6 has no one-card row), SevenPick subKind whitelist, parsing-edge coverage, and David's §4.6 SevenPick amendment ("revealed the top of the deck").
+- **W3 (recap) — revise, cycle 1.** Blocking: one-card discard (`hand[-1]`, engine apply.go:508-511) throws in the DiscardPair regex. Folded in: "discarded 1 card." wording (assumption; §4.6 has no one-card row), SevenPick subKind whitelist, parsing-edge coverage, and ApisMellow's §4.6 SevenPick amendment ("revealed the top of the deck").
 
 - **W3 (recap) — accept** after revise cycle 1 (Opus re-review; B1 verified against both engine discard shapes, SevenPick whitelist verified exhaustive against apply.go:549-574, untargeted scuttle confirmed unreachable at apply.go:117-120). Carry-over to the round-2 `targetCard` item: delete stale comment `recap.ts:161-164` ("can be inaccurate when the deck holds only 1 card"), fix test comment `recap.test.ts:208-209`.
 - **W2 (affordances) — revise, cycle 1.** Blocking: B1 `slotKey` crashes on a dead-end SevenPick (`SubMove: null`, engine apply.go:535-541) — SPEC §6.2 pseudocode had the same `!`; amended to a `seven:<card>|scrap` slot. B2 the ScrapIndex collapse missed a 3 revealed by a 7 (routed to the chooser instead of scrap pick). Also: fixtures default unused ints to 0 (wire truth), 2-card discard pre-select pinned as a conscious choice, engine-walk test pinned to seed 2 / ply 23 with stronger assertions.
 
-**David, 2026-09-27:** `frontend-design` (Anthropic, `claude-plugins-official`) installed; it replaces the planned `design:design-system` pass. Front-end design pass deferred — round 2 components use functional styling on the SPEC's fixed geometry; a `design:design-system` token/layout brief lands before R5.1/R19.4 (judge-scored visuals) are scheduled.
+**ApisMellow, 2026-09-27:** `frontend-design` (Anthropic, `claude-plugins-official`) installed; it replaces the planned `design:design-system` pass. Front-end design pass deferred — round 2 components use functional styling on the SPEC's fixed geometry; a `design:design-system` token/layout brief lands before R5.1/R19.4 (judge-scored visuals) are scheduled.
 
 **Integration note (eslint):** keep one block, W1's form (`files: ['**/*.svelte', '**/*.svelte.ts']` on the existing `tseslint.parser` block), carrying W4's explanatory comment; drop W4's separate block.
 
@@ -83,4 +83,4 @@ Order: store, then bridge contract, then repairs, then presentational components
 3. **Repair and consolidation:** `ci.sh` builds the wasm before `test:unit` (it currently fails on a fresh checkout); a shared enums module for curtain and affordances; the dangling eslint comment; W2 notes (a real-shape duplicate-ScrapIndex guard, surfacing pin drift).
 4. **Theme seam vector baseline + HandCard/PlayerHand, presentational only:** `lib/theme` `CardFace`/`CardBack` (R23.1 unit part) and HandCard frozen state from `frozenHandIndices` alone (R8.2 unit). No store wiring yet.
 
-**Design pass (David, 2026-09-27):** the session reloads so `frontend-design` loads, then it produces the token/layout brief before the judge-scored visual items (R5.1, R19.4). Round 2 uses functional styling on the SPEC's fixed geometry.
+**Design pass (ApisMellow, 2026-09-27):** the session reloads so `frontend-design` loads, then it produces the token/layout brief before the judge-scored visual items (R5.1, R19.4). Round 2 uses functional styling on the SPEC's fixed geometry.

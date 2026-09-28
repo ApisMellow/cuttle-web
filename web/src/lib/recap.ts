@@ -95,7 +95,7 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       return 'passed';
     }
     case KIND.Decline: {
-      // David, 2026-09-27 (binding on §4.6): a Decline entry must never
+      // ApisMellow, 2026-09-27 (binding on §4.6): a Decline entry must never
       // reach this function. A real decline writes a `Decline` history
       // row; the synthetic R14 acknowledgment writes none — so rendering
       // "NAME let it resolve." would tell the acting player the opponent
@@ -216,7 +216,7 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
 }
 
 /**
- * SPEC §4.6, David 2026-09-27 (binding, R14): whether an entry may ever
+ * SPEC §4.6, ApisMellow 2026-09-27 (binding, R14): whether an entry may ever
  * appear in a recap, for ANY viewer. False exactly for `Decline` — a real
  * decline writes a `Decline` history row, but the synthetic R14
  * acknowledgment writes none, so recapping a `Decline` would tell the

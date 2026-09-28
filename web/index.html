@@ -3,8 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#241c2b" />
+
+    <!-- W23: add-to-home-screen. display:standalone comes from the
+         manifest; these three meta tags cover the iOS-only pieces Safari
+         doesn't read out of a manifest (apple-mobile-web-app-capable is
+         still required on iOS even with display:standalone set,
+         status-bar-style suits the single dark table, and title is the
+         home-screen label). apple-touch-icon and manifest hrefs are root-
+         relative so Vite rewrites them with CUTTLE_BASE at build time,
+         same as every other index.html asset reference. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cuttle" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
     <title>Cuttle</title>
   </head>
   <body>

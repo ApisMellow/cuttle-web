@@ -621,7 +621,7 @@ func TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Batch 1 follow-up: David-approved contract changes and reviewer minors.
+// Batch 1 follow-up: ApisMellow-approved contract changes and reviewer minors.
 // ---------------------------------------------------------------------------
 
 // Change 1: history[].index / lastMove.index are omitted for every viewer
@@ -751,7 +751,7 @@ func TestSPEC2_9_RestorePendingMatchesPhase(t *testing.T) {
 	}
 }
 
-// David's decision (2026-09-26): restore(snapshotJson, viewerId) returns
+// ApisMellow's decision (2026-09-26): restore(snapshotJson, viewerId) returns
 // viewerId's envelope; TS passes Snapshot.viewer and re-raises the persisted
 // curtain before rendering (R4.2).
 func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
@@ -795,7 +795,7 @@ func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
 	}
 }
 
-// David's decision (2026-09-26): newGame returns the first actor's view;
+// ApisMellow's decision (2026-09-26): newGame returns the first actor's view;
 // whoever starts the game is the first player, no opening curtain.
 func TestSPEC2_4_NewGameReturnsFirstActorView(t *testing.T) {
 	for _, dealer := range []int{0, 1} {

@@ -1,6 +1,6 @@
 # Cuttle Web — Loop-Based Implementation Workflow
 
-**Status:** Draft for David's review
+**Status:** Draft for ApisMellow's review
 **Date:** 2026-08-23
 **Companion to:** `docs/PRD.md`
 
@@ -13,7 +13,7 @@ This document specifies the autonomous, loop-based multi-agent workflow that imp
 1. **All loop state lives on disk in this repo.** No decision, verdict, or progress fact exists only in a model's context. Any session can crash or be reloaded and the loop resumes from files.
 2. **The requirements ledger is the single source of truth for "done."** Nothing is complete by assertion — only by verification evidence recorded in the ledger.
 3. **Specialists own their specialty.** Developers develop, reviewers review, judges judge. When work fails a gate, it goes back to a developer with the failure evidence — the orchestrator never absorbs implementation work.
-4. **Fully autonomous within a launch.** No human gates during a run. The run ends by finishing, by stalling out, or by hitting the round cap — each ends with a written report for David.
+4. **Fully autonomous within a launch.** No human gates during a run. The run ends by finishing, by stalling out, or by hitting the round cap — each ends with a written report for ApisMellow.
 5. **The engine is canon.** Rules questions are answered by the engine's behavior and the engine repo's `RULES.md`, never by a model's memory of Cuttle.
 
 ## 2. Phases (across sessions)
@@ -25,7 +25,7 @@ This document specifies the autonomous, loop-based multi-agent workflow that imp
 | P1b — Walking skeleton | done (2026-09-27) | Repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, the TS bridge boundary and the bridge smoke test (headless full random games through the compiled engine). Built test-first by Claude developer agents under a manager session, on its own feature branch; git ceremony via the DevOps agent. |
 | P2 — Loop | fresh orchestrator session(s) | working software; loop runs until ledger is green |
 | P-ART — Card art pipeline | own launches, §11; unblocked by R21's human gate | Style-locked reference set, then the massively parallel full-deck generation + consistency QA (PRD §10 A-1, R21–R23) |
-| P3 — Ship | after David plays it | Fly.io deploy, PR ceremony |
+| P3 — Ship | after ApisMellow plays it | Fly.io deploy, PR ceremony |
 
 The walking skeleton (P1b) is built before the loop starts because the loop needs a running skeleton to iterate on; scaffolding inside round 1 wastes a round. P-ART may run concurrently with P2 once R21 is verified — its assets integrate through the theme seam (SPEC) and never block R1–R20 work.
 
@@ -77,7 +77,7 @@ Dispatch briefs are curated: they name exact requirement IDs with acceptance cri
 
 ## 4.5 Testing policy for the family beta
 
-Set by David, 2026-09-28 (PRD §10 amendment A-4). Splits developer and
+Set by ApisMellow, 2026-09-28 (PRD §10 amendment A-4). Splits developer and
 reviewer rigor by risk, so the loop can spend Opus-grade scrutiny where a
 bug is a real defect and a lighter pass where it's taste.
 
@@ -110,7 +110,7 @@ than folding them into a revise.
 - the `failOnFlakyTests` gate
 - an accessibility audit
 - PWA/offline polish
-- judge-scored visual reviews (R5.1/R19.4) after David's placement feedback
+- judge-scored visual reviews (R5.1/R19.4) after ApisMellow's placement feedback
 
 ## 5. One round
 
@@ -151,15 +151,15 @@ A `revise` verdict returns to a **developer** with the complete failure evidence
 The loop ends a launch when **any** of:
 
 - **DONE:** every requirement is `verified` → run the **final gate**: a full agent-driven playtest of a complete game (new game → curtained turns → at least one counter chain, one Jack steal, one seven-reveal → win screen → rematch) at phone viewport, plus the full mechanical gate, on `loop/integration`. Green → write `docs/loop-log/final-report.md`, open a PR from `loop/integration` per §7. Red → reopen offending items and continue (rounds permitting).
-- **ROUND CAP:** 10 rounds per launch, hard. Write a progress report (`docs/loop-log/launch-N-report.md`): verified/remaining counts, stalled items, recommended next batch. David relaunches at will; `meta.launch` increments and `fails` counters carry over.
-- **ALL STALLED:** every remaining item is `stalled` → same report, plus `blockers.md` gets a per-item diagnosis and what would unblock it (a David decision, an engine change, a spec fix).
+- **ROUND CAP:** 10 rounds per launch, hard. Write a progress report (`docs/loop-log/launch-N-report.md`): verified/remaining counts, stalled items, recommended next batch. ApisMellow relaunches at will; `meta.launch` increments and `fails` counters carry over.
+- **ALL STALLED:** every remaining item is `stalled` → same report, plus `blockers.md` gets a per-item diagnosis and what would unblock it (a ApisMellow decision, an engine change, a spec fix).
 
 ## 7. Git discipline
 
 - All loop work happens on `loop/integration` and short-lived `loop/rNN-<item>` worktree branches. **Nothing is committed to `main`.**
-- **No pushes to any remote during the loop.** Local commits only. The finished (or capped) state ends as an **open PR** to `main` — David merges; the PR click is his gate.
+- **No pushes to any remote during the loop.** Local commits only. The finished (or capped) state ends as an **open PR** to `main` — ApisMellow merges; the PR click is his gate.
 - Every round ends with a commit on `loop/integration` (code + ledger + log move together, so any checkout is a coherent loop state).
-- Engine bugs discovered by the loop are **not** fixed in this repo: the orchestrator writes a repro + report to `docs/loop-log/engine-issues.md` and the affected requirement is marked stalled-on-engine. Engine fixes belong to the engine repo, by David's dispatch.
+- Engine bugs discovered by the loop are **not** fixed in this repo: the orchestrator writes a repro + report to `docs/loop-log/engine-issues.md` and the affected requirement is marked stalled-on-engine. Engine fixes belong to the engine repo, by ApisMellow's dispatch.
 
 ## 8. Budget
 
@@ -179,7 +179,7 @@ The loop ends a launch when **any** of:
 - Write or edit application code, tests, or styles (docs/ledger/logs are its only writes).
 - Mark a requirement `verified` without recorded evidence from this launch or a prior one.
 - Push to a remote, merge to `main`, or open a PR before a §6 terminator fires.
-- Reinterpret a requirement's acceptance criteria. Ambiguity discovered mid-loop → the item is stalled with a note; criteria changes are a David decision at relaunch.
+- Reinterpret a requirement's acceptance criteria. Ambiguity discovered mid-loop → the item is stalled with a note; criteria changes are a ApisMellow decision at relaunch.
 
 ## 11. P-ART — card art pipeline
 
@@ -188,7 +188,7 @@ Added 2026-08-23 per PRD §10 Amendment A-1 (R21–R23). P-ART is its own loop p
 ### Stages
 
 1. **ART-1 — References (one launch).** Generate the art-direction brief and reference candidate set: card-face template (rank/suit legibility at in-game size is the binding constraint), one court-card sample, card back, table background, mascot candidate. A handful of style directions, a few candidates each. Output: candidates + a draft style-lock document (palette, line weight, framing, texture, negative rules).
-2. **ART-GATE — Style lock (human gate, ends the launch).** The agent coordinator culls to a recommended set, then **David approves or redirects**. `human-approval` evidence = David's recorded pick. R21 flips to `verified` only on his approval. Rejection → ART-1 relaunches with his notes.
+2. **ART-GATE — Style lock (human gate, ends the launch).** The agent coordinator culls to a recommended set, then **ApisMellow approves or redirects**. `human-approval` evidence = ApisMellow's recorded pick. R21 flips to `verified` only on his approval. Rejection → ART-1 relaunches with his notes.
 3. **ART-2 — Fan-out (one or more launches, fully autonomous).** All 52 faces + card back + approved auxiliaries, generated in parallel batches, every generation conditioned on the locked references. Batch size and concurrency are the art orchestrator's call; each worker receives the style lock and its asset list only.
 4. **ART-3 — QA + integration.** Consistency judge scores every asset against the style lock (`image-judge`); failures regenerate (fails-counter and stall rules from §5 apply per asset group). Accepted assets are normalized (naming, dimensions, compression, ≤ 4 MB total budget per R22) and land behind the theme seam (R23) via a normal developer work item in the P2 loop.
 
