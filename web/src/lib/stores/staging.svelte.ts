@@ -23,8 +23,9 @@
 // interleave (SPEC §6.1's "applying" state).
 
 import { boardTargetKey, isAmbiguousSlot } from '../affordances';
-import type { Move } from '../bridge/schema';
+import type { Card, Move } from '../bridge/schema';
 import { MoveKind } from '../enums';
+import { discardStagingText, scrapPickStagingText } from '../recap';
 import type { TargetKey } from '../targetKey';
 
 export type StagingState = 'idle' | 'selected' | 'staged' | 'applying';
@@ -48,6 +49,28 @@ export interface StagingEnv {
    * mentioned in some other move. Omitted, the W11 behaviour stands.
    */
   handSize?: number;
+  /** P2 W15: the viewer's hand, for the discard staging text ("Discard 4♦ and 5♠", SPEC §6.3). */
+  hand?: Card[];
+  /** P2 W15: `view.sevenRevealed` — what the `seven:<i>` root keys index into (R16). */
+  revealed?: Card[] | null;
+  /** P2 W15: `view.scrap`, for naming the card a 3 takes once picked (R6). */
+  scrap?: Card[];
+}
+
+/** P2 W15 — one scrap card the engine offered a 3 (SPEC §6.3 rank-3 row): its move index and the scrap index it takes. */
+export interface ScrapPickCandidate {
+  index: number;
+  scrapIndex: number;
+}
+
+export interface ScrapPickModel {
+  candidates: ScrapPickCandidate[];
+}
+
+/** P2 W15 — the discard picker's live selection (R15): how many cards the engine wants and which hand indices are chosen so far. */
+export interface DiscardModel {
+  need: 1 | 2;
+  picked: number[];
 }
 
 // SPEC §6.3 — the MoveKinds this round's pipeline can carry all the way to
@@ -107,6 +130,58 @@ function candidatesByTargetKey(handIndex: number, legalMoves: Move[]): Map<Targe
   return byKey;
 }
 
+/**
+ * P2 W15 — a discard position: every legal move is a DiscardPair. Read from
+ * the move shapes only, so the store needs no phase (SPEC §4.4: in
+ * PhaseAwaitingDiscard the legal moves are exactly the pairs).
+ */
+function isDiscardPosition(env: StagingEnv | null): env is StagingEnv {
+  return env !== null && env.legalMoves.length > 0 && env.legalMoves.every((m) => m.Kind === MoveKind.DiscardPair);
+}
+
+/** R15.2 — a one-card hand yields the single `{DiscardA: 0, DiscardB: -1}` move (apply.go:485-488). */
+function discardNeed(env: StagingEnv): 1 | 2 {
+  return env.legalMoves.length === 1 && env.legalMoves[0].DiscardB === -1 ? 1 : 2;
+}
+
+function discardHandSize(env: StagingEnv): number {
+  if (env.handSize !== undefined) return env.handSize;
+  let max = -1;
+  for (const m of env.legalMoves) max = Math.max(max, m.DiscardA, m.DiscardB);
+  return max + 1;
+}
+
+function sameCard(a: Card | null, b: Card | undefined): boolean {
+  return a !== null && b !== undefined && a.Rank === b.Rank && a.Suit === b.Suit;
+}
+
+/**
+ * P2 W15, SPEC §6.3 SevenPick row — every SevenPick for revealed card
+ * `revealIndex`, grouped by the board key its sub-move resolves to (a
+ * dead-end SevenPick resolves to `scrap`). The revealed card is matched by
+ * identity (`Move.Card`), which is how the engine names it (apply.go:529-541).
+ */
+function sevenCandidatesByTargetKey(revealIndex: number, env: StagingEnv): Map<TargetKey, number[]> {
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- function-local scratch map, as in candidatesByTargetKey.
+  const byKey = new Map<TargetKey, number[]>();
+  const card = env.revealed?.[revealIndex];
+  if (card === undefined) return byKey;
+  env.legalMoves.forEach((m, i) => {
+    if (m.Kind !== MoveKind.SevenPick || !sameCard(m.Card, card)) return;
+    const key = boardTargetKey(m);
+    if (key === null) return;
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(i);
+    else byKey.set(key, [i]);
+  });
+  return byKey;
+}
+
+/** The ScrapIndex a 3's move takes, one level down for a 3 revealed by a 7. */
+function scrapIndexOf(m: Move): number {
+  return m.Kind === MoveKind.SevenPick && m.SubMove !== null ? m.SubMove.ScrapIndex : m.ScrapIndex;
+}
+
 /** SPEC §6.3 — Pass is only ever the sole legal move, engine-guaranteed; gated defensively here too so a stray `tap('pass')` can never stage it alongside anything else. */
 function passAvailableFor(env: StagingEnv | null): boolean {
   return env !== null && env.legalMoves.length === 1 && env.legalMoves[0].Kind === MoveKind.Pass;
@@ -135,8 +210,8 @@ function computeDimmedHand(env: StagingEnv | null): ReadonlySet<number> {
   return dimmed;
 }
 
-/** The board keys that get the `staged` (ochre) treatment for a move about to stage: the card's own source key plus its target key, or just the root key for Draw/Pass (no separate target step, SPEC §6.3). */
-function stagedKeysFor(move: Move): ReadonlySet<TargetKey> {
+/** The board keys that get the `staged` (ochre) treatment for a move about to stage: the card's own source key (`root`, a revealed card for a SevenPick) plus its target key, or just the root key for Draw/Pass (no separate target step, SPEC §6.3). */
+function stagedKeysFor(move: Move, root: TargetKey | null): ReadonlySet<TargetKey> {
   switch (move.Kind) {
     case MoveKind.Draw:
       return new Set(['deck']);
@@ -144,7 +219,7 @@ function stagedKeysFor(move: Move): ReadonlySet<TargetKey> {
       return new Set(['pass']);
     default: {
       const target = boardTargetKey(move);
-      const keys: TargetKey[] = [`hand:${move.HandIndex}`];
+      const keys: TargetKey[] = [root ?? `hand:${move.HandIndex}`];
       if (target !== null) keys.push(target);
       return new Set(keys);
     }
@@ -165,6 +240,11 @@ export class StagingStore {
 
   state = $state<StagingState>('idle');
   selectedHand = $state<number | null>(null);
+  /** P2 W15: the revealed 7 card selected as the root (R16), or null. */
+  selectedReveal = $state<number | null>(null);
+  /** P2 W15: the open ScrapBrowser pick list for a 3 (R6), or null. */
+  scrapPick = $state<ScrapPickModel | null>(null);
+  #discardPicks = $state<number[]>([]);
   highlighted = $state<ReadonlySet<TargetKey>>(EMPTY_KEYS);
   staged = $state<ReadonlySet<TargetKey>>(EMPTY_KEYS);
   stagedIndex = $state<number | null>(null);
@@ -175,6 +255,12 @@ export class StagingStore {
   inert = $derived(this.state === 'applying');
   passAvailable = $derived.by(() => passAvailableFor(this.#getEnv()));
   dimmedHand = $derived.by(() => computeDimmedHand(this.#getEnv()));
+  /** P2 W15, R15: the discard picker's model, or null outside a discard position. */
+  discard = $derived.by((): DiscardModel | null => {
+    const env = this.#getEnv();
+    if (!isDiscardPosition(env)) return null;
+    return { need: discardNeed(env), picked: this.#discardPicks };
+  });
 
   constructor(getEnv: () => StagingEnv | null, apply: (index: number) => Promise<void>) {
     this.#getEnv = getEnv;
@@ -188,6 +274,12 @@ export class StagingStore {
     if (!env) return;
 
     this.inspect = null; // any tap dismisses a prior detail popover
+
+    if (this.scrapPick) return; // the pick sheet is modal; only pickScrap()/cancel() act
+    if (isDiscardPosition(env)) {
+      this.#handleDiscardTap(key, env);
+      return;
+    }
 
     if (this.state === 'idle') {
       this.#handleRootTap(key, env);
@@ -220,6 +312,22 @@ export class StagingStore {
   }
 
   /**
+   * P2 W15, SPEC §6.3 rank-3 row — picks a scrap card from the open
+   * ScrapBrowser. Lands on `staged`, never on `apply` (R12). Only an index
+   * the pick list offered is accepted.
+   */
+  pickScrap(index: number): void {
+    if (this.state !== 'selected' || !this.scrapPick) return;
+    const candidate = this.scrapPick.candidates.find((c) => c.index === index);
+    if (!candidate) return;
+    const env = this.#getEnv();
+    if (!env || index < 0 || index >= env.legalMoves.length) return;
+    const taken = env.scrap?.[candidate.scrapIndex];
+    const text = taken === undefined ? env.descriptions[index] : scrapPickStagingText(env.descriptions[index], taken);
+    this.#stage(index, env, text);
+  }
+
+  /**
    * SPEC §6.1 — the only call site of the injected `apply`. Flips to
    * `'applying'` synchronously before awaiting, so a second `confirm()`
    * called before the first resolves sees `state !== 'staged'` and is a
@@ -234,24 +342,94 @@ export class StagingStore {
       await this.#applyFn(index);
     } finally {
       this.#clearToIdle();
+      this.#prime(false);
     }
   }
 
   /** SPEC §6.1 — "Cancel is always available while staged"; the AmbiguityChooser also carries its own Cancel (§6.4). A no-op anywhere else (e.g. merely `selected`, no chooser open — that's what a non-highlighted tap is for, SPEC §6.1). */
   cancel(): void {
-    if (this.state === 'staged' || (this.state === 'selected' && this.chooser !== null)) {
+    if (this.state === 'staged' || (this.state === 'selected' && (this.chooser !== null || this.scrapPick !== null))) {
       this.#clearToIdle();
+      this.#prime(false);
     }
   }
 
-  /** Called by the integrator on every `apply` and every viewer change (SPEC §5.3). Idempotent. */
+  /**
+   * Called by the integrator on every `apply` and every viewer change (SPEC §5.3). Idempotent.
+   * At a discard position it also lights every hand card as pickable, and a
+   * one-card hand's single move arrives pre-staged (R15.2, SPEC §6.3) — still
+   * only Confirm applies it.
+   */
   reset(): void {
     this.#clearToIdle();
+    this.#prime(true);
+  }
+
+  #prime(stageSingle: boolean): void {
+    const env = this.#getEnv();
+    if (!isDiscardPosition(env)) return;
+    if (stageSingle && discardNeed(env) === 1) {
+      this.#stageDiscard(0, env);
+      return;
+    }
+    const keys: TargetKey[] = [];
+    for (let i = 0; i < discardHandSize(env); i++) keys.push(`hand:${i}`);
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale, as everywhere in this store.
+    this.highlighted = new Set(keys);
+  }
+
+  /** R15 — a hand tap toggles that card; the pick that completes a legal DiscardPair stages it. */
+  #handleDiscardTap(key: TargetKey, env: StagingEnv): void {
+    if (this.state === 'staged') return; // only confirm()/cancel() act once staged
+    if (!key.startsWith('hand:')) return;
+    const handIndex = Number(key.slice('hand:'.length));
+    const picks = this.#discardPicks.includes(handIndex)
+      ? this.#discardPicks.filter((i) => i !== handIndex)
+      : [...this.#discardPicks, handIndex];
+    const need = discardNeed(env);
+    if (picks.length === need) {
+      const [p, q] = picks;
+      const index = env.legalMoves.findIndex((m) =>
+        need === 1
+          ? m.DiscardA === p && m.DiscardB === -1
+          : (m.DiscardA === p && m.DiscardB === q) || (m.DiscardA === q && m.DiscardB === p),
+      );
+      if (index >= 0) {
+        this.#stageDiscard(index, env);
+        return;
+      }
+    }
+    if (picks.length > need) return; // never more picks than the engine asks for
+    this.#discardPicks = picks;
+    this.state = picks.length === 0 ? 'idle' : 'selected';
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale.
+    this.staged = new Set(picks.map((i): TargetKey => `hand:${i}`));
+    const lit: TargetKey[] = [];
+    for (let i = 0; i < discardHandSize(env); i++) if (!picks.includes(i)) lit.push(`hand:${i}`);
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale.
+    this.highlighted = new Set(lit);
+  }
+
+  #stageDiscard(index: number, env: StagingEnv): void {
+    const m = env.legalMoves[index];
+    const picks = m.DiscardB === -1 ? [m.DiscardA] : [m.DiscardA, m.DiscardB];
+    this.#discardPicks = picks;
+    this.stagedIndex = index;
+    this.stagedDescription = env.hand ? discardStagingText(env.hand, m.DiscardA, m.DiscardB) : env.descriptions[index];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale.
+    this.staged = new Set(picks.map((i): TargetKey => `hand:${i}`));
+    this.highlighted = EMPTY_KEYS;
+    this.chooser = null;
+    this.state = 'staged';
   }
 
   #handleRootTap(key: TargetKey, env: StagingEnv): void {
     if (key.startsWith('hand:')) {
       this.#selectHand(Number(key.slice('hand:'.length)), env);
+      return;
+    }
+    if (key.startsWith('seven:')) {
+      this.#selectReveal(Number(key.slice('seven:'.length)), env);
       return;
     }
     if (key === 'deck') {
@@ -274,7 +452,23 @@ export class StagingStore {
       return;
     }
     this.selectedHand = handIndex;
+    this.selectedReveal = null;
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- `highlighted` is always REPLACED wholesale (never `.add()`/`.delete()`'d in place) on every transition; a plain Set's reference-equality reactivity through $state is exactly what's needed, and SvelteSet's element-level reactivity is never used.
+    this.highlighted = new Set(byKey.keys());
+    this.staged = EMPTY_KEYS;
+    this.stagedIndex = null;
+    this.stagedDescription = null;
+    this.chooser = null;
+    this.state = 'selected';
+  }
+
+  /** P2 W15, SPEC §6.3 SevenPick row — a revealed card selects exactly as a hand card would. */
+  #selectReveal(revealIndex: number, env: StagingEnv): void {
+    const byKey = sevenCandidatesByTargetKey(revealIndex, env);
+    if (byKey.size === 0) return;
+    this.selectedHand = null;
+    this.selectedReveal = revealIndex;
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale, as in #selectHand.
     this.highlighted = new Set(byKey.keys());
     this.staged = EMPTY_KEYS;
     this.stagedIndex = null;
@@ -290,9 +484,14 @@ export class StagingStore {
       this.#selectHand(Number(key.slice('hand:'.length)), env);
       return;
     }
+    if (key.startsWith('seven:')) {
+      this.#selectReveal(Number(key.slice('seven:'.length)), env);
+      return;
+    }
 
     const selectedHand = this.selectedHand;
-    if (selectedHand === null) {
+    const selectedReveal = this.selectedReveal;
+    if (selectedHand === null && selectedReveal === null) {
       // Reached only via the deck/pass root-tap ambiguity path (§6.1's "or
       // the chooser" branch), where the chooser is already open — handled
       // above in `tap()`. Nothing else can put us in `selected` with a null
@@ -300,7 +499,10 @@ export class StagingStore {
       return;
     }
 
-    const byKey = candidatesByTargetKey(selectedHand, env.legalMoves);
+    const byKey =
+      selectedReveal !== null
+        ? sevenCandidatesByTargetKey(selectedReveal, env)
+        : candidatesByTargetKey(selectedHand as number, env.legalMoves);
     const indices = byKey.get(key);
     if (!indices || indices.length === 0) {
       // SPEC §6.1, R9.4 — tapping a non-highlighted key clears to idle and stages nothing.
@@ -321,9 +523,10 @@ export class StagingStore {
 
     // Multi-index but NOT ambiguous per `isAmbiguousSlot` — structurally,
     // the only way that happens is a scrap-pick collapse (a rank-3's
-    // ScrapIndex variants, SPEC §6.2 last paragraph), which needs the
-    // round-4 `ScrapBrowser`. Never guess a `ScrapIndex`: stay `selected`,
-    // stage nothing, invent no UI.
+    // ScrapIndex variants, SPEC §6.2 last paragraph). P2 W15: open the
+    // ScrapBrowser in pick mode with exactly the offered scrap cards; stay
+    // `selected` and stage nothing until one is picked (`pickScrap`).
+    this.scrapPick = { candidates: indices.map((i) => ({ index: i, scrapIndex: scrapIndexOf(env.legalMoves[i]) })) };
   }
 
   #stageOrChoose(indices: number[], env: StagingEnv): void {
@@ -347,24 +550,30 @@ export class StagingStore {
     // only so a future engine change can't make this stage a guess.
   }
 
-  #stage(index: number, env: StagingEnv): void {
+  #stage(index: number, env: StagingEnv, text?: string): void {
     const move = env.legalMoves[index];
+    const root: TargetKey | null =
+      this.selectedReveal !== null ? `seven:${this.selectedReveal}` : this.selectedHand !== null ? `hand:${this.selectedHand}` : null;
     this.stagedIndex = index;
-    this.stagedDescription = env.descriptions[index];
-    this.staged = stagedKeysFor(move);
+    this.stagedDescription = text ?? env.descriptions[index];
+    this.staged = stagedKeysFor(move, root);
     this.highlighted = EMPTY_KEYS;
     this.chooser = null;
+    this.scrapPick = null;
     this.state = 'staged';
   }
 
   #clearToIdle(): void {
     this.state = 'idle';
     this.selectedHand = null;
+    this.selectedReveal = null;
     this.highlighted = EMPTY_KEYS;
     this.staged = EMPTY_KEYS;
     this.stagedIndex = null;
     this.stagedDescription = null;
     this.chooser = null;
+    this.scrapPick = null;
+    this.#discardPicks = [];
     this.inspect = null;
   }
 }

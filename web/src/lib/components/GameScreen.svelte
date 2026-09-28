@@ -23,14 +23,17 @@
   // error screen (the stand-in for SPEC §2.10's StuckState) takes over,
   // with "New game" as the only action. SPEC §2.9/§2.10: no auto-retry.
   //
-  // STUBS for the next round-4 items (not built here):
-  //   - SevenRevealPanel (R16): phase SevenChoosing at curtain none.
-  //   - DiscardPicker (R15): phase AwaitingDiscard at curtain none.
-  //   - ScrapBrowser (R6, 3's pick mode): the scrap-pile tap is a no-op.
-  // Each has a marked slot below; none renders a testid.
+  // P2 W15 pickers, all inside the board branch (curtain `none` only):
+  //   - SevenRevealPanel (R16): phase SevenChoosing, and only when the view
+  //     is the actor's (`viewer === active`, `sevenRevealed` present). It
+  //     takes the hand's slot; a revealed card is a `seven:<i>` root.
+  //   - DiscardPicker (R15): phase AwaitingDiscard. The cards are picked on
+  //     the real hand; the prompt holds the action bar until a pair stages.
+  //   - ScrapBrowser (R6): an idle scrap-pile tap opens browse mode; a 3's
+  //     scrap-pick collapse opens pick mode (StagingStore.scrapPick).
   import { untrack } from 'svelte';
 
-  import type { Envelope, PlayerId } from '../bridge/schema';
+  import type { Card, Envelope, PlayerId } from '../bridge/schema';
   import { MoveKind, Phase } from '../enums';
   import { counterPromptEntries, formatRecapLine, isRecapVisible } from '../recap';
   import { game } from '../stores/game.svelte';
@@ -44,6 +47,9 @@
   import Board from './Board.svelte';
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
+  import DiscardPicker from './DiscardPicker.svelte';
+  import ScrapBrowser from './ScrapBrowser.svelte';
+  import SevenRevealPanel from './SevenRevealPanel.svelte';
   import StagingBar from './StagingBar.svelte';
 
   const theme = $derived(getTheme(settings.themeId));
@@ -56,20 +62,45 @@
   function stagingEnv(): StagingEnv | null {
     const env = boardEnvelope();
     if (env === null) return null;
-    return { legalMoves: env.legalMoves, descriptions: env.descriptions, handSize: env.state.you.hand.length };
+    return {
+      legalMoves: env.legalMoves,
+      descriptions: env.descriptions,
+      handSize: env.state.you.hand.length,
+      hand: env.state.you.hand,
+      revealed: sevenCards(env),
+      scrap: env.state.scrap,
+    };
+  }
+
+  /**
+   * R16 privacy gate (SPEC §3.2): the 7's revealed cards, only from the
+   * board's own envelope (so only at curtain `none`), only at
+   * PhaseSevenChoosing and only when the viewer is the actor. The engine
+   * already withholds them from everyone else; this does not rely on it.
+   */
+  function sevenCards(env: Envelope): Card[] | null {
+    const view = env.state;
+    if (view.phase !== Phase.SevenChoosing || view.viewer !== view.active) return null;
+    return view.sevenRevealed;
   }
 
   const staging = new StagingStore(stagingEnv, (index) => game.apply(index));
 
   // SPEC §5.3: staging clears on every apply and every viewer change.
+  // The browse sheet closes on the same boundaries.
+  let browsingScrap = $state(false);
   $effect(() => {
     void game.viewer;
     void game.seq;
     void game.curtain.kind;
-    untrack(() => staging.reset());
+    untrack(() => {
+      staging.reset();
+      browsingScrap = false;
+    });
   });
 
   const board = $derived(boardEnvelope());
+  const revealed = $derived(board === null ? null : sevenCards(board));
   const withheld = $derived(
     game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
   );
@@ -101,6 +132,13 @@
   function onBoardTap(key: TargetKey): void {
     const viewer = board?.state.viewer;
     if (viewer === undefined) return;
+    // R6: with nothing selected, the scrap pile opens the browser. When the
+    // scrap is a lit target (a dead-end 7) or a card is selected, the tap
+    // belongs to staging (SPEC §6.1: an unlit tap clears the selection).
+    if (key === 'scrap' && staging.state === 'idle' && !staging.highlighted.has('scrap') && !staging.inert) {
+      browsingScrap = true;
+      return;
+    }
     staging.tap(resolveBoardTap(key, staging.highlighted, viewer));
   }
 
@@ -194,14 +232,20 @@
       ontap={onBoardTap}
       {lastMoveText}
       {theme}
+      handTray={revealed === null ? undefined : sevenTray}
     />
 
-    <!-- STUB(W14 SevenRevealPanel, R16): phase SevenChoosing. -->
-    <!-- STUB(W14 DiscardPicker, R15): phase AwaitingDiscard. -->
-    <!-- STUB(W15 ScrapBrowser, R6): the scrap tap reaches staging as a no-op. -->
-    {#if board.state.phase === Phase.SevenChoosing || board.state.phase === Phase.AwaitingDiscard}
-      <p class="game-screen__stub">This step isn't playable yet.</p>
-    {/if}
+    {#snippet sevenTray()}
+      {#if revealed !== null}
+        <SevenRevealPanel
+          cards={revealed}
+          selected={staging.selectedReveal}
+          staged={staging.staged}
+          ontap={(key) => onBoardTap(key)}
+          {theme}
+        />
+      {/if}
+    {/snippet}
 
     <div class="game-screen__action-bar">
       {#if staging.stagedDescription !== null}
@@ -213,12 +257,27 @@
           }}
           oncancel={() => staging.cancel()}
         />
+      {:else if staging.discard !== null}
+        <DiscardPicker need={staging.discard.need} picked={staging.discard.picked.length} />
       {:else if staging.passAvailable}
         <button type="button" class="game-screen__pass" data-testid="pass" onclick={() => staging.tap('pass')}>
           Pass
         </button>
       {/if}
     </div>
+
+    {#if staging.scrapPick !== null}
+      <ScrapBrowser
+        mode="pick"
+        cards={board.state.scrap}
+        picks={staging.scrapPick.candidates}
+        onpick={(index) => staging.pickScrap(index)}
+        onclose={() => staging.cancel()}
+        {theme}
+      />
+    {:else if browsingScrap}
+      <ScrapBrowser mode="browse" cards={board.state.scrap} onclose={() => (browsingScrap = false)} {theme} />
+    {/if}
 
     {#if staging.chooser !== null}
       <AmbiguityChooser
@@ -279,13 +338,5 @@
     color: var(--cu-on-accent, #241c2b);
     font-size: var(--cu-text-md, 16px);
     cursor: pointer;
-  }
-
-  .game-screen__stub {
-    margin: 0;
-    padding: var(--cu-space-2, 8px) var(--cu-gutter-board, 12px);
-    color: var(--cu-muted);
-    font-size: var(--cu-text-sm, 14px);
-    text-align: center;
   }
 </style>
