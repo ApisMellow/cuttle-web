@@ -290,16 +290,21 @@
 </div>
 
 <style>
+  /* W22 (iPhone 15 pass): exactly the visible viewport (`100dvh` tracks
+     Mobile Safari's toolbars), never taller, so the page itself never
+     scrolls. The safe-area padding keeps everything tappable clear of the
+     Dynamic Island and the home indicator. Board is the flexible middle and
+     the only region that scrolls; the action bar below it is pinned. */
   .game-screen {
     display: flex;
     flex-direction: column;
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    padding: var(--cu-safe-top, 0px) 0 var(--cu-safe-bottom, 0px);
+    overflow: hidden;
     background: var(--cu-ink);
     color: var(--cu-pearl);
     font-family: var(--cu-font-ui);
-    overflow-x: hidden;
   }
 
   .game-screen__sr-only {
@@ -322,15 +327,18 @@
     justify-content: center;
     width: 100%;
     max-width: var(--cu-board-max, 560px);
-    min-height: var(--cu-zone-action, 64px);
+    min-height: var(--cu-zone-action, 60px);
     margin: 0 auto;
+    border-top: 1px solid var(--cu-ink-line, #4a3d57);
+    background: var(--cu-ink-raised, #30263a);
   }
 
   .game-screen__pass {
     align-self: center;
     box-sizing: border-box;
-    min-width: 120px;
-    min-height: var(--cu-tap-min, 44px);
+    min-width: 160px;
+    min-height: 48px;
+    font-weight: var(--cu-weight-bold, 700);
     padding: 0 var(--cu-space-5, 24px);
     border: none;
     border-radius: var(--cu-radius-control, 999px);

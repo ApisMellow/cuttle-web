@@ -107,10 +107,10 @@
     gap: var(--cu-space-3, 12px);
     width: 100%;
     max-width: var(--cu-board-max, 560px);
-    max-height: 80dvh;
+    max-height: calc(100dvh - var(--cu-safe-top, 0px) - 24px);
     margin: 0 auto;
     padding: var(--cu-gutter-sheet, 16px) var(--cu-gutter-sheet, 16px)
-      calc(var(--cu-gutter-sheet, 16px) + env(safe-area-inset-bottom));
+      calc(var(--cu-gutter-sheet, 16px) + var(--cu-safe-bottom, 0px));
     overflow-x: hidden;
     overflow-y: auto;
     background: var(--cu-ink-raised, #30263a);

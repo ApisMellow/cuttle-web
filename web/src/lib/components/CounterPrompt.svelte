@@ -122,7 +122,8 @@
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    padding: var(--cu-space-6, 32px) var(--cu-gutter-sheet, 16px) 0;
+    padding: calc(var(--cu-space-6, 32px) + var(--cu-safe-top, 0px)) var(--cu-gutter-sheet, 16px)
+      var(--cu-safe-bottom, 0px);
     background: var(--cu-ink, #241c2b);
     color: var(--cu-pearl, #eee8f1);
     font-family: var(--cu-font-ui, sans-serif);

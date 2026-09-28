@@ -160,7 +160,8 @@
 
 <style>
   /* docs/design.md §6, the Jack-stacking ruling (confirmed 2026-09-28): the
-     row's height is the `--cu-zone-points` budget (96 phone / 84 compact)
+     row's height is one card plus the well padding (W22: sized from the
+     row's card width, see `.point-row__cards`)
      when no entry holds a Jack — fixed and reserved even when the row is
      empty, so a first point never reflows the board. W18 (round-4, item 1):
      that budget only ever had room for a bare point card, not a full-size
@@ -177,7 +178,7 @@
     min-width: 0;
     padding-inline: 4px;
     border-radius: var(--cu-radius-well, 10px);
-    background: var(--cu-ink-raised, #30263a);
+    background: var(--cu-row-well, var(--cu-ink-raised, #30263a));
   }
 
   /* `overflow-y: hidden` stays as a hard safety valve (never actually
@@ -192,9 +193,17 @@
     flex: 1;
     min-width: 0;
     box-sizing: border-box;
-    height: var(--cu-zone-points, 96px);
+    /* W22: one card of whichever field width this side uses (the
+       opponent's rows are a step smaller, set by OpponentZone) plus the
+       well's 4px padding top and bottom. */
+    height: calc(
+      var(--cu-row-card-width, var(--cuttle-card-width-field)) * var(--cuttle-card-aspect-ratio, 1.3) + 2 *
+        var(--cu-row-pad, 3px)
+    );
+    padding-block: var(--cu-row-pad, 3px);
     overflow-x: auto;
     overflow-y: hidden;
+    scrollbar-width: none;
   }
 
   /* W18 (round-4, item 1): grows the row to exactly fit one full-size Jack
@@ -210,22 +219,21 @@
     /* Declared here, once, and inherited by every descendant below
        (`.point-row__jack`, `.point-row__jack-edge`) instead of repeating
        the literal — the row-growth math and the Jack's own offset must
-       always agree on this number. 39px clears the corner index's real
-       measured bottom (~36.55px at field size, both breakpoints — the
-       glyphs are a fixed rem size, not scaled by the field-width token) by
-       about 2.5px; the W17 code used 40px, kept here as close to that as
-       the 360x740 worst-case fit (below) allows. */
-    --jack-offset: 39px;
-    /* 3px slack for the "deck thickness" edge, down from the original 6px
-       — the same 360x740 fit pressure. The wider (4px) edge sliver clips
-       by 1px at this tier; still reads as a peeking layer. */
-    height: calc(var(--cuttle-card-width-field) * var(--cuttle-card-aspect-ratio, 1.3) + var(--jack-offset) + 3px);
+       always agree on this number. */
+    /* W22: the token clears the new field index per tier (tokens.css). */
+    --jack-offset: var(--cu-jack-offset, 37px);
+    /* W22: the deck-thickness edge (up to 4px past the Jack) lives in
+       the row's bottom padding. */
+    height: calc(
+      var(--cu-row-card-width, var(--cuttle-card-width-field)) * var(--cuttle-card-aspect-ratio, 1.3) +
+        var(--jack-offset) + 2 * var(--cu-row-pad, 3px)
+    );
   }
 
   .point-row__slot {
     position: relative;
     flex: none;
-    width: var(--cuttle-card-width-field);
+    width: var(--cu-row-card-width, var(--cuttle-card-width-field));
     aspect-ratio: var(--cuttle-card-aspect);
   }
 
@@ -258,7 +266,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border-radius: 6%;
+    border-radius: 7%;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
   }
 
   /* W18 (round-4, product-owner revision 2026-09-28 — supersedes the W17
@@ -290,7 +299,7 @@
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    border-radius: 6%;
+    border-radius: 7%;
     background: var(--cu-paper, #faf8f4);
     border: 1px solid var(--cu-ink-line, #4a3d57);
     pointer-events: none;
@@ -327,8 +336,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border-radius: 6%;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+    border-radius: 7%;
+    box-shadow: 0 -2px 6px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 45%);
   }
 
   /* Owner badge (SPEC §5.2, design §6 "a small ownership mark"): an ink
@@ -359,7 +368,8 @@
   }
 
   .point-row__empty {
-    font-size: var(--cu-text-xs, 12px);
+    padding-inline: 4px;
+    font-size: var(--cu-text-sm, 14px);
     color: var(--cu-muted, #b4a8be);
   }
 
@@ -368,13 +378,16 @@
   .point-row__tally {
     flex: none;
     align-self: flex-start;
-    margin-top: 4px;
-    padding: 1px 4px;
+    min-width: 14px;
+    margin-top: 6px;
+    padding: 2px 5px;
     border-radius: 999px;
     background: var(--cu-ink, #241c2b);
     font-variant-numeric: tabular-nums;
-    font-size: var(--cu-text-xs, 12px);
+    font-size: var(--cu-text-sm, 14px);
+    font-weight: var(--cu-weight-bold, 700);
     line-height: 16px;
+    text-align: center;
     color: var(--cu-pearl, #eee8f1);
   }
 </style>

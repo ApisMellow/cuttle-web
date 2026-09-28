@@ -73,27 +73,29 @@
 </div>
 
 <style>
-  /* P2 W14 (board polish): height is the `--cu-zone-center` budget (88
-     phone / 80 compact, docs/design.md §6), not content-derived. DeckPile
-     and ScrapPile's hand-size card + count numeral (design §6: "Deck
-     (hand-size box, count numeral centred beneath)") is naturally taller
-     than the compact budget — the hand-size token doesn't narrow at
-     compact (docs/design.md §5) — so `overflow: visible` lets that content
-     bleed a few px into the `.board` gap above/below rather than reflow
-     the page past the fit budget (design.md §10.6). */
+  /* W22 (iPhone 15 pass): the strip is the table's middle. Its own height
+     is the `--cu-zone-center` budget; `margin-block: auto` hands it any
+     spare board height, split evenly above and below (design.md §6), and
+     `--cu-gap-center` guarantees a little more air around it than between
+     one player's own rows, even when there is no spare height at all.
+     Deck and Scrap counts sit on the piles' bottom edges as small tabs
+     (DeckPile, ScrapPile), so the strip no longer pays a text line under
+     each hand-size card. */
   .center-zone {
     display: flex;
+    flex: none;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--cu-space-3, 12px);
+    box-sizing: content-box;
     height: var(--cu-zone-center, 88px);
+    margin-block: auto;
+    padding: var(--cu-gap-center, 10px) var(--cu-gutter-board, 10px);
     overflow: visible;
-    padding-inline: var(--cu-gutter-board, 12px);
   }
 
-  /* The flex middle slot: it stretches to the strip's height (set by the
-     Deck and Scrap slots), so the one-off target is as tall as a hand card
-     and always clears 44 px. */
+  /* The flex middle slot: it stretches to the strip's height, so the
+     one-off target is as tall as a hand card and always clears 44 px. */
   .center-zone__middle {
     display: flex;
     flex: 1 1 0;
@@ -106,6 +108,7 @@
     min-width: 0;
     height: 20px;
     margin: 0;
+    padding-inline: var(--cu-space-2, 8px);
     overflow: hidden;
     font-size: var(--cu-text-sm, 14px);
     line-height: 20px;

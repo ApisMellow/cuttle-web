@@ -125,20 +125,48 @@
     overflow: hidden;
     padding: 0;
     border: none;
-    border-radius: 6%;
+    border-radius: 7%;
     background: none;
     cursor: pointer;
+    /* W22: a soft left-edge shadow separates fanned cards; the lift is the
+       container's (design.md §7), eased over --cu-dur-fast. Reduced motion
+       zeroes the duration in tokens.css; the offset still applies. */
+    box-shadow: -2px 0 4px rgb(0 0 0 / 30%);
+    transition: transform var(--cu-dur-fast, 120ms) var(--cu-ease-out, ease-out);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .hand-card[aria-pressed='true'] {
+    transform: translateY(var(--cu-lift-selected, -8px));
+  }
+
+  .hand-card[data-staged='true'] {
+    transform: translateY(var(--cu-lift-staged, -12px));
+  }
+
+  .hand-card:focus-visible {
+    outline: 2px solid var(--cu-pearl, #eee8f1);
+    outline-offset: 2px;
   }
 
   /* SPEC §5.2 FrozenBadge (R8): visible to the owner, drawn by the app over
      the theme's own `frozen` state styling, inside the clipped box. */
   .hand-card__frozen-marker {
     position: absolute;
-    top: 2px;
-    right: 3px;
-    font-size: 0.8rem;
+    /* W22: bottom left, the part of a fanned card that stays visible (a
+       top-right chip was hidden under the next card). */
+    bottom: 4px;
+    left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--cu-frost, #a9d2f5);
+    font-size: 12px;
     line-height: 1;
-    color: #3b6ea8;
+    color: var(--cu-on-accent, #241c2b);
     pointer-events: none;
   }
 
@@ -147,16 +175,19 @@
      clipped box — same pattern as the frozen marker above. */
   .hand-card__staged-tab {
     position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translate(-50%, -35%);
-    font-size: 0.7rem;
+    /* W22: bottom left, not top centre. A fanned hand shows only each
+       card's left 44px, and the top of that slice is the corner index; the
+       bottom-left is the one spot always visible and always free. */
+    bottom: 4px;
+    left: 4px;
+    font-size: 11px;
+    font-weight: 700;
     line-height: 1;
     color: var(--cu-on-accent, #241c2b);
     background: var(--cu-ochre, #f0b54a);
     border-radius: 50%;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     display: flex;
     align-items: center;
     justify-content: center;

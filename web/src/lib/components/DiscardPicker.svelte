@@ -33,7 +33,7 @@
     gap: var(--cu-space-3, 12px);
     box-sizing: border-box;
     min-height: var(--cu-tap-min, 44px);
-    padding: 0 var(--cu-gutter-board, 12px);
+    padding: 0 var(--cu-gutter-board, 10px) 0 var(--cu-space-4, 16px);
   }
 
   .discard-picker__prompt {
