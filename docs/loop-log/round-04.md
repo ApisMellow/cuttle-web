@@ -16,11 +16,8 @@
 
 - W19 (cleanup) landed: its tests (`web/tests/unit/staging-corpus.test.ts`, the body-margin check in `app-shell.spec.ts`) are on `loop/integration`.
 - W20 (the rename) merged at `786fa9b`.
-
-## In progress
-
-- **W21 — the dimmed-card popover (R9.3).** The staging store already records the inspect tap; the popover UI is being built. R9.3 moves `implemented` → `in-progress` until it lands. Privacy bound restated: own hand only, never hidden info (SPEC §6.1).
-- **W22 — the iPhone design pass.** Retunes tokens for David's target devices (PRD §10 A-5, 2026-09-28): iPhone 15 or larger, 393×852 primary, 430×932, safe areas, and the 393×660 toolbar-shortened view where the hand and action bar stay visible and only the board scrolls. The 360×740 compact target is dropped, so the 360×740 cases in `board-fit.spec.ts`, `pickers.spec.ts` and `point-row-stacking.spec.ts` are now off-target and due to be retargeted there.
+- W21 (the dimmed-card popover, R9.3) merged at `6dcf7df`. The staging store already recorded the inspect tap; this landed the popover UI. Privacy bound restated: own hand only, never hidden info (SPEC §6.1).
+- W22 (the iPhone design pass) merged at `16d2507`. Retunes tokens for David's target devices (PRD §10 A-5, 2026-09-28): iPhone 15 or larger, 393×852 primary, 430×932, safe areas, and the 393×660 toolbar-shortened view where the hand and action bar stay visible and only the board scrolls. The 360×740 compact target is dropped, so the 360×740 cases in `board-fit.spec.ts`, `pickers.spec.ts` and `point-row-stacking.spec.ts` are now off-target and due to be retargeted there. `docs/design.md` §4–§7, §10 and §11 updated to match (2026-09-28).
 
 ## Docs sync (2026-09-28)
 

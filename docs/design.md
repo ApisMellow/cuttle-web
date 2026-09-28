@@ -57,7 +57,7 @@ Rule: red suit glyphs appear on `--cu-paper` only. Any red glyph placed directly
 
 Sentence case everywhere. No all-caps labels. Numerals in the score bar use `font-variant-numeric: tabular-nums`.
 
-Rank/suit glyph sizes (read by the vector theme only): hand and field 22/18 px, mini 15/12 px. Every size renders its index as an upper-left corner index, rank above suit, bold rank — including `mini` *(amended 2026-09-28, David, after a build screenshot; supersedes the earlier "centred… no corner indices at mini" rule — see §7)*.
+**Rank/suit glyph sizes (read by the vector theme only), amended 2026-09-28 (W22, iPhone design pass) — sized for arm's length on an iPhone 15:** hand 24/19 px, field 20/16 px (field a touch smaller than hand so a Jack's downward offset stays clear of it, §6), mini 14/11 px. At the 430-wide roomy tier: hand 26/20 px, field 22/17 px; mini is unchanged across tiers. Every size renders its index as an upper-left corner index, rank above suit, bold rank — including `mini` *(amended 2026-09-28, David, after a build screenshot; supersedes the earlier "centred… no corner indices at mini" rule — see §7)*.
 
 ## 5. Space, radius, geometry
 
@@ -67,15 +67,16 @@ Radius has three levels, by hierarchy: cards `6%`, zone wells `10px`, controls a
 
 **Geometry, confirmed 2026-09-28 (David):** field cards are 60 px wide on phone. Currently in `tokens.css`; move into `card-geometry.css` now that it's accepted.
 
-**Target devices, amended 2026-09-28 (David, PRD §10 A-5).** Every player's phone is an iPhone 15 or larger: primary 393×852, also 430×932, with a Mobile Safari toolbar-shortened visible area down to about 393×660. **The compact tier (≤780 tall or <375 wide, sized for 360×740) is dropped**; 360×740 is no longer a target. Card widths and zone heights for the new targets are tuned in the iPhone design pass; the "Confirmed phone" values below stand until then.
+**Target devices (David, PRD §10 A-5).** Every player's phone is an iPhone 15 or larger: primary 393×852, also 430×932, with a Mobile Safari toolbar-shortened visible area down to about 393×660. **The compact tier (≤780 tall or <375 wide, sized for 360×740) is dropped**; 360×740 is no longer a target.
 
-| Token | Prior | Confirmed phone | Tablet (≥600 wide and ≥900 tall) |
+**Card widths, amended 2026-09-28 (W22, iPhone design pass, merged `16d2507`).** The compact tier's width column is gone; two phone tiers remain — base (393 wide) and roomy (the 430×932 Plus / Pro Max class) — plus the unchanged tablet threshold. The field size now comes in two widths: `--cuttle-card-width-field` sizes the viewer's own rows and the scrap browser; `--cuttle-card-width-field-far` sizes the opponent's rows, a step smaller, like the far side of a real table (`OpponentZone` sets the shared `--cu-row-card-width` custom property to it). The theme still receives `size="field"` for both — it never reads these tokens (§5.6 rule 2) — so the three-size rendering model is unchanged; only the container's box differs. The far step is also what lets the worst-case board (a Jack on two point cards per side) fit 393×852 with no scroll (§10.6).
+
+| Token | Base phone (393 wide) | Roomy phone (430×932) | Tablet (≥600 wide and ≥900 tall) |
 |---|---|---|---|
-| `--cuttle-card-width-hand` | 56 | 56 | 64 |
-| `--cuttle-card-width-field` | 72 | **60** | 72 |
-| `--cuttle-card-width-mini` | 32 | 32 | 36 |
-
-Four field rows at 72 wide cost 403 px and don't fit with the center strip and action bar at 844. The three-size model is unchanged.
+| `--cuttle-card-width-hand` | 60 | 66 | 72 |
+| `--cuttle-card-width-field` | 60 | 66 | 72 |
+| `--cuttle-card-width-field-far` | 52 | 56 | 64 |
+| `--cuttle-card-width-mini` | 32 | 34 | 36 |
 
 **Card ratio, amended 2026-09-28 (David, after a build screenshot).** Cards read as slightly shorter than the prior height-to-width ratio. The ratio is one token, `--cuttle-card-aspect` in `web/src/lib/styles/card-geometry.css`, about 1.3, tunable via the token — the developer is choosing the exact value now.
 
@@ -83,32 +84,33 @@ Four field rows at 72 wide cost 403 px and don't fit with the center strip and a
 
 Portrait, one column, mirrored like two people across a table: each side's points row faces the center, where scuttles happen.
 
-| Zone | Component | Height at 390×844 |
-|---|---|---|
-| Score bar | `ScoreBar` | 48 |
-| Opponent hand | `OpponentHand` | 48 |
-| Opponent permanents | `PermanentRow` | 92 |
-| Opponent points | `PointRow` | 96 |
-| Center strip | `CenterZone` | 88 |
-| Your points | `PointRow` | 96 |
-| Your permanents | `PermanentRow` | 92 |
-| Your hand | `PlayerHand` | 104 |
-| Action bar | `StagingBar` / Pass | 64 |
-| **Total** | | **724** |
+**Zone heights, amended 2026-09-28 (W22, iPhone design pass, merged `16d2507`).** `ScoreBar`, `OpponentHand`, `CenterZone`, `PlayerHand` and the action bar keep fixed budget tokens (`--cu-zone-*`, `tokens.css`), one set at the 393-wide base tier and a larger set at the 430×932 roomy tier. `PointRow` and `PermanentRow` no longer read a fixed `--cu-zone-*` height: each row is sized from its own card width — `--cu-row-pad` (3 px, both tiers) above and below one card, using whichever width that row's `--cu-row-card-width` resolves to — and grows by `--cu-jack-offset` (37 px base / 40 px roomy) only on a side that actually holds a stolen Jack (§6, "Field rows" below).
 
-These heights were set at 390×844; the values for 393×852, 430×932 and the 393×660 short viewport are tuned in the iPhone design pass *(2026-09-28, David, PRD §10 A-5 — the former compact column, sized for 360×740, is dropped)*.
+| Zone | Component | Base (393 wide) | Roomy (430×932) |
+|---|---|---|---|
+| Score bar | `ScoreBar` | 44 | 48 |
+| Opponent hand | `OpponentHand` | 40 | 44 |
+| Opponent permanents | `PermanentRow` | ≈74 (one field-far card + row-pad) | ≈79 |
+| Opponent points | `PointRow` | ≈74, or ≈111 on a side holding a Jack | ≈79, or ≈119 with a Jack |
+| Center strip | `CenterZone` | 84 | 92 |
+| Your points | `PointRow` | ≈84, or ≈121 with a Jack | ≈92, or ≈132 with a Jack |
+| Your permanents | `PermanentRow` | ≈84 (one field card + row-pad) | ≈92 |
+| Your hand | `PlayerHand` | 96 | 104 |
+| Action bar | `StagingBar` / Pass | 60 | 64 |
 
-**Safe areas and the short viewport (amended 2026-09-28, David, A-5).** The page sets `viewport-fit=cover` in its viewport meta, and the column pads by `env(safe-area-inset-top)` (the Dynamic Island, about 59 pt) and `env(safe-area-inset-bottom)` (the home indicator, about 34 pt). No control, card or corner index sits in either inset. Any slack beyond the insets is split evenly into the gaps either side of the center strip. When Mobile Safari's toolbars shorten the visible area (down to about 393×660), **the hand and the action bar stay fully visible, pinned at the bottom; only the board region above them (score bar through your permanents) may scroll vertically.** The page never scrolls as a whole and never scrolls horizontally. The hand zone includes room for the staged lift (12 px) and the staged tab (12 px) above the hand card.
+There is no fixed total: the board is the one scrolling region (below), so the page height is whatever these zones and the safe-area padding add up to, not a budget the layout must hit.
+
+**Safe areas and the new scroll model (amended 2026-09-28, David, A-5; W22, merged `16d2507`).** The page sets `viewport-fit=cover` in its viewport meta, and `GameScreen` is exactly `100dvh` — never taller — padded by `env(safe-area-inset-top)` (the Dynamic Island, about 59 pt) and `env(safe-area-inset-bottom)` (the home indicator, about 34 pt); no control, card or corner index sits in either inset, and the page itself never scrolls, in either direction. `Board` is the *only* scrolling region: it fills whatever height `GameScreen` leaves above the action bar, with `overflow-y: auto` and `overscroll-behavior: contain`. Inside it, `ScoreBar` sticks to `Board`'s top edge and the hand (`PlayerZone`'s hand slot) sticks to its bottom edge, so between them only the opponent's zones, the center strip and your points/permanents rows scroll. The action bar sits below `Board` entirely — a fixed sibling, not part of the scroll region — so staging never disappears with a scroll. Any slack beyond the safe-area insets, on a tall viewport, is split evenly into the gaps either side of the center strip (`margin-block: auto`, `CenterZone`). When Mobile Safari's toolbars shorten the visible area (down to about 393×660), **the hand and the action bar stay fully visible, pinned; only `Board` (score bar through your permanents) scrolls.** The hand zone's 12 px top padding is headroom for the staged/selected lift (`--cu-lift-staged` −12 px, `--cu-lift-selected` −8 px) rising above the fanned row; the frozen and staged markers themselves sit inside each card's own clipped box (§7) and need no extra room.
 
 **Score bar.** Viewer on the left ("You", points, "of 21"), opponent on the right, menu button (44×44) at the far right. Each side has a 4 px meter filling points/threshold in `--cu-pearl` on `--cu-ink-line`. When a King lowers a threshold, the "of N" value changes and a small K pip per King appears; nothing turns red.
 
 **Opponent hand.** Mini backs overlapped at a 14 px offset, count as a numeral beside them ("5 cards"). Under glasses-8 (R7) the backs become mini faces, same slot, same offsets.
 
-**Field rows.** A `--cu-ink-raised` well with `--cu-radius-well`. Cards left-aligned with 6 px gaps; five fit at 390. Beyond that they cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. **Jack display, confirmed 2026-09-28 (David); redone twice the same day after build screenshots.** Only the top (newest) Jack is drawn: full card size, offset downward only, so the point card's upper-left corner index stays visible above it. Extra Jacks stack exactly underneath it and are not drawn separately; at 2 or more, a thin "deck thickness" edge — two card-back slivers past the Jack's bottom-right corner — shows there's more than one. No count number and no player colour render on the stack; the count lives only in the aria-label ("stolen, N Jacks"). Only the top Jack is a legal tap target, whether for its own selection or as the target of a 2 or a 9; buried Jacks are never targetable and never answer a tap (the engine offers only the top Jack, and the UI draws nothing else to tap). The points row grows only when a card holds a Jack. A small ownership mark shows when the controller differs from the owner. This supersedes the earlier fan-above treatment (§5.2) and the multi-Jack cascade previously described here.
+**Field rows, amended 2026-09-28 (W22, merged `16d2507`).** Your own rows (`PlayerZone`) sit in a `--cu-ink-raised` well at `--cu-radius-well`, sized at `--cuttle-card-width-field`. The opponent's rows (`OpponentZone`) are a step quieter and smaller: a `--cu-ink-far` well at `--cuttle-card-width-field-far`, one visual step back from your own half. Cards left-aligned with 6 px gaps; each row's height is one card of its own width plus `--cu-row-pad` (3 px) top and bottom — see the zone-heights table above. Cards beyond what fits cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. **Jack display, confirmed 2026-09-28 (David); redone twice the same day after build screenshots.** Only the top (newest) Jack is drawn: full card size, offset downward by `--cu-jack-offset` (37 px base / 40 px roomy — the distance that clears the field corner index below it), so the point card's upper-left corner index stays visible above it. Extra Jacks stack exactly underneath it and are not drawn separately; at 2 or more, a thin "deck thickness" edge — two card-back slivers past the Jack's bottom-right corner — shows there's more than one. No count number and no player colour render on the stack; the count lives only in the aria-label ("stolen, N Jacks"). Only the top Jack is a legal tap target, whether for its own selection or as the target of a 2 or a 9; buried Jacks are never targetable and never answer a tap (the engine offers only the top Jack, and the UI draws nothing else to tap). The points row grows by `--cu-jack-offset` only when that side holds a Jack (`--cu-zone-*` heights above). A small ownership mark shows when the controller differs from the owner. This supersedes the earlier fan-above treatment (§5.2) and the multi-Jack cascade previously described here.
 
-**Center strip.** Three slots: Deck (hand-size box, count numeral centred beneath), the One-off target (flex, middle), Scrap (hand-size box, top card face up, count beneath). When idle, the middle slot shows the last move as one line of `--cu-text-sm` muted text (R20) — the last `isRecapVisible` entry in `history`, never raw `lastMove` *(amended 2026-09-28, W13 GameScreen review: `lastMove` can be a filtered-out kind like Decline, and reading it raw told the acting player whether the opponent held a 2)*. When a card that can be played as a one-off is selected, the middle slot becomes the One-off drop zone.
+**Center strip, amended 2026-09-28 (W22, merged `16d2507`).** Three slots: Deck (hand-size box; the count is a small pill *tab overlapping the bottom edge* of the pile, not a numeral centred beneath it), the One-off target (flex, middle), Scrap (hand-size box, top card face up; same bottom-edge count tab). When idle, the middle slot shows the last move as one line of `--cu-text-sm` muted text (R20) — the last `isRecapVisible` entry in `history`, never raw `lastMove` *(amended 2026-09-28, W13 GameScreen review: `lastMove` can be a filtered-out kind like Decline, and reading it raw told the acting player whether the opponent held a 2)*. When a card that can be played as a one-off is selected, the middle slot becomes the One-off drop zone.
 
-**Your hand.** 56-wide faces, 4 px gaps, centred. When the row can't fit, it fans with equal overlap; the visible slice stays ≥ 44 px (8 cards need 364 px, which the 366 px content width at 390 allows). If the slice would ever fall below 44 px, the hand wraps into two rows and the action bar keeps its height. At the target widths (393 and 430) an 8-card hand fits in one fanned row; the old 360-wide wrap case is no longer a target *(2026-09-28, A-5)*.
+**Your hand, amended 2026-09-28 (W22, merged `16d2507`).** `--cuttle-card-width-hand`-wide faces (60 px base, 66 px roomy), 4 px gaps, centred. When the row can't fit, it fans with equal overlap; the visible slice stays ≥ 44 px — 8 cards hold one row at 393 (60 px cards, ~44.6 px slices in a ~373 px row) and at 430 (66 px cards, ~47.8 px slices). If the slice would ever fall below 44 px, the hand wraps into two rows and the action bar keeps its height. At the target widths (393 and 430) an 8-card hand fits in one fanned row; the old 360-wide wrap case is no longer a target *(2026-09-28, A-5)*.
 
 **Action bar.** Always reserved, so staging never reflows the board. Idle: empty or the Pass pill when it is the only legal move. Staged: the move description on the left, Cancel (ghost pill) and Confirm (ochre pill, `--cu-on-accent` text) on the right, both ≥ 44 px tall.
 
@@ -122,9 +124,11 @@ The theme receives `state` and renders it (§5.6 rule 3). The container applies 
 |---|---|---|---|
 | `normal` | paper face, 1 px `--cu-ink-line` edge | | theme |
 | `highlighted` | 3 px `--cu-iris` ring outside a 2 px table gap | a ring appears; hand cards lift `--cu-lift-selected` | theme ring, container lift |
-| `staged` | 3 px `--cu-ochre` ring plus a small ochre tab at the top centre with a ✓ | tab and ✓ glyph; lift `--cu-lift-staged` | theme, container |
+| `staged` | 3 px `--cu-ochre` ring plus a small ochre tab (16 px round) with a ✓, **bottom left** of the card | tab and ✓ glyph; lift `--cu-lift-staged` | theme, container |
 | `dimmed` | `--cu-dim-scrim` over the face | luminance drop; no lift; still tappable to inspect | theme |
-| `frozen` | dimmed scrim plus a frost chip (❄ on `--cu-frost`, 18 px round) at top right | the ❄ glyph, with "frozen" for screen readers | theme scrim, container chip (existing `hand-card__frozen-marker`) |
+| `frozen` | dimmed scrim plus a frost chip (❄ on `--cu-frost`, 18 px round), **bottom left** of the card | the ❄ glyph, with "frozen" for screen readers | theme scrim, container chip (existing `hand-card__frozen-marker`) |
+
+**Marker placement, amended 2026-09-28 (W22, iPhone design pass, merged `16d2507`) — supersedes "top centre" / "top right" above.** Both the frozen chip and the staged tab moved to the card's bottom-left corner, inside the clipped hand-card box. A fanned hand shows only each card's left ~44 px slice, and the top of that slice is the corner index (§4, §7 below); bottom-left is the one spot that stays visible and free on every card in the fan, whichever position it holds.
 
 Precedence in the single `state` slot: `frozen` > `staged` > `highlighted` > `dimmed` > `normal`.
 
@@ -172,7 +176,7 @@ All curtain screens are full-viewport `--cu-curtain` with a static chromatophore
 3. The handoff screen's serialized DOM, with the name and label text replaced by placeholders, is byte-identical across all five `HandoffReason` values; computed `background-color` and the set of animated properties are identical too.
 4. No element in `Curtain` before the reveal completes carries a `data-*`, class or attribute derived from `HandoffReason`.
 5. Each non-`normal` card state is distinguishable in a greyscale screenshot (ring present, tab present, ❄ present, scrim present).
-6. At 393×852 and 430×932 all nine zones are inside the viewport, clear of the safe-area insets, with no vertical scroll. At 393×660 the hand and the action bar are fully inside the viewport and only the board region scrolls; the document itself doesn't. *(Amended 2026-09-28, David, A-5: replaces the 360×740 compact rule.)*
+6. At 393×852 and 430×932 (59 pt top / 34 pt bottom safe-area insets) all nine zones — including the worst case of a Jack sitting on two point cards per side (§5, §6) — are inside the viewport, clear of the safe-area insets, with no vertical scroll needed to reach any of them. At 393×660 (Mobile Safari's toolbars showing) the hand and the action bar are fully inside the viewport and pinned; only `Board`, the score bar through your permanents, scrolls, and the document itself never does. *(Amended 2026-09-28, David, A-5: replaces the 360×740 compact rule; W22, merged `16d2507`, is the layout that satisfies it.)*
 7. No request leaves the origin at runtime (fonts included); the woff2 files appear in the precache manifest.
 8. With `prefers-reduced-motion: reduce`, no computed `transition-duration` on a card exceeds 0.
 9. Red suit glyphs render only on `--cu-paper`, or with `--cu-suit-red-on-ink`.
@@ -185,7 +189,7 @@ All curtain screens are full-viewport `--cu-curtain` with a static chromatophore
 |---|---|
 | `ScoreBar` | `--cu-zone-score`, `--cu-ink-raised`, `--cu-pearl`, `--cu-muted`, `--cu-text-lg`, `--cu-text-xs` |
 | `OpponentHand` | `--cu-zone-opp-hand`, `--cuttle-card-width-mini`, `--cu-muted` |
-| `PointRow`, `PermanentRow` | `--cu-zone-points` / `--cu-zone-permanents`, `--cuttle-card-width-field`, `--cu-ink-raised`, `--cu-radius-well`, `--cu-iris` (drop zone) |
+| `PointRow`, `PermanentRow` | `--cuttle-card-width-field` / `--cuttle-card-width-field-far` (via `--cu-row-card-width`, opponent side only), `--cuttle-card-aspect-ratio`, `--cu-row-pad`, `--cu-jack-offset` (`PointRow` only), `--cu-ink-raised` / `--cu-ink-far` (via `--cu-row-well`), `--cu-radius-well`, `--cu-iris` (drop zone) |
 | `CenterZone`, `DeckPile`, `ScrapPile` | `--cu-zone-center`, `--cuttle-card-width-hand`, `--cu-text-sm` |
 | `PlayerHand`, `HandCard` | `--cu-zone-hand`, `--cuttle-card-width-hand`, `--cu-lift-*`, `--cu-dur-fast`, `--cu-frost` |
 | `StagingBar` | `--cu-zone-action`, `--cu-ochre`, `--cu-on-accent`, `--cu-radius-control` |
