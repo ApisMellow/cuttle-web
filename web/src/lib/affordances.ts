@@ -9,8 +9,8 @@
 // MoveKind/Phase values are pinned from SPEC §2.5 via the shared enums
 // module (round 2 W7 consolidation; see `lib/enums.ts`).
 
-import type { Card, Move, Phase } from './bridge/schema';
-import { MoveKind, Phase as Ph } from './enums';
+import type { Card, Move, Phase, Target } from './bridge/schema';
+import { MoveKind, Phase as Ph, TargetZone } from './enums';
 
 const MOVE_DRAW = MoveKind.Draw;
 const MOVE_PLAY_POINT = MoveKind.PlayPoint;
@@ -212,4 +212,96 @@ export function deriveDiscardPicker(phase: Phase, legalMoves: Move[]): DiscardPi
     mode: 'select',
     candidates: legalMoves.map((m, moveIndex) => ({ moveIndex, discardA: m.DiscardA, discardB: m.DiscardB })),
   };
+}
+
+// ---------------------------------------------------------------------------
+// P2 W11 additions — board target keys and the staging test-hook data.
+// Additive only: nothing above this line changes behaviour.
+// ---------------------------------------------------------------------------
+
+function ownerZoneKey(t: Target): string {
+  return t.Zone === TargetZone.Points ? `point:${t.Owner}:${t.Index}` : `perm:${t.Owner}:${t.Index}`;
+}
+
+/**
+ * P2 W11 contract — maps a legal move to the board key its target step
+ * resolves to (the `StagingStore`'s `tap(key)` vocabulary), built only from
+ * `Move` fields: `Target`/`JackTarget` Owner/Zone/Index, and the kind's fixed
+ * zone (SPEC §6.3). Distinct from `slotKey` (§6.2), which identifies the
+ * *affordance* (fine enough to separate a Scuttle from a same-target OneOff);
+ * this identifies the *board location* a tap resolves against, which is
+ * coarser — a Scuttle and a targeted OneOff at the same point card share one
+ * board key (`point:O:I`) even though they are different slots, because
+ * they're the same tap on the board.
+ *
+ * Total over all ten `MoveKind`s so it stays safe to call on any legal move,
+ * including the ones the current round doesn't route to a target step:
+ * - `Pass`, `Decline`, `Counter`, `DiscardPair` have no board location at all
+ *   (Pass and Decline are phase controls; Counter is "not a board
+ *   interaction", SPEC §6.3; DiscardPair is a picker, not a tap-a-target
+ *   affordance) — `null`.
+ * - `Draw`'s target step *is* the deck itself — `'deck'`.
+ * - `SevenPick` recurses into `SubMove`; a dead-end SevenPick (§6.2 amended)
+ *   has no sub-move to recurse into and scraps the revealed card instead —
+ *   `'scrap'`, the only kind that produces that key.
+ */
+export function boardTargetKey(m: Move): string | null {
+  switch (m.Kind) {
+    case MOVE_PASS:
+    case MOVE_DECLINE:
+    case MOVE_COUNTER:
+    case MOVE_DISCARD_PAIR:
+      return null;
+    case MOVE_DRAW:
+      return 'deck';
+    case MOVE_PLAY_POINT:
+      return 'zone:points';
+    case MOVE_PLAY_PERMANENT:
+      return m.JackTarget ? ownerZoneKey(m.JackTarget) : 'zone:permanents';
+    case MOVE_SCUTTLE:
+      if (!m.Target) {
+        throw new SlotKeyError('boardTargetKey: Scuttle move has no Target — SPEC §6.2 assumes one always exists');
+      }
+      return ownerZoneKey(m.Target);
+    case MOVE_ONE_OFF:
+      return m.Target ? ownerZoneKey(m.Target) : 'zone:oneoff';
+    case MOVE_SEVEN_PICK:
+      return m.SubMove ? boardTargetKey(m.SubMove) : 'scrap';
+    default: {
+      const exhaustive: never = m.Kind;
+      throw new SlotKeyError(`boardTargetKey: unhandled MoveKind ${String(exhaustive)}`);
+    }
+  }
+}
+
+/**
+ * P2 W11 contract, last bullet — the pure function a later round's
+ * GameScreen wires up verbatim as `window.__cuttleTestHook.affordances()`
+ * (SPEC §6.5, §7.4), scoped to the `MoveKind`s THIS round's `StagingStore`
+ * can actually carry to `staged`: `Draw`, `Pass`, `PlayPoint`,
+ * `PlayPermanent` (including a Jack steal), `Scuttle`, and `OneOff` — except
+ * a rank-3 ScrapIndex group, which needs the round-4 `ScrapBrowser` and is
+ * excluded here the same way `isAmbiguousSlot` excludes it from the R11
+ * chooser (§6.2's last paragraph). `Counter`, `Decline`, `SevenPick`, and
+ * `DiscardPair` are round-4 UI and never appear in the result.
+ *
+ * Reuses `groupAffordances`/`isAmbiguousSlot` rather than re-deriving
+ * grouping or the collapse check, so this can never disagree with them about
+ * what counts as a genuine ambiguity versus a scrap-pick collapse.
+ */
+export function stagingAffordances(legalMoves: Move[]): Record<string, number[]> {
+  const grouped = groupAffordances(legalMoves);
+  const result: Record<string, number[]> = {};
+  for (const [key, indices] of Object.entries(grouped)) {
+    const kind = legalMoves[indices[0]].Kind;
+    if (kind !== MOVE_DRAW && kind !== MOVE_PASS && kind !== MOVE_PLAY_POINT && kind !== MOVE_PLAY_PERMANENT &&
+        kind !== MOVE_SCUTTLE && kind !== MOVE_ONE_OFF) {
+      continue; // Counter, Decline, SevenPick, DiscardPair — round 4
+    }
+    if (indices.length > 1 && !isAmbiguousSlot(indices, legalMoves)) {
+      continue; // scrap-pick collapse (rank-3 ScrapIndex variants) — round 4
+    }
+    result[key] = indices;
+  }
+  return result;
 }

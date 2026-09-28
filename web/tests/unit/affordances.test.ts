@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  boardTargetKey,
   deriveDiscardPicker,
   flattenAffordances,
   groupAffordances,
   isAmbiguousSlot,
   slotKey,
+  stagingAffordances,
 } from '../../src/lib/affordances';
 import type { BridgeResult, Envelope, Move, Phase } from '../../src/lib/bridge/schema';
 import {
@@ -448,6 +450,122 @@ describe('deriveDiscardPicker', () => {
     const twoCardHandMove = move({ Kind: 8, DiscardA: 0, DiscardB: 1 });
     const result = deriveDiscardPicker(PHASE_AWAITING_DISCARD, [twoCardHandMove]);
     expect(result).toEqual({ mode: 'preselected', moveIndex: 0, discardA: 0, discardB: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// boardTargetKey — P2 W11 addition (mapping a move to its board target key)
+// ---------------------------------------------------------------------------
+
+describe('boardTargetKey', () => {
+  it('Draw targets the deck itself', () => {
+    expect(boardTargetKey(move({ Kind: 0 }))).toBe('deck');
+  });
+
+  it('Pass, Decline, Counter, and DiscardPair have no board location', () => {
+    expect(boardTargetKey(move({ Kind: 9 }))).toBeNull();
+    expect(boardTargetKey(move({ Kind: 6 }))).toBeNull();
+    expect(boardTargetKey(move({ Kind: 5, HandIndex: 2 }))).toBeNull();
+    expect(boardTargetKey(move({ Kind: 8, DiscardA: 0, DiscardB: 1 }))).toBeNull();
+  });
+
+  it('PlayPoint targets the points zone', () => {
+    expect(boardTargetKey(move({ Kind: 1, HandIndex: 0 }))).toBe('zone:points');
+  });
+
+  it('PlayPermanent with no JackTarget targets the permanents zone', () => {
+    expect(boardTargetKey(move({ Kind: 2, HandIndex: 0, JackTarget: null }))).toBe('zone:permanents');
+  });
+
+  it('PlayPermanent with a JackTarget targets that owner/zone/index (a point card)', () => {
+    const m = move({ Kind: 2, HandIndex: 5, JackTarget: { Owner: 1, Zone: 0, Index: 2 } });
+    expect(boardTargetKey(m)).toBe('point:1:2');
+  });
+
+  it('a JackTarget in the permanents zone targets perm:owner:index (generic over Zone, no rule knowledge)', () => {
+    const m = move({ Kind: 2, HandIndex: 5, JackTarget: { Owner: 0, Zone: 1, Index: 1 } });
+    expect(boardTargetKey(m)).toBe('perm:0:1');
+  });
+
+  it('Scuttle targets its Target point card', () => {
+    const m = move({ Kind: 3, HandIndex: 1, Target: { Owner: 1, Zone: 0, Index: 0 } });
+    expect(boardTargetKey(m)).toBe('point:1:0');
+  });
+
+  it('Scuttle with no Target throws a diagnostic error', () => {
+    expect(() => boardTargetKey(move({ Kind: 3, Target: null }))).toThrow(/Scuttle/);
+  });
+
+  it('targetless OneOff targets the one-off zone', () => {
+    expect(boardTargetKey(move({ Kind: 4, HandIndex: 2, Target: null }))).toBe('zone:oneoff');
+  });
+
+  it('targeted OneOff (2-as-scrap, 9) targets its owner/zone/index', () => {
+    const perm = move({ Kind: 4, HandIndex: 3, Target: { Owner: 0, Zone: 1, Index: 2 } });
+    expect(boardTargetKey(perm)).toBe('perm:0:2');
+    const point = move({ Kind: 4, HandIndex: 3, Target: { Owner: 1, Zone: 0, Index: 0 } });
+    expect(boardTargetKey(point)).toBe('point:1:0');
+  });
+
+  it('SevenPick recurses into its SubMove', () => {
+    const inner = move({ Kind: 1, HandIndex: 0 });
+    const m = move({ Kind: 7, Card: TWO_HEARTS, SubMove: inner });
+    expect(boardTargetKey(m)).toBe('zone:points');
+  });
+
+  it('a dead-end SevenPick (SubMove: null) targets the scrap pile', () => {
+    expect(boardTargetKey(move({ Kind: 7, Card: THREE_CLUBS, SubMove: null }))).toBe('scrap');
+  });
+
+  it('an unrecognized MoveKind throws, not a silent guess', () => {
+    expect(() => boardTargetKey(move({ Kind: 99 as unknown as Move['Kind'] }))).toThrow(/unhandled MoveKind/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stagingAffordances — P2 W11 addition (the round-scoped test-hook data)
+// ---------------------------------------------------------------------------
+
+describe('stagingAffordances', () => {
+  it('the golden seed-42 deal is fully in scope: identical to groupAffordances (no round-4 kinds present)', () => {
+    expect(stagingAffordances(GOLDEN_MOVES)).toEqual(groupAffordances(GOLDEN_MOVES));
+  });
+
+  it('excludes Counter, Decline, SevenPick, and DiscardPair slots, keeping in-scope ones', () => {
+    const moves = [
+      move({ Kind: 5, HandIndex: 0 }), // Counter
+      move({ Kind: 6 }), // Decline
+      move({ Kind: 7, Card: TWO_HEARTS, SubMove: move({ Kind: 1, HandIndex: 1 }) }), // SevenPick
+      move({ Kind: 8, DiscardA: 0, DiscardB: 1 }), // DiscardPair
+      move({ Kind: 0 }), // Draw — in scope
+      move({ Kind: 1, HandIndex: 2, Card: THREE_CLUBS }), // PlayPoint — in scope
+    ];
+    expect(stagingAffordances(moves)).toEqual({
+      deck: [4],
+      'hand:2|zone:points': [5],
+    });
+  });
+
+  it('excludes a rank-3 scrap-pick collapse (needs the round-4 ScrapBrowser)', () => {
+    const three = { Rank: 3, Suit: 3 } as const;
+    const moves = [
+      move({ Kind: 4, HandIndex: 1, Card: three, Target: null, ScrapIndex: 0 }),
+      move({ Kind: 4, HandIndex: 1, Card: three, Target: null, ScrapIndex: 1 }),
+      move({ Kind: 1, HandIndex: 2, Card: TWO_HEARTS }), // unrelated, in-scope
+    ];
+    expect(stagingAffordances(moves)).toEqual({ 'hand:2|zone:points': [2] });
+  });
+
+  it('keeps a genuinely ambiguous in-scope group (two PlayPoint moves sharing a hand index)', () => {
+    const moves = [
+      move({ Kind: 1, HandIndex: 0, Card: TWO_HEARTS }),
+      move({ Kind: 1, HandIndex: 0, Card: TWO_HEARTS }),
+    ];
+    expect(stagingAffordances(moves)).toEqual({ 'hand:0|zone:points': [0, 1] });
+  });
+
+  it('an empty legal-move list produces an empty map', () => {
+    expect(stagingAffordances([])).toEqual({});
   });
 });
 
