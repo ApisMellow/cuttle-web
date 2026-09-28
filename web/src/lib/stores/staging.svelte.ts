@@ -25,7 +25,7 @@
 import { boardTargetKey, isAmbiguousSlot } from '../affordances';
 import type { Card, Move } from '../bridge/schema';
 import { MoveKind } from '../enums';
-import { discardStagingText, scrapPickStagingText } from '../recap';
+import { discardStagingText, scrapPickStagingText, scrapTakeStagingText } from '../recap';
 import type { TargetKey } from '../targetKey';
 
 export type StagingState = 'idle' | 'selected' | 'staged' | 'applying';
@@ -511,7 +511,11 @@ export class StagingStore {
     }
 
     if (indices.length === 1) {
-      this.#stage(indices[0], env);
+      // W19: a 3 facing a one-card scrap stages here with no pick sheet;
+      // name the card it takes (null for every other move → engine text).
+      const index = indices[0];
+      const take = env.scrap ? scrapTakeStagingText(env.legalMoves[index], env.descriptions[index], env.scrap) : null;
+      this.#stage(index, env, take ?? undefined);
       return;
     }
 

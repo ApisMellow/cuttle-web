@@ -324,6 +324,23 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     expect(text(el)).not.toContain('8♦');
   });
 
+  it('PRIVACY: the panel is absent for the actor outside phase SevenChoosing, even if sevenRevealed arrives', async () => {
+    // The engine sends sevenRevealed only at SevenChoosing (SPEC §3.2). The
+    // fixture sends it at Normal anyway, to the actor, so this proves
+    // GameScreen's phase gate on its own.
+    const el = await start(
+      envelope({
+        state: sevenView({ phase: Phase.Normal, viewer: 0, active: 0, pending: null, sevenRevealed: [EIGHT_D, JACK_C] }),
+        legalMoves: [mv({ Kind: Kind.Draw })],
+        descriptions: ['draw a card'],
+      }),
+    );
+    expect(q(el, 'board')).not.toBeNull();
+    expect(sevenNodes(el)).toHaveLength(0);
+    expect(text(el)).not.toContain('J♣');
+    expect(text(el)).not.toContain('8♦');
+  });
+
   it('PRIVACY: after the pick, neither revealed card survives into the handoff, reveal, recap or the opponent\'s board', async () => {
     const el = await start(sevenEnvelope());
     // Control: the unchosen J♣ is on screen for the actor while choosing.

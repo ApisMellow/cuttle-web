@@ -32,7 +32,7 @@
 // "this one had no target" and the base line is returned unchanged, with
 // no rank-2/rank-9 knowledge encoded here (docs/assumptions.md).
 
-import type { AppliedMove, Card, PlayerId } from './bridge/schema';
+import type { AppliedMove, Card, Move, PlayerId } from './bridge/schema';
 
 // A card token exactly as `card.Card.String()` renders it (card/card.go:14-
 // 47), used to render `entry.targetCard` into the same glyph form the
@@ -354,4 +354,22 @@ export function discardStagingText(hand: readonly Card[], a: number, b: number):
  */
 export function scrapPickStagingText(description: string, taken: Card): string {
   return `${description} — take ${cardGlyph(taken)} from the scrap`;
+}
+
+/**
+ * W19 — the StagingBar text when a 3 stages with no pick sheet because the
+ * scrap holds one card: the engine's description plus the card taken, e.g.
+ * "play 3♣ as one-off, taking 7♥". The viewer's own staging only; the scrap
+ * is public (R6). Returns null for any other move, which keeps the engine's
+ * text. `ScrapIndex` means something only for a rank-3 one-off
+ * (engine/moves.go:30), so that is the one shape named here; a 3 revealed
+ * by a 7 is matched one level down, through its `SubMove`.
+ */
+export function scrapTakeStagingText(move: Move, description: string, scrap: readonly Card[]): string | null {
+  const oneOff = move.Kind === KIND.SevenPick ? move.SubMove : move;
+  if (oneOff === null || oneOff.Kind !== KIND.OneOff || oneOff.Target !== null) return null;
+  if (oneOff.Card === null || oneOff.Card.Rank !== 3) return null;
+  const taken = scrap[oneOff.ScrapIndex];
+  if (taken === undefined) return null;
+  return `${description}, taking ${cardGlyph(taken)}`;
 }

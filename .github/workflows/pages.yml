@@ -24,22 +24,26 @@ permissions:
   pages: write
   id-token: write
 
+# W19: every action is on a major that runs on Node 24 (checkout v7,
+# setup-go v7, setup-node v7, upload-pages-artifact v5, deploy-pages v5),
+# and the runner image is pinned so the ubuntu-latest move to Ubuntu 26 on
+# 2026-10-19 is a deliberate bump, not a surprise.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # go-version-file reads the version straight from go.mod (currently
       # 1.25.2) so this workflow never drifts from what the repo declares.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       # web/package-lock.json engines pin ^22.22.2 || ^24.15.0 || >=26.0.0;
       # 22 matches the developer floor (also what scripts/ci.sh runs under
       # locally) and is cached via the lockfile below.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -70,16 +74,16 @@ jobs:
       # deferred past the family beta (docs/loop-workflow.md §4.5). When it
       # lands, its generated sw.js needs the same CUTTLE_BASE-aware
       # treatment as the wasm fetch (see web/src/lib/bridge/wasm.ts).
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
