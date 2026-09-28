@@ -12,7 +12,7 @@ id: opening
 description: "Golden opening deal."
 seed: "42"
 dealer: 1
-names: ["Alice", "Bob"]
+names: ["Alice", "Blake"]
 moves:
   - i: 0
     expect: "draw a card"
@@ -27,7 +27,7 @@ describe('parseScenario', () => {
     expect(scenario.id).toBe('opening');
     expect(scenario.seed).toBe('42');
     expect(scenario.dealer).toBe(1);
-    expect(scenario.names).toEqual(['Alice', 'Bob']);
+    expect(scenario.names).toEqual(['Alice', 'Blake']);
     expect(scenario.moves).toEqual([{ i: 0, expect: 'draw a card' }]);
     expect(scenario.checkpoints).toEqual([{ afterStep: 0, phase: 0 }]);
   });

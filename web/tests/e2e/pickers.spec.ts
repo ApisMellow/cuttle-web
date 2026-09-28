@@ -10,8 +10,8 @@ import { expect, test, type Page } from '@playwright/test';
 //      Alice sees the SevenRevealPanel and plays the revealed 8♦ for points.
 //   3. Blake browses the scrap (browse mode), then plays 3♣ and takes a card
 //      through the ScrapBrowser in pick mode.
-// Run at the phone viewport and the compact one; each picker screen is
-// checked for fit (no scroll either way, sheets inside the viewport).
+// Run at iPhone 15 and the Mobile Safari toolbar height; each picker screen
+// is checked for fit (the page never scrolls, sheets inside the viewport).
 
 interface HookMove {
   index: number;
@@ -115,9 +115,12 @@ async function playOneOff(page: Page, pattern: RegExp): Promise<HookMove> {
   return m;
 }
 
+// W22: iPhone 15 (393x852) and the Mobile Safari toolbar case (393x660),
+// where the board region scrolls but the page, the hand slot (and the 7's
+// reveal in it) and the action bar never do.
 for (const { width, height } of [
-  { width: 390, height: 844 },
-  { width: 360, height: 740 },
+  { width: 393, height: 852 },
+  { width: 393, height: 660 },
 ]) {
   test(`${width}x${height}: a 4 discard, a 7 reveal and a 3 scrap pick, all by tapping`, async ({ page }) => {
     await page.setViewportSize({ width, height });

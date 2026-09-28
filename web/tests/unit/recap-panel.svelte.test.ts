@@ -24,7 +24,7 @@ import { DEFAULT_THEME_ID, getTheme } from '../../src/lib/theme';
 import RecapPanel from '../../src/lib/components/RecapPanel.svelte';
 import { appliedMove, Kind } from './game-test-support';
 
-const NAMES: [string, string] = ['Alice', 'Bob'];
+const NAMES: [string, string] = ['Alice', 'Blake'];
 
 // Suits: 0 ♣, 1 ♦, 2 ♥, 3 ♠ (SPEC §2.5).
 const C = (Rank: Card['Rank'], Suit: Card['Suit']): Card => ({ Rank, Suit });
@@ -249,7 +249,7 @@ describe('B4: RecapPanel renders a mini face for every card recapCards returns',
     expect(line.querySelectorAll('.recap__face').length).toBe(0);
     expect(line.textContent).not.toMatch(/[♣♦♥♠]/);
     expect(line.textContent).not.toMatch(/hand\[|\b[03]\b/);
-    expect(lineText(line)).toBe('Bob discarded 2 cards.');
+    expect(lineText(line)).toBe('Blake discarded 2 cards.');
   });
 
   it('a normal SevenPick shows only the chosen card', () => {

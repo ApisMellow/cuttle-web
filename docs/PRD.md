@@ -61,7 +61,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R1 — New game.** From the home screen, start a new game: shuffled 52-card deck, dealer alternates between games (first game: random), non-dealer gets 5 cards and goes first, dealer gets 6. Player names entered once per session (default "Player 1"/"Player 2").
 - **R2 — Win and stalemate.** Win detection, threshold display (21, lowered by Kings: 14/10/7/5), and three-consecutive-passes stalemate are all engine-driven. A win/stalemate screen names the result.
-- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Bob 1"). The tally does not survive a page reload.
+- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Blake 1"). The tally does not survive a page reload.
 - **R4 — Resume in-progress game.** Reloading the page mid-game restores the current game (state snapshot in `localStorage`). A "New game" action from the menu abandons it after a confirm.
 
 ### 6.2 Board and information display
@@ -75,7 +75,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R9 — Tap-to-play with legal-target highlighting.** Tapping a card in hand highlights every legal play for it (derived from the engine's legal-move list): play-as-points zone, scuttle targets, permanent zone, one-off action, Jack steal targets, 2-scrap targets. Tapping a highlighted target stages the move; a confirm control commits it. Cards with no legal play render dimmed but still inspectable.
 - **R10 — Draw and pass.** Drawing (when legal) is a tap on the deck; when the only legal action is pass, a Pass control appears.
-- **R11 — Every legal move reachable, only legal moves reachable.** The UI's reachable actions correspond 1:1 with `LegalMoves` output — verified by an invariant test that walks scripted games comparing UI-offered actions to engine output. Ambiguous taps (e.g., an 8 that could be points or glasses) resolve with an explicit chooser.
+- **R11 — Every legal move reachable, only legal moves reachable.** The UI's reachable actions correspond 1:1 with `LegalMoves` output — verified by an invariant test that walks scripted games comparing UI-offered actions to engine output. Ambiguous taps (e.g., an 8 that could be points or glasses) resolve with an explicit chooser. *(Clarified 2026-09-28, David: when the candidates land on different zones or targets — the 8, the Ace — the zone or target the card is dropped or tapped on resolves the move, with no chooser. David prefers implicit actions to extra prompts; the chooser is only the backstop for residue geometry can't separate. See SPEC §6.4 and ledger R11.3.)*
 - **R12 — Misclick protection.** Committing a move always requires the stage-then-confirm step of R9. No accidental single-tap ever applies a move.
 
 ### 6.4 Curtain handoff (privacy model)
@@ -89,8 +89,8 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R17 — Rules screen.** A formatted, scrollable rules reference (content from the engine repo's `RULES.md`), reachable from the menu at any time without disturbing the game.
 - **R18 — PWA / offline.** Installable (manifest + icons); after first load the app — including the WASM engine — works fully offline via service-worker precache. WASM asset budget: ≤ 1.5 MB compressed.
-- **R19 — Mobile-first quality bar.** Primary target: portrait phones, 360–430 px CSS width. All tap targets ≥ 44 px. No horizontal scroll. Card animations (draw, play, scuttle-to-scrap, Jack steal) run as CSS-transform transitions; the game remains fully playable if animations are disabled (`prefers-reduced-motion` respected).
-- **R20 — Game event feedback.** The last move's description (`Move.Describe`) is displayed after each action (e.g., "Bob scuttled 7♥ with 9♠"), so the incoming player can see what happened while they were curtained — shown on their post-curtain screen as a short "while you were away" recap of moves since their last look.
+- **R19 — Mobile-first quality bar.** Primary target: portrait phones, ~~360–430 px CSS width~~ iPhone 15 or larger, 393×852 primary (§10 amendment A-5, 2026-09-28). All tap targets ≥ 44 px. No horizontal scroll. Card animations (draw, play, scuttle-to-scrap, Jack steal) run as CSS-transform transitions; the game remains fully playable if animations are disabled (`prefers-reduced-motion` respected).
+- **R20 — Game event feedback.** The last move's description (`Move.Describe`) is displayed after each action (e.g., "Blake scuttled 7♥ with 9♠"), so the incoming player can see what happened while they were curtained — shown on their post-curtain screen as a short "while you were away" recap of moves since their last look.
 
 ## 7. V2 design-ahead (not built in v1, but v1 leaves the slots open)
 
@@ -178,5 +178,31 @@ Target: a playable browser build for a first family beta in about 2 days.
 - **Hosting is a static host**, since v1 has no server for the beta build. David decided on **GitHub Pages**, with both repos made public on 2026-09-28 (Pages on a private repo needs a paid plan). This amends §8's "deploys as one Fly.io binary" for the beta specifically — A5/A6 stand as the eventual v1 architecture.
 - **Two-phone online play stays the v2 design in §7**, unbuilt for the beta. A DigitalOcean VM is the likely host for that later, superseding A6's Fly.io pick as the v2-era assumption.
 - **The testing policy in `docs/loop-workflow.md` §4.5** (strict tier for game rules/privacy/save-resume, light tier for look-and-layout) applies to all beta work.
+- **Sample player names are Alice and Blake** in every fixture, test, scenario and doc example (the repos are public).
+- **The Mythic theme (A-3) is a separate art thread.** It doesn't block the beta; if its style lock isn't approved in time, the beta ships on vector cards.
+- **Target devices are set by A-5** (iPhone 15 or larger).
 
 This amendment adds no new R numbers; it sets the beta's scope and hosting path without changing R1–R23's acceptance criteria.
+
+### A-5 — Target devices (2026-09-28, David)
+
+Every player's phone is an **iPhone 15 or larger**. This replaces R19's "360–430 px CSS width" and drops the 360×740 compact target entirely.
+
+- **Primary viewport: 393×852 CSS points** (iPhone 15 / 15 Pro / 16). Also supported: **430×932** (the Plus / Pro Max size).
+- **Safe areas are respected.** The Dynamic Island takes about 59 pt at the top and the home indicator about 34 pt at the bottom. The page sets `viewport-fit=cover` and pads with `env(safe-area-inset-*)`, so no control or card index sits under either.
+- **Mobile Safari with its toolbars showing leaves a shorter visible area, down to about 393×660.** There the hand and the action bar must stay fully visible; only the board region above them may scroll. The page itself never scrolls horizontally.
+- **The 360×740 compact target is dropped.** Nothing is sized, tested or judged against it any more (`docs/design.md` §5, §6, §10; ledger R19.1, R19.5).
+- The iPhone design pass landed as W22 (`16d2507`). Its token values are in `docs/design.md` §4–§6 and §10.
+
+This amendment adds no new R numbers; it retargets R19 (and the viewport named in R5/R19 judge criteria) and adds ledger item R19.5.
+
+### A-6 — Several themes, player's choice (2026-09-28, David)
+
+A-1 and A-3 described one art theme. David wants **several themes**, and players pick one. The theme seam from R23 already supports this. Every theme is a skin over the same rules and the same vector baseline. Every theme keeps the upper-left rank and suit index readable at 60–80 px. If a theme's assets are missing, the game falls back to the vector baseline. Candidates under exploration (art lives outside the repo until a style is locked):
+
+- **Mythic:** painted, Magic-flavoured art. Colour comes from what the rank does, and the suit shows only in the index.
+- **Stained-glass vector:** a hand-written SVG set. It could replace the plain vector faces as the standard deck, since it's small and crisp at any size.
+- **Cathedral:** palette-knife impasto in gold and violet, from a photograph David took. It might become a whole theme, or one suit style set against stained glass inside a single deck.
+- **Webb playmat and card backs:** photographic deep-space art that could pair with any theme.
+
+R23 is extended from a theme toggle to a theme picker. No new R numbers until the first theme ships.

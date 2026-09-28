@@ -38,10 +38,16 @@
 </div>
 
 <style>
+  /* W22: the far side of the table. Its field cards are one step
+     smaller (--cuttle-card-width-field-far) and its wells one step quieter
+     (--cu-ink-far), so your own half reads as nearer and more important.
+     Both are inherited custom properties the shared rows read. */
   .opponent-zone {
+    --cu-row-card-width: var(--cuttle-card-width-field-far);
+    --cu-row-well: var(--cu-ink-far, #2c2334);
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding-inline: var(--cu-gutter-board, 12px);
+    gap: var(--cu-gap-zone, 4px);
+    padding-inline: var(--cu-gutter-board, 10px);
   }
 </style>

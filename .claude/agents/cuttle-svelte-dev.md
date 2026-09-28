@@ -90,12 +90,16 @@ forms in the playbook's "Paths and Bash hygiene" table.
   scrap) keep their element and testid whatever the legality; dim or
   disable. Controls SPEC ties to the move list (§4.3 counter buttons and
   "Let it resolve", the §6 chooser, Confirm) are exempt.
-- Every `[data-testid]` ≥ 44 × 44 px at 390×844; no child testid matching a
+- Every `[data-testid]` ≥ 44 × 44 px at every target viewport (393×852
+  primary, 430×932, 393×660 short view; PRD §10 A-5); no child testid matching a
   sibling family's prefix; `scrollWidth <= clientWidth` on every screen.
 - Report every testid added, renamed or removed.
 
 ## Redaction in the DOM
 
+- The idle last-move line is the last `isRecapVisible` history entry, never
+  raw `lastMove`. The 7's revealed cards render only for the actor. The
+  R9.3 popover shows only the tapped card from the viewer's own hand.
 - Gate the board on `curtain.kind === 'none'` only — never at `ack`, real
   or synthetic *(amended 2026-09-28, W13 GameScreen review)* — and never on
   `view !== null`. Test "not in the DOM", not visibility.

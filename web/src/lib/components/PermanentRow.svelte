@@ -83,7 +83,7 @@
     min-width: 0;
     padding-inline: 8px;
     border-radius: var(--cu-radius-well, 10px);
-    background: var(--cu-ink-raised, #30263a);
+    background: var(--cu-row-well, var(--cu-ink-raised, #30263a));
   }
 
   /* Reserve one field card's height so an empty row and a full row are the
@@ -98,20 +98,27 @@
     gap: 6px;
     flex: 1;
     min-width: 0;
-    min-height: calc(var(--cuttle-card-width-field) * var(--cuttle-card-aspect-ratio, 1.3));
+    box-sizing: border-box;
+    min-height: calc(
+      var(--cu-row-card-width, var(--cuttle-card-width-field)) * var(--cuttle-card-aspect-ratio, 1.3) + 2 *
+        var(--cu-row-pad, 3px)
+    );
+    padding-block: var(--cu-row-pad, 3px);
     overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .permanent-row__card {
     display: block;
     flex: none;
-    width: var(--cuttle-card-width-field);
+    width: var(--cu-row-card-width, var(--cuttle-card-width-field));
     aspect-ratio: var(--cuttle-card-aspect);
     box-sizing: border-box;
     overflow: hidden;
     padding: 0;
     border: none;
-    border-radius: 6%;
+    border-radius: 7%;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
     background: none;
     cursor: pointer;
     /* Opt back in under a DropZones content layer (pointer events off). */
@@ -119,7 +126,8 @@
   }
 
   .permanent-row__empty {
-    font-size: var(--cu-text-xs, 12px);
+    padding-inline: 4px;
+    font-size: var(--cu-text-sm, 14px);
     color: var(--cu-muted, #b4a8be);
   }
 </style>

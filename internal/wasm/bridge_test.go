@@ -128,7 +128,7 @@ func mustJSONNoT(v any) string {
 
 func TestR1_1c_GoldenDealThroughBridge(t *testing.T) {
 	b := newBridge()
-	env := okEnvelope(t, b.NewGame(`{"seed":"42","dealer":1,"names":["Alice","Bob"]}`))
+	env := okEnvelope(t, b.NewGame(`{"seed":"42","dealer":1,"names":["Alice","Blake"]}`))
 	want := []string{
 		"draw a card",
 		"play 2♥ as point card",

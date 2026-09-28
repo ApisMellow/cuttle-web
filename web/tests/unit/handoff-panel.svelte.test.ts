@@ -147,12 +147,12 @@ describe('HandoffPanel prop changes on one mounted instance (OQ-13 pattern)', ()
     expect(sameRoot.querySelector('[data-testid="reveal-two-step"]')?.textContent?.trim()).toBe('Show my hand');
     expect(sameRoot.querySelector('.gate__label')?.textContent).toBe('Your turn');
 
-    props.name = 'Bob';
+    props.name = 'Blake';
     props.label = 'Your response';
     props.stage = 'handoff';
     flushSync();
     expect(root(host)).toBe(sameRoot);
-    expect(sameRoot.textContent).toContain('Bob');
+    expect(sameRoot.textContent).toContain('Blake');
     expect(sameRoot.textContent).not.toContain('Alice');
     expect(sameRoot.querySelector('.gate__label')?.textContent).toBe('Your response');
   });

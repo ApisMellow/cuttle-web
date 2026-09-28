@@ -22,6 +22,7 @@
   /* Table */
   --cu-ink: #241c2b;            /* board background */
   --cu-ink-raised: #30263a;     /* zone wells, bars, sheets */
+  --cu-ink-far: #2c2334;       /* W22: the opponent's wells, one step quieter than yours */
   --cu-ink-line: #4a3d57;       /* hairlines, empty-slot outlines (decorative, 1.64:1) */
   --cu-curtain: #1a1420;        /* curtain screens only */
 
@@ -69,12 +70,15 @@
   --cu-weight-bold: 700;
 
   /* Rank / suit glyph sizes per card size (vector theme reads these) */
-  --cu-index-rank-hand: 22px;
-  --cu-index-suit-hand: 18px;
-  --cu-index-rank-field: 22px;
-  --cu-index-suit-field: 18px;
-  --cu-index-rank-mini: 15px;
-  --cu-index-suit-mini: 12px;
+  /* W22: sized for arm's length on an iPhone 15. Field is a touch smaller
+     than hand so a Jack's downward offset (which must clear this index)
+     stays inside the board's height budget. */
+  --cu-index-rank-hand: 24px;
+  --cu-index-suit-hand: 19px;
+  --cu-index-rank-field: 20px;
+  --cu-index-suit-field: 16px;
+  --cu-index-rank-mini: 14px;
+  --cu-index-suit-mini: 11px;
 
   /* ── Space and radius ──────────────────────────────────────────────── */
   --cu-space-1: 4px;
@@ -85,7 +89,7 @@
   --cu-space-6: 32px;
   --cu-space-7: 48px;
 
-  --cu-gutter-board: 12px;      /* board side gutter; keeps an 8-card fan at 44px slices at 390 */
+  --cu-gutter-board: 10px;      /* board side gutter; 8 hand cards fan on one row at 393 with >=44px slices */
   --cu-gutter-sheet: 16px;      /* curtain, recap, rules, result */
 
   --cu-radius-card: 6%;         /* matches the existing faces */
@@ -95,14 +99,30 @@
 
   --cu-tap-min: 44px;
 
-  /* ── Zone heights at 390x844 (design.md §5) ────────────────────────── */
-  --cu-zone-score: 48px;
-  --cu-zone-opp-hand: 48px;
-  --cu-zone-permanents: 92px;
-  --cu-zone-points: 96px;       /* +12 over permanents for Jack peeks */
-  --cu-zone-center: 88px;
-  --cu-zone-hand: 104px;       /* 78.4 card + 12 staged lift + 12 tab */
-  --cu-zone-action: 64px;
+  /* ── Device frame (W22: iPhone 15 and larger) ───────────────────────── */
+  /* Safe areas, read once here so every screen pads by the same token and
+     a fit test can stand in real device values (59 top / 34 bottom in a
+     standalone iPhone 15) by overriding these two properties. */
+  --cu-safe-top: env(safe-area-inset-top, 0px);
+  --cu-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ── Zone heights, 393x852 base (design.md §6) ─────────────────────── */
+  --cu-zone-score: 44px;
+  --cu-zone-opp-hand: 40px;
+  --cu-zone-center: 84px;       /* hand-size pile (78) + its count tab's overhang */
+  --cu-zone-hand: 96px;         /* 12 lift room + 78 card + 6 */
+  --cu-zone-action: 60px;
+  /* Field rows size themselves from their card width: one card plus
+     --cu-row-pad above and below, grown by --cu-jack-offset when a card in
+     the row holds a Jack. The offset clears the field corner index (rank
+     over suit, measured bottom ~35.5px at 393, ~38px at 430). */
+  --cu-row-pad: 3px;
+  --cu-jack-offset: 37px;
+
+  /* Rhythm between zones: tight inside one player's area, looser around
+     the centre strip, so the table reads as two halves and a middle. */
+  --cu-gap-zone: 4px;
+  --cu-gap-center: 6px;
 
   --cu-board-max: 560px;        /* column cap on tablet / desktop */
 
@@ -119,16 +139,23 @@
   --cu-lift-staged: -12px;
 }
 
-@media (max-height: 780px), (max-width: 374px) {
+/* Roomy tier (W22): iPhone 15 Plus / Pro Max class, 430x932. Not a
+   stretched 393 layout: cards, gutters and the zone rhythm all step up. */
+@media (min-width: 420px) and (min-height: 860px) {
   :root {
-    --cu-zone-score: 44px;
+    --cu-gutter-board: 14px;
+    --cu-zone-score: 48px;
     --cu-zone-opp-hand: 44px;
-    --cu-zone-permanents: 80px;
-    --cu-zone-points: 84px;
-    --cu-zone-center: 80px;
-    --cu-zone-hand: 96px;
-    --cu-zone-action: 56px;
-    --cu-text-name: 38px;
+    --cu-zone-center: 92px;
+    --cu-zone-hand: 104px;
+    --cu-zone-action: 64px;
+    --cu-jack-offset: 40px;
+    --cu-gap-zone: 5px;
+    --cu-gap-center: 8px;
+    --cu-index-rank-hand: 26px;
+    --cu-index-suit-hand: 20px;
+    --cu-index-rank-field: 22px;
+    --cu-index-suit-field: 17px;
   }
 }
 
@@ -147,4 +174,11 @@
    the one global reset lives here, next to the tokens App.svelte imports. */
 body {
   margin: 0;
+}
+
+/* W22: overscroll and the area under the Dynamic Island show the table,
+   not white. */
+html,
+body {
+  background: var(--cu-ink);
 }

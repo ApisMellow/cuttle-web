@@ -139,7 +139,7 @@ function resetSingletons(): void {
   game.error = null;
   game.screen = 'home';
   game.notice = null;
-  session.setNames('Alice', 'Bob');
+  session.setNames('Alice', 'Blake');
   session.lastDealer = null;
   settings.revealPreference = 'two-step';
 }
@@ -183,7 +183,7 @@ describe('GameScreen at curtain none (the live board)', () => {
     expect(q(el, 'game-screen')).not.toBeNull();
     expect(q(el, 'board')).not.toBeNull();
     expect(q(el, 'curtain')).toBeNull();
-    expect(el.textContent).toContain('Alice vs Bob');
+    expect(el.textContent).toContain('Alice vs Blake');
   });
 
   it('R9.3: a hand card with no legal move renders dimmed; playable ones do not', async () => {
@@ -632,8 +632,10 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
   }
 
   it('R20.1: the viewer’s own last visible move renders verbatim, not through the §4.6 formatter', async () => {
-    session.setNames('Alice', 'Blake');
-    const history = fourEntryHistory(0, 1); // the 4 one-off is the viewer's (Alice's) own move
+    // Reversed from the file default (Alice, Blake) so this deliberately exercises a
+    // different name pair than resetSingletons(), not a coincidental match.
+    session.setNames('Blake', 'Alice');
+    const history = fourEntryHistory(0, 1); // the 4 one-off is the viewer's (Blake's) own move
     const state = playerView({ viewer: 0, active: 0, phase: Phase.Normal });
     const el = await start(
       envelope({ state, history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
@@ -642,12 +644,14 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
   });
 
   it('SPEC §4.6: the opponent’s last visible move renders as the per-viewer recap line', async () => {
-    session.setNames('Alice', 'Blake');
-    const history = fourEntryHistory(1, 0); // the 4 one-off is the opponent's (Blake's) move
+    // Reversed from the file default (Alice, Blake) so this deliberately exercises a
+    // different name pair than resetSingletons(), not a coincidental match.
+    session.setNames('Blake', 'Alice');
+    const history = fourEntryHistory(1, 0); // the 4 one-off is the opponent's (Alice's) move
     const state = playerView({ viewer: 0, active: 0, phase: Phase.Normal });
     const el = await start(
       envelope({ state, history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
     );
-    expect(lastMoveLine(el)).toBe('Blake played 4♣ as a one-off.');
+    expect(lastMoveLine(el)).toBe('Alice played 4♣ as a one-off.');
   });
 });

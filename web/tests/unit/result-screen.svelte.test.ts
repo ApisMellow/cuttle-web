@@ -59,7 +59,7 @@ describe('ResultScreen copy (R2.3)', () => {
   it('shows the named winner, not the stalemate copy', () => {
     const el = render({
       state: { winner: 0, stalemate: false },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 1, 1: 0 },
       onRematch: () => {},
     });
@@ -69,17 +69,17 @@ describe('ResultScreen copy (R2.3)', () => {
   it('shows player 2 as winner correctly (not hardcoded to index 0)', () => {
     const el = render({
       state: { winner: 1, stalemate: false },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 0, 1: 1 },
       onRematch: () => {},
     });
-    expect(headline(el)).toBe('Bob wins!');
+    expect(headline(el)).toBe('Blake wins!');
   });
 
   it('shows the stalemate copy, not a winner line, when stalemate is true', () => {
     const el = render({
       state: { winner: null, stalemate: true },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 2, 1: 2 },
       onRematch: () => {},
     });
@@ -91,12 +91,12 @@ describe('ResultScreen tally line (R3.1)', () => {
   it('renders "Name N – Name N" using the given names and tally, verbatim', () => {
     const el = render({
       state: { winner: 0, stalemate: false },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 3, 1: 1 },
       onRematch: () => {},
     });
     const tally = el.querySelector('[data-testid="tally"]');
-    expect(tally?.textContent?.trim()).toBe('Alice 3 – Bob 1');
+    expect(tally?.textContent?.trim()).toBe('Alice 3 – Blake 1');
   });
 
   it('reflects a 0-0 tally on the very first game', () => {
@@ -116,7 +116,7 @@ describe('ResultScreen Rematch (R3.2, SPEC §8 OQ-12)', () => {
     const onRematch = vi.fn();
     const el = render({
       state: { winner: 0, stalemate: false },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 1, 1: 0 },
       onRematch,
     });
@@ -133,7 +133,7 @@ describe('ResultScreen renders neither hand (round-2 carry-over)', () => {
   it('never renders a hand-card element or any card-shaped testid', () => {
     const el = render({
       state: { winner: 0, stalemate: false },
-      names: ['Alice', 'Bob'],
+      names: ['Alice', 'Blake'],
       tally: { 0: 1, 1: 0 },
       onRematch: () => {},
     });

@@ -50,12 +50,12 @@ type Harness = typeof import('./harness/mount-board');
 // route: GameScreen doesn't host the board yet in this worktree (see the
 // harness file's header comment).
 //
-// Both field-width breakpoints from docs/design.md §5 are exercised:
-// 390x844 (phone, 60px field cards) and 360x740 (compact, 52px, the
-// `max-height: 780px` breakpoint in card-geometry.css / tokens.css).
+// W22: both phone tiers of the iPhone 15 target are exercised: 393x852
+// (base, 60px field cards, 37px Jack offset) and 430x932 (roomy, 66px,
+// 40px). The 360x740 compact tier is gone.
 const BREAKPOINTS = [
-  { name: '390x844 (phone, 60px field)', width: 390, height: 844 },
-  { name: '360x740 (compact, 52px field)', width: 360, height: 740 },
+  { name: '393x852 (iPhone 15, 60px field)', width: 393, height: 852 },
+  { name: '430x932 (Pro Max, 66px field)', width: 430, height: 932 },
 ];
 
 for (const { name, width, height } of BREAKPOINTS) {
@@ -165,8 +165,9 @@ for (const { name, width, height } of BREAKPOINTS) {
             staged: new Set<string>(),
             ontap: () => {},
           });
-          const box = host.querySelector('.point-row__cards') as HTMLElement;
-          return parseFloat(getComputedStyle(box).getPropertyValue('--cu-zone-points').trim());
+          // W22: a row sizes itself from its card width (one card plus the
+          // well padding), so the empty row's rendered height IS the budget.
+          return (host.querySelector('.point-row__cards') as HTMLElement).getBoundingClientRect().height;
         })();
 
         return {

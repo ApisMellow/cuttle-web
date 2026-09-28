@@ -24,6 +24,7 @@ import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import type { Card, PlayerId, PlayerView, PointEntry } from '../../../src/lib/bridge/schema';
 import Board from '../../../src/lib/components/Board.svelte';
 import PointRow from '../../../src/lib/components/PointRow.svelte';
+import StagingBar from '../../../src/lib/components/StagingBar.svelte';
 import { DEFAULT_THEME_ID, getTheme } from '../../../src/lib/theme';
 
 const theme = getTheme(DEFAULT_THEME_ID);
@@ -84,6 +85,35 @@ export function mountPointRow(
   flushSync();
   mounted.push({ instance, host });
   return host;
+}
+
+/**
+ * W22: the worst-case board the fit specs measure: an 8-card hand, two point
+ * cards with Jacks on each side (one a 2-Jack stack), permanents on both.
+ */
+export function worstCaseView(): PlayerView {
+  return playerView({
+    you: {
+      hand: [card(1, 0), card(2, 1), card(3, 2), card(4, 3), card(5, 0), card(6, 1), card(7, 2), card(8, 3)],
+      frozenHandIndices: [],
+      points: [
+        pointEntry({ Card: card(9, 0), Owner: 0, Controller: 0, JackStack: [card(11, 0), card(11, 1)], JackOwners: [1, 0] }),
+        pointEntry({ Card: card(8, 2), Owner: 0, Controller: 0, JackStack: [card(11, 2)], JackOwners: [0] }),
+      ],
+      permanents: [card(10, 1), card(13, 3)],
+    },
+    opponent: {
+      handCount: 5,
+      hand: null,
+      points: [
+        pointEntry({ Card: card(6, 2), Owner: 1, Controller: 1, JackStack: [card(11, 0), card(11, 1)], JackOwners: [0, 1] }),
+        pointEntry({ Card: card(3, 3), Owner: 1, Controller: 1, JackStack: [card(11, 3)], JackOwners: [1] }),
+      ],
+      permanents: [card(12, 3), card(8, 0)],
+    },
+    deckCount: 20,
+    scrap: [card(2, 0)],
+  });
 }
 
 interface MountBoardOptions {
@@ -147,4 +177,89 @@ export function unmountAll(): void {
     if (instance) unmount(instance as never);
     host.remove();
   }
+}
+
+interface MountGameColumnOptions {
+  view: PlayerView;
+  highlighted?: Set<string>;
+  staged?: Set<string>;
+  selectedHand?: number | null;
+  /** When set, the real StagingBar fills the action bar with this description. */
+  stagedDescription?: string;
+}
+
+export interface MountedGameColumn {
+  root: HTMLElement;
+  board: HTMLElement;
+  actionBar: HTMLElement;
+}
+
+/**
+ * W22: the board as GameScreen composes it, in a viewport-filling column —
+ * `100dvh` tall, safe-area padding from the `--cu-safe-*` tokens, the board
+ * host as the flexible middle and the action bar pinned below it. The
+ * `.game-screen` / `.game-screen__action-bar` rules are scoped to
+ * GameScreen.svelte, so their layout-relevant declarations are mirrored
+ * inline here (GameScreen itself needs the game store, which this harness
+ * never touches). Used by board-fit.spec.ts's short-viewport check, where
+ * the board region scrolls and the hand and action bar must stay on screen.
+ */
+export function mountGameColumn({
+  view,
+  highlighted = new Set<string>(),
+  staged = new Set<string>(),
+  selectedHand = null,
+  stagedDescription,
+}: MountGameColumnOptions): MountedGameColumn {
+  const root = freshHost();
+  Object.assign(root.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    height: '100dvh',
+    boxSizing: 'border-box',
+    paddingTop: 'var(--cu-safe-top, 0px)',
+    paddingBottom: 'var(--cu-safe-bottom, 0px)',
+    background: 'var(--cu-ink)',
+    color: 'var(--cu-pearl)',
+    fontFamily: 'var(--cu-font-ui)',
+    overflow: 'hidden',
+  });
+
+  const boardHost = document.createElement('div');
+  Object.assign(boardHost.style, { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: '0' });
+  root.appendChild(boardHost);
+  const boardInstance = mount(Board, {
+    target: boardHost,
+    props: {
+      view,
+      names: ['Alice', 'Blake'],
+      highlighted,
+      staged,
+      dimmedHand: new Set<number>(),
+      selectedHand,
+      inert: false,
+      deckEnabled: true,
+      ontap: () => {},
+    },
+  });
+
+  const actionBar = document.createElement('div');
+  actionBar.setAttribute('data-testid', 'action-bar-placeholder');
+  Object.assign(actionBar.style, {
+    flex: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minHeight: 'var(--cu-zone-action, 64px)',
+  });
+  root.appendChild(actionBar);
+  let barInstance: unknown = null;
+  if (stagedDescription !== undefined) {
+    barInstance = mount(StagingBar, { target: actionBar, props: { description: stagedDescription } });
+  }
+  flushSync();
+  mounted.push({ instance: boardInstance, host: root });
+  if (barInstance) mounted.push({ instance: barInstance, host: actionBar });
+  return { root, board: boardHost.querySelector('[data-testid="board"]') as HTMLElement, actionBar };
 }

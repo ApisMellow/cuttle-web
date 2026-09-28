@@ -47,7 +47,7 @@ function render(opts: Opts = {}): HTMLDivElement {
     props: {
       entries: ENTRIES,
       viewer: 0,
-      names: ['Alice', 'Bob'] as const,
+      names: ['Alice', 'Blake'] as const,
       options: opts.options ?? [],
       onresolve: opts.onresolve ?? (() => {}),
       oncounter: opts.oncounter ?? (() => {}),
@@ -74,7 +74,7 @@ describe('CounterPrompt (SPEC §4.3)', () => {
     expect(lines[0].querySelectorAll('[data-size="mini"]')).toHaveLength(2);
     expect(lines[1].querySelectorAll('[data-size="mini"]')).toHaveLength(1);
     expect(lines[0].textContent).toContain('You played');
-    expect(lines[1].textContent).toContain('Bob countered');
+    expect(lines[1].textContent).toContain('Blake countered');
   });
 
   it('always offers "Let it resolve"; one button per legal 2 only when given', () => {

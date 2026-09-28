@@ -45,6 +45,7 @@
   import { getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
   import Board from './Board.svelte';
+  import CardDetailPopover from './CardDetailPopover.svelte';
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
@@ -104,6 +105,13 @@
   const withheld = $derived(
     game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
   );
+
+  // R9.3 (W21): the dimmed-card detail popover. `staging.inspect` is a hand
+  // index into the VIEWER'S OWN hand only (staging.svelte.ts's #selectHand
+  // never sets it from anything else), so this never reads the opponent's
+  // hand or the deck. `staging.reset()` (viewer/curtain change, every apply)
+  // already clears `inspect`, so this can't survive past its own turn.
+  const inspectCard = $derived(board === null || staging.inspect === null ? null : (board.state.you.hand[staging.inspect] ?? null));
 
   // R10.1: the deck is live exactly when the engine offers Draw.
   const deckEnabled = $derived(board !== null && board.legalMoves.some((m) => m.Kind === MoveKind.Draw));
@@ -286,20 +294,29 @@
         oncancel={() => staging.cancel()}
       />
     {/if}
+
+    {#if inspectCard !== null}
+      <CardDetailPopover card={inspectCard} onclose={() => (staging.inspect = null)} {theme} />
+    {/if}
   {/if}
 </div>
 
 <style>
+  /* W22 (iPhone 15 pass): exactly the visible viewport (`100dvh` tracks
+     Mobile Safari's toolbars), never taller, so the page itself never
+     scrolls. The safe-area padding keeps everything tappable clear of the
+     Dynamic Island and the home indicator. Board is the flexible middle and
+     the only region that scrolls; the action bar below it is pinned. */
   .game-screen {
     display: flex;
     flex-direction: column;
-    min-height: 100dvh;
+    height: 100dvh;
     box-sizing: border-box;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    padding: var(--cu-safe-top, 0px) 0 var(--cu-safe-bottom, 0px);
+    overflow: hidden;
     background: var(--cu-ink);
     color: var(--cu-pearl);
     font-family: var(--cu-font-ui);
-    overflow-x: hidden;
   }
 
   .game-screen__sr-only {
@@ -322,15 +339,18 @@
     justify-content: center;
     width: 100%;
     max-width: var(--cu-board-max, 560px);
-    min-height: var(--cu-zone-action, 64px);
+    min-height: var(--cu-zone-action, 60px);
     margin: 0 auto;
+    border-top: 1px solid var(--cu-ink-line, #4a3d57);
+    background: var(--cu-ink-raised, #30263a);
   }
 
   .game-screen__pass {
     align-self: center;
     box-sizing: border-box;
-    min-width: 120px;
-    min-height: var(--cu-tap-min, 44px);
+    min-width: 160px;
+    min-height: 48px;
+    font-weight: var(--cu-weight-bold, 700);
     padding: 0 var(--cu-space-5, 24px);
     border: none;
     border-radius: var(--cu-radius-control, 999px);

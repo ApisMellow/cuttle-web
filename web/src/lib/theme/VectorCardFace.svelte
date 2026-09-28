@@ -19,93 +19,123 @@
 <span class={['cuttle-card-face', { 'cuttle-card-face--red': isRed }]} data-size={size} data-state={state}>
   <span class="cuttle-card-face__rank">{label}</span>
   <span class="cuttle-card-face__suit">{glyph}</span>
+  {#if size === 'field'}
+    <!-- W22: a quiet echo of the suit in the lower right of a field card.
+         Decoration only: identity stays in the upper-left index (design.md
+         §7). Not on hand cards, where a fan would cut it into fragments. -->
+    <span class="cuttle-card-face__pip" aria-hidden="true">{glyph}</span>
+  {/if}
 </span>
 
 <style>
+  /* W22 (iPhone 15 design pass): the face now reads the design tokens
+     (docs/design.md §3, §4, §7) instead of placeholder greys. Cuttlebone
+     stock, ink and deep-red suits, a bold corner index sized for arm's
+     length. Geometry is still the container's (rule 2): this root fills
+     whatever box it is given. */
   .cuttle-card-face {
+    position: relative;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    /* W17 (round-4, product owner direction 2026-09-28): identity moves to
-       the upper-left CORNER, at every size — this replaces the W14 centred
-       top strip. `align-items`/`justify-content: flex-start` anchor the
-       rank+suit block to the top-left; the small padding insets it off the
-       edge. Because this is the BASE rule (no `data-size` selector), it
-       applies to hand and mini too, not just field — the size overrides
-       below only change glyph scale, never position, matching rule 2. A
-       Jack stacked on a stolen point card is offset DOWNWARD ONLY (never
-       narrowed, never shifted sideways — see PointRow's `.point-row__jack`)
-       so this corner block stays clear of every Jack's top edge. */
+    /* Identity lives in the upper-left corner index at every size, rank
+       above suit (design.md §7). A stacked Jack is offset downward only,
+       so this block stays clear of it. */
     align-items: flex-start;
     justify-content: flex-start;
-    gap: 0.1em;
     width: 100%;
     height: 100%;
-    padding: 3px 0 0 4px;
-    border: 1px solid #333;
-    border-radius: 6%;
-    background: #fff;
-    color: #111;
-    font-family: system-ui, sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
+    padding: 2px 0 0 3px;
+    border: 1px solid rgb(36 28 43 / 0.22);
+    border-radius: 7%;
+    background: linear-gradient(170deg, #fffdf9 0%, var(--cu-paper, #faf8f4) 55%, #f1ece4 100%);
+    color: var(--cu-suit-black, #1f1824);
+    font-family: var(--cu-font-index, system-ui, sans-serif);
     line-height: 1;
+    font-variant-emoji: text;
     user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
   }
 
-  /* `size` is a rendering hint: glyph scale only, never the box or the
-     corner position (both set on the base rule above). */
-  .cuttle-card-face[data-size='field'] {
-    font-size: 1.1rem;
-  }
-
-  .cuttle-card-face[data-size='mini'] {
-    font-size: 0.55rem;
-    /* A mini box is small enough (32px wide phone / 36 tablet) that the
-       base 3px/4px inset would eat a visible fraction of it; scale it down
-       with the glyphs so the corner index still reads as a corner, not a
-       near-fill. */
-    padding: 2px 0 0 2px;
+  .cuttle-card-face__rank,
+  .cuttle-card-face__suit {
+    display: block;
   }
 
   .cuttle-card-face__rank {
-    font-size: 1.4em;
+    font-size: var(--cu-index-rank-hand, 24px);
+    font-weight: var(--cu-weight-bold, 700);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
   }
 
   .cuttle-card-face__suit {
-    font-size: 1.1em;
+    font-size: var(--cu-index-suit-hand, 19px);
+    line-height: 0.9;
   }
 
   .cuttle-card-face[data-size='field'] .cuttle-card-face__rank {
-    font-size: 1em;
+    font-size: var(--cu-index-rank-field, 20px);
   }
 
   .cuttle-card-face[data-size='field'] .cuttle-card-face__suit {
-    font-size: 0.75em;
+    font-size: var(--cu-index-suit-field, 16px);
+  }
+
+  .cuttle-card-face[data-size='mini'] {
+    padding: 2px 0 0 2px;
+  }
+
+  .cuttle-card-face[data-size='mini'] .cuttle-card-face__rank {
+    font-size: var(--cu-index-rank-mini, 14px);
+  }
+
+  .cuttle-card-face[data-size='mini'] .cuttle-card-face__suit {
+    font-size: var(--cu-index-suit-mini, 11px);
+  }
+
+  .cuttle-card-face__pip {
+    position: absolute;
+    right: 5%;
+    bottom: 3%;
+    font-size: 26px;
+    line-height: 1;
+    opacity: 0.2;
+    pointer-events: none;
   }
 
   .cuttle-card-face--red {
-    color: #b00020;
+    color: var(--cu-suit-red, #b0172e);
   }
 
-  /* Functional state styling only (carry-over 7) — legibility, not
-     decoration. Outlines are inset so they stay inside the clipped box. */
-  .cuttle-card-face[data-state='dimmed'] {
-    opacity: 0.45;
-  }
-
+  /* State recipes (design.md §7). Rings are drawn inside the box, because
+     the container clips; the table-coloured gap is the inner hairline. */
   .cuttle-card-face[data-state='highlighted'] {
-    outline: 3px solid #1a73e8;
+    outline: 3px solid var(--cu-iris, #5ccfc4);
     outline-offset: -3px;
+    box-shadow: inset 0 0 0 4px rgb(36 28 43 / 0.55);
   }
 
   .cuttle-card-face[data-state='staged'] {
-    outline: 3px solid #1a9e6b;
+    outline: 3px solid var(--cu-ochre, #f0b54a);
     outline-offset: -3px;
+    box-shadow: inset 0 0 0 4px rgb(36 28 43 / 0.55);
+  }
+
+  .cuttle-card-face[data-state='dimmed']::after,
+  .cuttle-card-face[data-state='frozen']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--cu-dim-scrim, rgb(36 28 43 / 0.42));
+    pointer-events: none;
   }
 
   .cuttle-card-face[data-state='frozen'] {
-    outline: 3px dashed #7a7a7a;
+    outline: 2px dashed var(--cu-frost, #a9d2f5);
     outline-offset: -3px;
   }
 </style>

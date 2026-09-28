@@ -72,7 +72,8 @@
      the row can't fit, the cards fan with equal overlap so the whole hand
      spans the row; the visible slice of each card never drops below 44 px.
      If the slice would, the overlap stops at 44 px and flex-wrap takes the
-     rest onto a second row (8 cards fit one row at 390, wrap at 360).
+     rest onto a second row. W22: 8 cards hold one row at 393 (60px cards,
+     44.6px slices in a 373px row) and at 430 (66px, ~47.8px slices).
 
      The slot margin is  max(44px - w, min(4px, (100cqi - w - 1px) / (n - 1) - w)):
      `100cqi` is this container's content width, `w` the hand card width,

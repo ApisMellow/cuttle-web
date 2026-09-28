@@ -348,9 +348,9 @@ describe('B1: the latch resets on the SAME instance (OQ-13)', () => {
     tap(el);
     expect(seen).toEqual([1]);
 
-    props.name = 'Bob';
+    props.name = 'Blake';
     flushSync();
-    expect(pill(el).textContent?.trim()).toBe("I'm Bob");
+    expect(pill(el).textContent?.trim()).toBe("I'm Blake");
     tap(el);
     expect(seen).toEqual([1, 1]);
     tap(el);
@@ -386,7 +386,7 @@ describe('B1: the latch resets on the SAME instance (OQ-13)', () => {
     const { el, props } = renderLive({ name: 'Alice', stage: 'reveal', epoch: 1, revealPreference: 'hold', onadvance: () => seen.push(1) });
     press(el);
     tick(300);
-    props.name = 'Bob';
+    props.name = 'Blake';
     flushSync();
     expect(ring(el)).toBe('0');
     tick(HOLD_DURATION_MS * 2);
@@ -403,7 +403,7 @@ describe('B1: the latch resets on the SAME instance (OQ-13)', () => {
     expect(Number(ring(el))).toBeGreaterThan(0);
 
     props.stage = 'reveal';
-    props.name = 'Bob';
+    props.name = 'Blake';
     props.player = 1;
     props.epoch = 2;
     flushSync();

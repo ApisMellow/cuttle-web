@@ -1,152 +1,122 @@
 import { expect, test } from '@playwright/test';
 
-// P2 W14 (board polish, round-4), items B and C. Light tier per the brief:
-// a browser fit measurement before and after is enough, no mutation
-// hunting. This mounts Board directly (see
-// web/tests/e2e/harness/mount-board.ts's header for why: GameScreen is
-// still the P2 W12 skeleton in this worktree, so there is no live route to
-// reach a rendered board through).
+// Board fit, rewritten for W22 (the iPhone 15 design pass). The target
+// device is now iPhone 15-sized or larger; the 360x740 compact target is
+// gone. Light tier: real-browser measurements, no mutation hunting.
 //
-// B: fit at 360x740, 390x740 and 390x844 with an 8-card hand and the
-// action bar showing (docs/design.md §10.6 — "at 360x740 ... no vertical
-// scroll; ... compact tokens"). The brief's original diagnostic: the page
-// was 758px (18px over budget) and the centre strip alone measured 97.4px
-// against an 80px compact budget.
+// The worst-case board used throughout: an 8-card hand, TWO point cards
+// with Jacks on EACH side (one of them a 2-Jack stack, which draws the
+// deck-thickness edge but costs no extra height, W18), and permanents on
+// both sides, with the real StagingBar filling the action bar.
 //
-// Round-4 item W18 adds the realistic worst case this item's brief calls
-// out: TWO point cards with TWO Jacks each, on BOTH players' sides (four
-// Jack-holding point cards on screen at once). Per the product-owner
-// redirect captured in point-row-stacking.spec.ts's header, only the top
-// Jack of each stack ever renders (plus a non-reflowing decorative edge),
-// so a deeper stack (3-4 Jacks, rarer) costs the row no more height than
-// this case — this is the worst case that actually has to fit without a
-// scroll.
+// B1: 393x852 (iPhone 15) and 430x932 (15 Plus / Pro Max) in standalone
+//     mode, with the safe areas a real device reports there (59 top, 34
+//     bottom; stood in through the --cu-safe-* tokens, since Chromium's
+//     env() is always 0): the whole board fits the space between them with
+//     no scroll, and the 8 cards hold one row.
+// B2: 393x660, Mobile Safari with both toolbars: the board region scrolls,
+//     the page never does, and the hand and the action bar stay fully on
+//     screen.
+// C:  the tally chip does not cover the 5th point card at 393 wide.
 //
-// C: docs/design.md §6 — "five [field cards] fit at 390" — the tally chip
-// must not cover the 5th point card at 390px wide.
-//
-// Fetched by the dev server at runtime (see the harness file's header
-// comment for why this can't be a normal static import). Routed through a
-// function parameter rather than a literal in each `import(...)` call: TS
-// only attempts to resolve a dynamic import's module graph for a literal
-// specifier, and this is a root-relative dev-server URL, not a path `tsc`
-// can resolve — passing it as an argument keeps `svelte-check` (SPEC §7.6)
-// green while the type-only import below still gives real types.
+// The harness mounts Board directly (GameScreen needs the game store);
+// mountGameColumn mirrors GameScreen's column layout, see its comment.
+
 const HARNESS_URL = '/tests/e2e/harness/mount-board.ts';
 type Harness = typeof import('./harness/mount-board');
 
-test.describe('B: fit at 360x740, 390x740 and 390x844 with an 8-card hand', () => {
-  for (const { width, height, allowScroll } of [
-    // W18: at 360x740, the 8-card hand ALSO wraps to two rows (design.md
-    // §6 — the fan's visible slice would fall under 44px at this width),
-    // which alone already used almost every spare pixel of this
-    // breakpoint's compact budget (measured ~29px of slack with no Jack
-    // anywhere on the board). Growing both points rows for the worst
-    // case costs ~2x that. PointRow's `--jack-offset` and deck-edge slack,
-    // and Board's compact gap, are trimmed as far as this item judges
-    // safe (see their comments) without either covering a corner index or
-    // leaving no rendering-fuzz margin; the remainder (~19px, i.e. the
-    // page runs about 19px taller than the viewport) is accepted as the
-    // vertical scroll design.md and this item's brief both allow for a
-    // stack that can't fit ("it's fine to let the board scroll
-    // vertically... but say so" — reported in this item's hand-back).
-    // 390x740 and 390x844 have no hand-wrap tax and fit with no scroll.
-    { width: 360, height: 740, allowScroll: true },
-    { width: 390, height: 740, allowScroll: false },
-    { width: 390, height: 844, allowScroll: false },
+interface ColumnFit {
+  pageScrollHeight: number;
+  innerHeight: number;
+  pageScrollWidth: number;
+  clientWidth: number;
+  boardClient: number;
+  boardScroll: number;
+  handTop: number;
+  handBottom: number;
+  handRows: number;
+  barTop: number;
+  barBottom: number;
+  safeBottom: number;
+}
+
+async function measureColumn(page: import('@playwright/test').Page, insets: { top: number; bottom: number }): Promise<ColumnFit> {
+  await page.goto('/');
+  await page.waitForSelector('body');
+  return page.evaluate(
+    async ({ harnessUrl, insets }) => {
+      const H = (await import(harnessUrl)) as Harness;
+      H.unmountAll();
+      // Measure the mounted column alone: the real app shell (loaded only
+      // for its tokens) would otherwise add its own screen's height.
+      (document.getElementById('app') as HTMLElement).style.display = 'none';
+      document.documentElement.style.setProperty('--cu-safe-top', `${insets.top}px`);
+      document.documentElement.style.setProperty('--cu-safe-bottom', `${insets.bottom}px`);
+      const view = H.worstCaseView();
+      const { board, actionBar } = H.mountGameColumn({ view, stagedDescription: 'Scuttle 6♥ with 9♣' });
+      const hand = board.querySelector('[data-testid="player-hand"]') as HTMLElement;
+      const cards = [...hand.querySelectorAll('[data-testid^="hand-card-"]')].map((c) => c.getBoundingClientRect().top);
+      const handRect = hand.getBoundingClientRect();
+      const barRect = actionBar.getBoundingClientRect();
+      return {
+        pageScrollHeight: document.documentElement.scrollHeight,
+        innerHeight: window.innerHeight,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        boardClient: board.clientHeight,
+        boardScroll: board.scrollHeight,
+        handTop: handRect.top,
+        handBottom: handRect.bottom,
+        handRows: new Set(cards.map((t) => Math.round(t / 20))).size,
+        barTop: barRect.top,
+        barBottom: barRect.bottom,
+        safeBottom: window.innerHeight - insets.bottom,
+      };
+    },
+    { harnessUrl: HARNESS_URL, insets },
+  );
+}
+
+test.describe('B1: the worst-case board fits iPhone 15 and Pro Max in standalone mode, no scroll', () => {
+  for (const { width, height } of [
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
   ]) {
-    const label = allowScroll ? 'fits, or scrolls vertically within a documented bound' : 'fits with no vertical overflow';
-    test(`${width}x${height}: board + action bar ${label}`, async ({ page }) => {
+    test(`${width}x${height} with 59/34 safe areas: board, hand and action bar fit with no scroll`, async ({ page }) => {
       await page.setViewportSize({ width, height });
-      await page.goto('/');
-      await page.waitForSelector('body');
-
-      const result = await page.evaluate(async (harnessUrl) => {
-        const { mountBoard, playerView, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
-        unmountAll();
-        const view = playerView({
-          you: {
-            hand: [
-              card(1, 0),
-              card(2, 1),
-              card(3, 2),
-              card(4, 3),
-              card(5, 0),
-              card(6, 1),
-              card(7, 2),
-              card(8, 3),
-            ],
-            frozenHandIndices: [],
-            // W18 realistic worst case: two point cards, each with two
-            // Jacks, on this side.
-            points: [
-              pointEntry({
-                Card: card(9, 0),
-                Owner: 0,
-                Controller: 0,
-                JackStack: [card(11, 0), card(11, 1)],
-                JackOwners: [0, 0],
-              }),
-              pointEntry({
-                Card: card(8, 2),
-                Owner: 0,
-                Controller: 0,
-                JackStack: [card(11, 2), card(11, 3)],
-                JackOwners: [0, 0],
-              }),
-            ],
-            permanents: [card(10, 1)],
-          },
-          opponent: {
-            handCount: 5,
-            hand: null,
-            // Same worst case, mirrored on the opponent's side.
-            points: [
-              pointEntry({
-                Card: card(6, 2),
-                Owner: 1,
-                Controller: 1,
-                JackStack: [card(11, 0), card(11, 1)],
-                JackOwners: [1, 1],
-              }),
-              pointEntry({
-                Card: card(3, 3),
-                Owner: 1,
-                Controller: 1,
-                JackStack: [card(11, 2), card(11, 3)],
-                JackOwners: [1, 1],
-              }),
-            ],
-            permanents: [card(3, 3)],
-          },
-          deckCount: 20,
-          scrap: [card(2, 0)],
-        });
-        const { root, board, actionBar } = mountBoard({ view });
-        const centerZone = board.querySelector('[data-testid="center-zone"]') as HTMLElement;
-        return {
-          totalHeight: root.getBoundingClientRect().height,
-          centerZoneHeight: centerZone.getBoundingClientRect().height,
-          actionBarHeight: actionBar?.getBoundingClientRect().height ?? 0,
-          handWraps: (board.querySelector('[data-testid="player-hand"]')?.getBoundingClientRect().height ?? 0) > 90,
-        };
-      }, HARNESS_URL);
-
-      console.log(`[board-fit ${width}x${height}]`, JSON.stringify(result));
-      if (allowScroll) {
-        // Bounded, not open-ended: a regression that makes the overflow
-        // materially worse still fails this. 40px is comfortably above
-        // the ~19px this item measured and reported.
-        expect(result.totalHeight).toBeLessThanOrEqual(height + 40);
-      } else {
-        expect(result.totalHeight).toBeLessThanOrEqual(height);
-      }
+      const m = await measureColumn(page, { top: 59, bottom: 34 });
+      console.log(`[board-fit ${width}x${height} standalone]`, JSON.stringify(m));
+      expect(m.pageScrollHeight, 'page scrolls').toBeLessThanOrEqual(m.innerHeight);
+      expect(m.pageScrollWidth, 'horizontal scroll').toBeLessThanOrEqual(m.clientWidth);
+      // The board region itself needs no scroll: everything is on screen.
+      expect(m.boardScroll, 'board region scrolls').toBeLessThanOrEqual(m.boardClient + 0.5);
+      // Nothing tappable in the home-indicator strip; the hand sits above the bar.
+      expect(m.barBottom).toBeLessThanOrEqual(m.safeBottom + 0.5);
+      expect(m.handBottom).toBeLessThanOrEqual(m.barTop + 0.5);
+      // design brief: 8 cards on one row.
+      expect(m.handRows).toBe(1);
     });
   }
 });
 
-test.describe('C: the tally chip does not cover the 5th point card at 390px wide', () => {
-  test.use({ viewport: { width: 390, height: 844 } });
+test.describe('B2: Mobile Safari with toolbars (393x660): the board scrolls, the hand and action bar stay pinned', () => {
+  test('393x660: page never scrolls; hand and action bar fully visible; board region scrolls', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 660 });
+    const m = await measureColumn(page, { top: 0, bottom: 0 });
+    console.log('[board-fit 393x660 toolbars]', JSON.stringify(m));
+    expect(m.pageScrollHeight, 'page scrolls').toBeLessThanOrEqual(m.innerHeight);
+    expect(m.pageScrollWidth, 'horizontal scroll').toBeLessThanOrEqual(m.clientWidth);
+    // The worst case does not fit here: the board region takes the scroll.
+    expect(m.boardScroll).toBeGreaterThan(m.boardClient);
+    expect(m.handTop).toBeGreaterThanOrEqual(0);
+    expect(m.handBottom).toBeLessThanOrEqual(m.barTop + 0.5);
+    expect(m.barBottom).toBeLessThanOrEqual(m.innerHeight + 0.5);
+    expect(m.handRows).toBe(1);
+  });
+});
+
+test.describe('C: the tally chip does not cover the 5th point card at 393px wide', () => {
+  test.use({ viewport: { width: 393, height: 852 } });
 
   test('5 point cards render with the tally chip clear of the 5th card', async ({ page }) => {
     await page.goto('/');

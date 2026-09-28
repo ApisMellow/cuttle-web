@@ -15,7 +15,7 @@ import type { CurtainState, HandoffReason } from '../../src/lib/stores/curtain.s
 import Curtain from '../../src/lib/components/Curtain.svelte';
 import { appliedMove, Kind } from './game-test-support';
 
-const NAMES: [string, string] = ['Alice', 'Bob'];
+const NAMES: [string, string] = ['Alice', 'Blake'];
 const REASONS: HandoffReason[] = ['turn', 'counter', 'discard', 'seven-return', 'acknowledge'];
 
 function pass(seq: number): AppliedMove {
@@ -99,7 +99,7 @@ describe('Curtain renders exactly one child per curtain.kind (Contract)', () => 
     for (const curtain of [{ kind: 'handoff', to: 1, reason: 'turn' }, { kind: 'reveal', to: 1 }] as CurtainState[]) {
       const el = render(baseProps(curtain));
       expect(el.querySelector('[data-testid="curtain"]')).toBeTruthy();
-      expect(gate(el).textContent).toContain('Bob');
+      expect(gate(el).textContent).toContain('Blake');
       expect(el.querySelector('[data-testid="recap"]')).toBeNull();
     }
   });
@@ -291,7 +291,7 @@ describe('Ruling A1: one persistent screen across handoff -> reveal', () => {
     const { el, props } = renderLive(baseProps({ kind: 'handoff', to: 1, reason: 'counter' }));
     const screen = gate(el);
     expect(label(el)).toBe('Your response');
-    expect(pillText(el)).toBe("I'm Bob");
+    expect(pillText(el)).toBe("I'm Blake");
 
     props.curtain = { kind: 'reveal', to: 1 };
     flushSync();

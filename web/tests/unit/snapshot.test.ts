@@ -18,7 +18,7 @@ function validSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     lastSeenSeq: { 0: 0, 1: 0 } as Record<PlayerId, number>,
     viewer: 0,
     curtain: { kind: 'none' },
-    names: ['Alice', 'Bob'],
+    names: ['Alice', 'Blake'],
     seed: '42',
     dealer: 1,
     ...overrides,

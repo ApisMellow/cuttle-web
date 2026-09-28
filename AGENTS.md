@@ -208,6 +208,14 @@ that makes your list complete.
   `lib/styles/card-geometry.css` and sizes its box: token width,
   `aspect-ratio: var(--cuttle-card-aspect)`, `overflow: hidden`,
   `flex: none`. Face and Back fill 100% of it and never size themselves.
+- **Card identity lives in the upper-left corner index** (rank above suit)
+  at every size, `mini` included; `--cuttle-card-aspect` is about 1.3 and is
+  the only place the ratio is set (`docs/design.md` §4–§7, David,
+  2026-09-28).
+- **Jack stacks draw only the top Jack**, full size and offset downward;
+  extra Jacks show as a thin edge with no number and no player colour. Only
+  the top Jack is ever a target (of a tap, a 2 or a 9); buried Jacks are
+  never targetable (`docs/design.md` §6, SPEC §5.2, David, 2026-09-28).
 - **No rank or suit rendering outside `lib/theme/`.** Outside the theme,
   import only `lib/theme` (index), `lib/theme/types` and `lib/theme/default`.
   `theme-glyph-boundary.test.ts` enforces the suit-glyph ban (every
@@ -215,7 +223,7 @@ that makes your list complete.
 - Theme files use no `:global`, `zoom` or `!important`. The boundary test
   doesn't yet scan `lib/theme/**/*.{svelte,css}` or comments inside markup,
   so review greps for these by hand.
-- **Recap and staging text (provisional ruling, 2026-09-27, `docs/design.md`):**
+- **Recap and staging text (ruled 2026-09-27, confirmed by David 2026-09-28, `docs/design.md`):**
   cards named in a recap line render as theme `mini` faces. The sentence
   beside a card is runtime text, either from `lib/recap.ts` or from the engine's
   `descriptions[i]`, and it may contain suit glyphs. §5.6 rule 1 governs glyphs
@@ -227,7 +235,10 @@ that makes your list complete.
 ### Testids and tap targets (SPEC §5.1, §5.9)
 
 - Containers own testids; faces carry none. Every `[data-testid]` is
-  ≥ 44 × 44 px at 390×844, so a 32 px `mini` container gets no testid
+  ≥ 44 × 44 px at every target viewport (iPhone 15 or larger: 393×852
+  primary, 430×932, and the 393×660 toolbar-shortened view; the 390×844
+  Playwright default stands in until the iPhone design pass; PRD §10 A-5,
+  2026-09-28), so a 32 px `mini` container gets no testid
   unless it is interactive and padded to 44 px.
 - A card container or board zone (hand card, point or permanent row, deck,
   scrap) keeps its element and testid whatever the legality; dim or disable
@@ -255,6 +266,16 @@ Hard rejects. Each came up in rounds 1–2.
   review: at a synthetic ack the one-off has already resolved and at a real
   window it hasn't, so a board or `ScoreBar` at either would leak which case
   it was, under R14.)*
+- **The idle last-move line reads the last `isRecapVisible` entry in
+  `history`**, never raw `lastMove`, which can be a filtered-out `Decline`
+  *(amended 2026-09-28, W13 GameScreen review)*. The counter prompt's
+  played card and chain come from `history` as `mini` faces, never from
+  `pending`.
+- **The 7's revealed cards render only for the actor** (`viewer ===
+  active` at `PhaseSevenChoosing`). The opponent never sees them on any
+  screen, and no recap names the unchosen card.
+- **The dimmed-card popover (R9.3)** shows only the tapped card from the
+  viewer's own hand, never hidden information.
 - **Handoff DOM:** only `handoffLabel(reason)` ("Your turn" / "Your
   response"), and zero game state: no counts, scores or scrap. The raw
   `HandoffReason` never reaches text, class, attribute, `data-*`, testid or
