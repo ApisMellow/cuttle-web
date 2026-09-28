@@ -59,6 +59,14 @@
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
 
+  // W24: while the OPPONENT has glasses in play, the viewer's hand is
+  // exposed to them (R7), and the viewer's hand says so. Public information
+  // only: the opponent's permanents are on the table for both players, and
+  // any 8 among them is glasses (SPEC §3.2). Nothing here reads a hand.
+  const watchedBy = $derived(
+    view.opponent.permanents.some((card) => card.Rank === 8) ? names[opponentId] : null,
+  );
+
   // The single place `inert` is honoured (Board brief: "inert makes every
   // tap a no-op"). Every descendant receives THIS function as its ontap, so
   // none of them needs to know about `inert` at all.
@@ -109,6 +117,7 @@
     ontap={tap}
     {theme}
     {handTray}
+    {watchedBy}
   />
 </div>
 

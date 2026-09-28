@@ -23,6 +23,8 @@
     theme: CardTheme;
     /** P2 W15: rendered in the hand's slot instead of the hand (the 7's SevenRevealPanel). */
     handTray?: Snippet;
+    /** W24: the opponent's name while they have glasses in play (Board derives it from public permanents); else null. */
+    watchedBy?: string | null;
   }
 
   let {
@@ -36,6 +38,7 @@
     ontap,
     theme,
     handTray,
+    watchedBy = null,
   }: PlayerZoneProps = $props();
 </script>
 
@@ -66,6 +69,22 @@
   <!-- W22: the hand's slot, pinned to the bottom of the scrolling board
        (sticky), so a short viewport scrolls the field, never the hand. -->
   <div class="player-zone__hand">
+    {#if watchedBy !== null}
+      <!-- W24: the being-watched marker. It rides the seam between the
+           permanents row and the hand (half in the hand slot's 12px lift
+           headroom), so it costs the board no height; painted before the
+           hand, so a lifted card passes over it rather than under. -->
+      <span class="watched-marker" role="status">
+        <svg class="watched-marker__icon" viewBox="0 0 24 14" aria-hidden="true">
+          <path d="M1 5 H23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          <circle cx="6.5" cy="7.5" r="5" fill="none" stroke="currentColor" stroke-width="2.2" />
+          <circle cx="17.5" cy="7.5" r="5" fill="none" stroke="currentColor" stroke-width="2.2" />
+          <circle cx="8" cy="8.5" r="1.8" fill="currentColor" />
+          <circle cx="19" cy="8.5" r="1.8" fill="currentColor" />
+        </svg>
+        <span class="watched-marker__label">{watchedBy} can see your hand</span>
+      </span>
+    {/if}
     {#if handTray}
       {@render handTray()}
     {:else}
@@ -108,5 +127,43 @@
     padding: 12px var(--cu-gutter-board, 10px) 4px;
     background: var(--cu-ink, #241c2b);
     box-shadow: 0 -10px 10px -6px var(--cu-ink, #241c2b);
+  }
+
+  /* W24: a small ochre-edged pill, right-aligned, centred on the hand
+     slot's top edge. 22px tall: 11px over the seam into the permanents
+     row's bottom margin, 11px into the slot's 12px lift headroom, so a
+     resting card never meets it. Not a tap target, so no testid. */
+  .watched-marker {
+    position: absolute;
+    top: 0;
+    right: var(--cu-gutter-board, 10px);
+    z-index: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    height: 22px;
+    padding: 0 9px 0 7px;
+    transform: translateY(-50%);
+    border: 1px solid var(--cu-ochre, #f0b54a);
+    border-radius: 999px;
+    background: var(--cu-ink-raised, #30263a);
+    color: var(--cu-ochre, #f0b54a);
+    font-size: var(--cu-text-xs, 12px);
+    font-weight: var(--cu-weight-bold, 700);
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .watched-marker__icon {
+    display: block;
+    width: 20px;
+    height: 12px;
+    flex: none;
+  }
+
+  .watched-marker__label {
+    color: var(--cu-pearl, #eee8f1);
   }
 </style>

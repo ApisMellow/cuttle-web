@@ -7,7 +7,9 @@ import { expect, test } from '@playwright/test';
 // The worst-case board used throughout: an 8-card hand, TWO point cards
 // with Jacks on EACH side (one of them a 2-Jack stack, which draws the
 // deck-thickness edge but costs no extra height, W18), and permanents on
-// both sides, with the real StagingBar filling the action bar.
+// both sides, with the real StagingBar filling the action bar. W24: each
+// permanents row holds a glasses 8 lying sideways, and the opponent's
+// glasses put the watched marker on the viewer's hand; both must fit too.
 //
 // B1: 393x852 (iPhone 15) and 430x932 (15 Plus / Pro Max) in standalone
 //     mode, with the safe areas a real device reports there (59 top, 34
@@ -38,6 +40,11 @@ interface ColumnFit {
   barTop: number;
   barBottom: number;
   safeBottom: number;
+  /** W24: each side's sideways glasses 8, and the watched marker. */
+  glasses: Array<{ width: number; height: number; top: number; bottom: number; rowTop: number; rowBottom: number; clipped: boolean }>;
+  markerTop: number | null;
+  markerBottom: number | null;
+  markerOverlapsHandCard: boolean;
 }
 
 async function measureColumn(page: import('@playwright/test').Page, insets: { top: number; bottom: number }): Promise<ColumnFit> {
@@ -58,6 +65,28 @@ async function measureColumn(page: import('@playwright/test').Page, insets: { to
       const cards = [...hand.querySelectorAll('[data-testid^="hand-card-"]')].map((c) => c.getBoundingClientRect().top);
       const handRect = hand.getBoundingClientRect();
       const barRect = actionBar.getBoundingClientRect();
+      const glasses = [...board.querySelectorAll<HTMLElement>('[data-orientation="sideways"]')].map((el) => {
+        const r = el.getBoundingClientRect();
+        const row = el.parentElement as HTMLElement;
+        const rr = row.getBoundingClientRect();
+        return {
+          width: r.width,
+          height: r.height,
+          top: r.top,
+          bottom: r.bottom,
+          rowTop: rr.top,
+          rowBottom: rr.bottom,
+          clipped: r.left < rr.left - 0.5 || r.right > rr.right + 0.5 || r.top < rr.top - 0.5 || r.bottom > rr.bottom + 0.5,
+        };
+      });
+      const marker = board.querySelector('.watched-marker');
+      const mr = marker?.getBoundingClientRect() ?? null;
+      const markerOverlapsHandCard =
+        mr !== null &&
+        [...hand.querySelectorAll('[data-testid^="hand-card-"]')].some((c) => {
+          const cr = c.getBoundingClientRect();
+          return cr.left < mr.right && cr.right > mr.left && cr.top < mr.bottom && cr.bottom > mr.top;
+        });
       return {
         pageScrollHeight: document.documentElement.scrollHeight,
         innerHeight: window.innerHeight,
@@ -71,6 +100,10 @@ async function measureColumn(page: import('@playwright/test').Page, insets: { to
         barTop: barRect.top,
         barBottom: barRect.bottom,
         safeBottom: window.innerHeight - insets.bottom,
+        glasses,
+        markerTop: mr?.top ?? null,
+        markerBottom: mr?.bottom ?? null,
+        markerOverlapsHandCard,
       };
     },
     { harnessUrl: HARNESS_URL, insets },
@@ -95,9 +128,22 @@ test.describe('B1: the worst-case board fits iPhone 15 and Pro Max in standalone
       expect(m.handBottom).toBeLessThanOrEqual(m.barTop + 0.5);
       // design brief: 8 cards on one row.
       expect(m.handRows).toBe(1);
+      expectGlassesAndMarker(m);
     });
   }
 });
+
+/** W24: both glasses 8s lie sideways inside their rows, and the marker shows without touching a resting hand card. */
+function expectGlassesAndMarker(m: ColumnFit): void {
+  expect(m.glasses.length, 'a glasses 8 in each permanents row').toBe(2);
+  for (const g of m.glasses) {
+    expect(g.width, 'sideways: wider than tall').toBeGreaterThan(g.height * 1.2);
+    expect(g.height, 'tap target').toBeGreaterThanOrEqual(44);
+    expect(g.clipped, 'inside its row').toBe(false);
+  }
+  expect(m.markerTop, 'watched marker shown').not.toBeNull();
+  expect(m.markerOverlapsHandCard, 'marker clear of the resting hand').toBe(false);
+}
 
 test.describe('B2: Mobile Safari with toolbars (393x660): the board scrolls, the hand and action bar stay pinned', () => {
   test('393x660: page never scrolls; hand and action bar fully visible; board region scrolls', async ({ page }) => {
@@ -112,6 +158,10 @@ test.describe('B2: Mobile Safari with toolbars (393x660): the board scrolls, the
     expect(m.handBottom).toBeLessThanOrEqual(m.barTop + 0.5);
     expect(m.barBottom).toBeLessThanOrEqual(m.innerHeight + 0.5);
     expect(m.handRows).toBe(1);
+    expectGlassesAndMarker(m);
+    // The marker rides the pinned hand slot, so it stays on screen too.
+    expect(m.markerTop!).toBeGreaterThanOrEqual(0);
+    expect(m.markerBottom!).toBeLessThanOrEqual(m.handBottom);
   });
 });
 

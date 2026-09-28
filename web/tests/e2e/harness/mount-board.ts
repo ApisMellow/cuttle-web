@@ -90,6 +90,9 @@ export function mountPointRow(
 /**
  * W22: the worst-case board the fit specs measure: an 8-card hand, two point
  * cards with Jacks on each side (one a 2-Jack stack), permanents on both.
+ * W24: each permanents row holds a glasses 8, which lies sideways (wider
+ * than an upright card), and the opponent's glasses put the watched marker
+ * on the viewer's hand.
  */
 export function worstCaseView(): PlayerView {
   return playerView({
@@ -100,7 +103,7 @@ export function worstCaseView(): PlayerView {
         pointEntry({ Card: card(9, 0), Owner: 0, Controller: 0, JackStack: [card(11, 0), card(11, 1)], JackOwners: [1, 0] }),
         pointEntry({ Card: card(8, 2), Owner: 0, Controller: 0, JackStack: [card(11, 2)], JackOwners: [0] }),
       ],
-      permanents: [card(10, 1), card(13, 3)],
+      permanents: [card(13, 3), card(8, 1)],
     },
     opponent: {
       handCount: 5,
@@ -118,6 +121,8 @@ export function worstCaseView(): PlayerView {
 
 interface MountBoardOptions {
   view: PlayerView;
+  /** W24: receives every Board tap (default: ignored). */
+  ontap?: (key: string) => void;
   /** Appends a fixed-height placeholder below the board, standing in for
    * StagingBar's reserved `--cu-zone-action` box (out of scope for this
    * item) so "the action bar showing" (the brief's fit-check wording) is
@@ -135,7 +140,7 @@ export interface MountedBoard {
   actionBar: HTMLElement | null;
 }
 
-export function mountBoard({ view, withActionBarPlaceholder = true }: MountBoardOptions): MountedBoard {
+export function mountBoard({ view, ontap = () => {}, withActionBarPlaceholder = true }: MountBoardOptions): MountedBoard {
   const root = freshHost();
   root.style.display = 'flex';
   root.style.flexDirection = 'column';
@@ -147,14 +152,14 @@ export function mountBoard({ view, withActionBarPlaceholder = true }: MountBoard
     target: board,
     props: {
       view,
-      names: ['Ada', 'Bel'],
+      names: ['Alice', 'Blake'],
       highlighted: new Set<string>(),
       staged: new Set<string>(),
       dimmedHand: new Set<number>(),
       selectedHand: null,
       inert: false,
       deckEnabled: true,
-      ontap: () => {},
+      ontap,
     },
   });
   flushSync();
@@ -186,6 +191,8 @@ interface MountGameColumnOptions {
   selectedHand?: number | null;
   /** When set, the real StagingBar fills the action bar with this description. */
   stagedDescription?: string;
+  /** W24: receives every Board tap (default: ignored). */
+  ontap?: (key: string) => void;
 }
 
 export interface MountedGameColumn {
@@ -210,6 +217,7 @@ export function mountGameColumn({
   staged = new Set<string>(),
   selectedHand = null,
   stagedDescription,
+  ontap = () => {},
 }: MountGameColumnOptions): MountedGameColumn {
   const root = freshHost();
   Object.assign(root.style, {
@@ -240,7 +248,7 @@ export function mountGameColumn({
       selectedHand,
       inert: false,
       deckEnabled: true,
-      ontap: () => {},
+      ontap,
     },
   });
 
