@@ -144,7 +144,7 @@ All local, nothing pushed. Integration branch `loop/integration`:
   - a public curtain bypass;
   - an inverted theme-geometry contract;
   - surviving mutants in the `targetCard` special case.
-- **Harness notice:** subagents twice reported the harness's `Claude-Session` attribution reminder as a suspected injection. It is the genuine remote-control reminder. The user's no-session-links rule wins, so no commit carries it.
+- **Harness notice:** subagents twice reported the harness's session-attribution reminder as a suspected injection. It is a genuine remote-control reminder. The no-session-links rule wins, so no commit carries it.
 
 ## Next-round intent
 
@@ -153,7 +153,7 @@ All local, nothing pushed. Integration branch `loop/integration`:
    - The playbook becomes a section of `AGENTS.md`: running the gate (wasm, `CI=1`, e2e port), Svelte 5 component testing (`mount`, the browser condition), reading the engine from the module cache, wire-true fixtures, and the redaction rules.
    - Role agents live in `.claude/agents/`: a bridge developer, a Svelte developer, and a reviewer carrying the mutation and object-graph probe protocol.
    - No machine-local paths anywhere. Committed through the git agent.
-2. **Design pass (`frontend-design`):** a token and layout brief (palette, type, card table at 390×844, curtain screens) as a Desk doc plus `docs/design.md`. It must come before the judge-scored R5.1 and R19.4.
+2. **Design pass (`frontend-design`):** a token and layout brief (palette, type, card table at 390×844, curtain screens) as a design brief plus `docs/design.md`. It must come before the judge-scored R5.1 and R19.4.
 
 **Round 3 candidates:**
 - Board layout and curtain components (R13.2–R13.4). HandoffPanel renders only `handoffLabel`, with a DOM assertion.
