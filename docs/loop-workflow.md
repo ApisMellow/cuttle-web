@@ -71,7 +71,7 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 | **Art generators (P-ART)** | Generate reference candidates, then the full-deck fan-out conditioned on the locked references. Parallel batches; each worker gets the style lock + its asset list, nothing else. | Image-generation tooling (photographer-agent pipeline); orchestration by Claude, sized by the orchestrator |
 | **Art consistency judge (P-ART)** | Scores every generated asset against the style lock (accept/regenerate, written reasons); samples cross-asset pairs for drift. | Claude Opus (vision) — consistency verdicts are the phase's quality gate |
 
-**Model rule (David, 2026-09-27):** Claude Opus 5.5 is the orchestrator, the chief of staff. All work is done by Claude models the orchestrator dispatches: it right-sizes both the work items (neither too large nor too small) and the model for each one, spending Opus where the reasoning is hard or a verdict carries risk and using a smaller Claude model where the work is mechanical. No non-Claude coding agents.
+**Model rule (2026-09-27):** Claude Opus 5.5 is the orchestrator, the chief of staff. All work is done by Claude models the orchestrator dispatches: it right-sizes both the work items (neither too large nor too small) and the model for each one, spending Opus where the reasoning is hard or a verdict carries risk and using a smaller Claude model where the work is mechanical. No non-Claude coding agents.
 
 Dispatch briefs are curated: they name exact requirement IDs with acceptance criteria verbatim, the SPEC sections that bind them, the files in scope, and explicit out-of-scope lines. Developers never "scan the repo for what to do."
 
