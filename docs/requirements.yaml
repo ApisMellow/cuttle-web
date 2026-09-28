@@ -36,8 +36,8 @@ requirements:
       - "e2e-test: fixture `opening` — non-dealer hand size is 5 and is Active at kickoff; dealer hand size is 6 (PRD R1, SPEC §2.6 step 3)"
       - "e2e-test: HomeScreen accepts player names once per session; leaving both blank defaults to \"Player 1\"/\"Player 2\""
     verify: [e2e-test]
-    status: implemented
-    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): HomeScreen (name entry + defaults) and the GameScreen skeleton's kickoff wiring landed; Opus review accept cycle 1 (round-03.md), gate 9/9 (516 unit, 8 e2e) in its own worktree. Post-integration e2e against the fixture corpus is round-4's job (GameScreen/board integration, W13)."
+    status: verified
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): HomeScreen (name entry + defaults) and the GameScreen skeleton's kickoff wiring landed; Opus review accept cycle 1 (round-03.md), gate 9/9 (516 unit, 8 e2e) in its own worktree. Post-integration e2e against the fixture corpus is round-4's job (GameScreen/board integration, W13). | VERIFIED 2026-09-28. Bullet 1: web/tests/e2e/game-happy-path.spec.ts (the `opening` golden deal, seed \"42\", dealer P2): non-dealer Alice holds 5 cards and is the kickoff viewer; dealer Blake holds 6 at his first look. Bullet 2: web/tests/e2e/app-shell.spec.ts 'R1.3: blank names default to Player 1 / Player 2'. targeted post-integration run 2026-09-28 on loop/integration @ 786fa9b: Playwright e2e 30/30 (CI=1, no retries) and vitest tests/unit/staging-corpus.test.ts 1/1; not the full 9-row gate."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -139,7 +139,7 @@ requirements:
       - "e2e-test: \"New game\" from the menu during an in-progress game shows a confirm dialog naming the in-progress game; cancelling leaves the game untouched; confirming clears the snapshot (PRD R4, SPEC §5.7 last bullet)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; the abandon-confirm dialog was built and folded in to also cover the error screen's 'New game' path (round-03.md), proving the confirm mechanism is wired and tested. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13)."
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; the abandon-confirm dialog was built and folded in to also cover the error screen's 'New game' path (round-03.md), proving the confirm mechanism is wired and tested. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13). | e2e 2026-09-28: web/tests/e2e/app-shell.spec.ts 'R4.3' passes through HomeScreen after a reload (Cancel keeps the game, Confirm clears it, the dialog names 'Alice vs Blake'). The acceptance's menu path during a live game has no e2e yet, so status stays implemented."
     fails: 0
 
   - id: R4.4
@@ -184,8 +184,8 @@ requirements:
     acceptance:
       - "e2e-test: tapping ScrapPile at any point across fixtures `opening` and `counter-chain` opens a browsable list of every card currently in state.scrap, matching the envelope's scrap array exactly, for whichever player is the current viewer (PRD R6, SPEC §3.2 'scrap: always, in full, to both players')"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W15 ScrapBrowser, merged). Partial e2e 2026-09-28: web/tests/e2e/pickers.spec.ts opens the scrap as Blake in browse mode (face count equals the scrap count) and uses pick mode for a 3. Open: either viewer, across fixtures `opening` and `counter-chain`, with the list matching the envelope's scrap exactly."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -263,9 +263,10 @@ requirements:
     acceptance:
       - "e2e-test: R11 invariant walk (SPEC §7.4) run across fixtures `opening`, `jack-steal-queen`, `scuttle-suit-tiebreak` — for each hand-card tap, highlighted targets equal exactly the Target/JackTarget set implied by legalMoves for that slotKey"
       - "e2e-test: fixture `jack-steal-queen` — a Jack targeting a Queen-protected point shows zero highlighted targets, matching the engine's omission (apply.go:88-97) with no UI-side Queen rule (SPEC §6.3)"
+      - "e2e-test: with a 2- or more-Jack stack on a point card, a 2 or a 9 in hand highlights only the top Jack's target; no buried Jack is ever highlighted, and a tap on the stack never stages a buried Jack (David, 2026-09-28; docs/design.md §6, SPEC §5.2, §6.3)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W13 GameScreen integration derives highlights from legalMoves through staging). Partial e2e 2026-09-28: web/tests/e2e/game-happy-path.spec.ts and pickers.spec.ts tap engine-highlighted zones (pickers asserts zone-points data-state 'highlighted' after the 7 pick). Open: the R11 invariant walk over `opening`, `jack-steal-queen` and `scuttle-suit-tiebreak`, the Queen zero-highlight case, and the buried-Jack bullet."
     fails: 0
 
   - id: R9.2
@@ -275,7 +276,7 @@ requirements:
       - "e2e-test: for a sampled legal move per fixture, tapping the hand card then the highlighted target transitions staging to 'staged' with the correct engine-authored description shown in StagingBar; only the Confirm action calls engine.apply (SPEC §6.1)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): staging.svelte.ts + StagingBar built and accepted after 1 revise cycle (a real choose() bounds-check bug found and fixed), 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): staging.svelte.ts + StagingBar built and accepted after 1 revise cycle (a real choose() bounds-check bug found and fixed), 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13). | e2e 2026-09-28: web/tests/e2e/game-happy-path.spec.ts and pickers.spec.ts stage points, one-off, draw, 7-pick, discard-pair and 3-pick moves by taps, with the engine description in StagingBar and seq unchanged until Confirm. Open: a sampled move per fixture across the §7.3 corpus."
     fails: 0
 
   - id: R9.3
@@ -285,8 +286,9 @@ requirements:
       - "e2e-test: a hand card with no candidateMoveIndices renders dimmed and opens a card-detail popover on tap without entering the 'selected' staging state (PRD R9, SPEC §6.1)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13). | IN PROGRESS 2026-09-28 (status corrected from implemented): at 786fa9b the staging store records the tap (`inspect` in web/src/lib/stores/staging.svelte.ts) but no popover component renders it. The popover UI is round-4 item W21. | IMPLEMENTED 2026-09-28 (W21, merged loop/integration @ 6dcf7df): CardDetailPopover renders the viewer's own tapped card with a fixed generic reason; tests card-detail-popover.svelte.test.ts and game-screen-popover.svelte.test.ts, including an opponent-hand privacy check."
     fails: 0
+    notes: "Privacy bound (restated 2026-09-28, no acceptance change): the popover shows only the tapped card from the viewer's own hand, never hidden information (SPEC §6.1)."
 
   - id: R9.4
     prd: R9
@@ -331,7 +333,7 @@ requirements:
       - "e2e-test: for every fixture and every position, window.__cuttleTestHook.affordances()'s flattened index set covers every index in envelope.legalMoves; a sampled index per position is actually reached by its tap sequence and stages correctly (SPEC §6.5, §7.4)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the reviewer's crosstalk probe found zero completeness violations over 5,113 real-engine positions and 77,244 random stagings (round-03.md), 9/9 gate, 539 unit tests. Post-integration e2e via `window.__cuttleTestHook.affordances()` across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the reviewer's crosstalk probe found zero completeness violations over 5,113 real-engine positions and 77,244 random stagings (round-03.md), 9/9 gate, 539 unit tests. Post-integration e2e via `window.__cuttleTestHook.affordances()` across the fixture corpus deferred to round-4 (GameScreen/board integration, W13). | Corpus 2026-09-28: web/tests/unit/staging-corpus.test.ts drives a fresh StagingStore by taps for every legal index the store owns, at every position of seeds 1-240, and each sequence stages exactly that index (>10,000 checks; all seven store-owned kinds). That proves completeness at the store level. The acceptance's e2e over window.__cuttleTestHook.affordances() is still open, so status stays implemented."
     fails: 0
 
   - id: R11.2
@@ -377,7 +379,7 @@ requirements:
       - "e2e-test: across every fixture, every exploratory single tap on a hand card, target, or zone leaves envelope.seq unchanged; only the explicit Confirm action increments it (PRD R12, SPEC §6.1, §7.4)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13). | e2e 2026-09-28: web/tests/e2e/game-happy-path.spec.ts and pickers.spec.ts assert seq is unchanged after hand, zone and pick taps and moves only on Confirm, in two scripted games. Open: every fixture."
     fails: 0
 
   - id: R12.2
@@ -410,7 +412,7 @@ requirements:
       - "e2e-test: at every handoff across every fixture, the board is absent from the DOM (not merely CSS-hidden) during HandoffPanel, and the handoff screen's serialized content contains no score, count, scrap, or card data that varies between turns (PRD R13, SPEC §4.5)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): reason-invariance and once-only-latch mutants killed (round-03.md), 9/9 gate, 594 unit tests, ~25 mutants killed, accepted after 2 revise cycles. Post-integration e2e against every fixture handoff deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): reason-invariance and once-only-latch mutants killed (round-03.md), 9/9 gate, 594 unit tests, ~25 mutants killed, accepted after 2 revise cycles. Post-integration e2e against every fixture handoff deferred to round-4 (GameScreen/board integration, W13). | e2e 2026-09-28: web/tests/e2e/game-happy-path.spec.ts and pickers.spec.ts assert the board is absent from the DOM at every handoff and reveal in two scripted games. Open: every fixture, and the serialized-content check."
     fails: 0
 
   - id: R13.3
@@ -443,8 +445,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `counter-chain` — when the opponent holds an unfrozen 2, CounterPrompt shows the played one-off, its target, and one button per legal 2 plus 'Let it resolve' (PRD R14, SPEC §4.3 Presentation table)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W13: CounterPrompt serves both the real window and the synthetic ack, merged at 7e6f694). No e2e reaches a real window yet; game-happy-path.spec.ts covers only the synthetic path. Open: fixture `counter-chain`."
     fails: 0
 
   - id: R14.2
@@ -454,8 +456,8 @@ requirements:
       - "e2e-test: run fixtures `counter-chain` and `no-counter-ack`; assert the acting player's screen sequence — screen count, DOM structure, data-testids, and presence/absence of any timing-visible element — is identical between the two runs (SPEC §4.3 Presentation table, §7.4 'R14 indistinguishability')"
       - "unit-test: needsSyntheticAck() fires for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff) whenever post.phase !== PhaseAwaitingCounter, with no per-rank exclusion (SPEC §4.3 detection code)"
     verify: [e2e-test, unit-test]
-    status: todo
-    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability."
+    status: implemented
+    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`."
     fails: 0
 
   - id: R14.3
@@ -465,8 +467,8 @@ requirements:
       - "unit-test: curtain resolution respects SPEC §4.4's PhaseAwaitingCounter parity rule — even chain length resolves the one-off's own effect, odd length cancels with no effect — issuing a curtain per counter link"
       - "e2e-test: fixture `counter-chain` extended to a 2-counters-2 exchange — each link curtains to the next decider in turn, matching pending.counterChain growth (SPEC §4.3)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: "PARTIAL round-01 (W1): unit bullet done — curtain.test.ts 'R14.3: issues one counter curtain per counter link', even-chain (0, 2) and odd-chain cancel cases; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e 2-counters-2 scenario."
+    status: implemented
+    evidence: "PARTIAL round-01 (W1): unit bullet done — curtain.test.ts 'R14.3: issues one counter curtain per counter link', even-chain (0, 2) and odd-chain cancel cases; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e 2-counters-2 scenario. | IMPLEMENTED round-04 (W13: counter chain rendered from history as mini faces). Open: the e2e 2-counters-2 scenario."
     fails: 0
 
   - id: R14.4
@@ -475,8 +477,8 @@ requirements:
     acceptance:
       - "e2e-test: a 7 played with no opponent counter curtains to the opponent for a synthetic ack, then curtains back to the original actor for the seven-reveal panel — two handoffs for one card (SPEC §4.3 'The 7 costs a round trip', §8 OQ-6)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W13/W15). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts walks the 7's round trip (Alice -> Blake 'Your response' -> Let it resolve -> Alice 'Your turn' -> SevenRevealPanel) but doesn't pin that Blake's screen was the synthetic ack rather than a real window. Open: an e2e at a position where the opponent holds no 2."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -488,8 +490,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `four-discard` — a 4 with no opponent counter curtains to the opponent, whose DiscardPicker renders on their own screen (PRD R15, SPEC §4.4 PhaseAwaitingDiscard)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-09-28 by web/tests/e2e/pickers.spec.ts (seed \"17\", dealer P1): Blake's 4 goes uncountered, the phone curtains to Alice ('Your response'), and DiscardPicker renders on her own screen (viewer 0) offering every pair of her hand. The scripted seed-17 line stands in for the `four-discard` scenario file, which isn't written yet. targeted post-integration run 2026-09-28 on loop/integration @ 786fa9b: Playwright e2e 30/30 (CI=1, no retries) and vitest tests/unit/staging-corpus.test.ts 1/1; not the full 9-row gate."
     fails: 0
 
   - id: R15.2
@@ -508,8 +510,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `four-discard` — after DiscardPair applies, control returns to the discarder's live view directly (post.active===pre.active, no curtain, per SPEC §4.4's double-flip note) with a recap line \"NAME discarded 2 cards\" naming no card identities to the opponent (SPEC §4.6 DiscardPair row)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W15 DiscardPicker). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts: after the discard Alice plays on at once (curtain 'none', viewer 0, hand two smaller). Open: the opponent's recap line 'NAME discarded 2 cards' naming no identities, asserted in e2e."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -541,8 +543,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `seven-reveal` — both the point-play and one-off-through-7 sub-move branches render SevenRevealPanel, then replay the sub-move's normal affordance (tap zone/target, stage, confirm) on the real board (SPEC §6.3 SevenPick row)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-04 (W15 SevenRevealPanel). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts covers the point-play branch (tap the revealed 8, Points zone, stage, confirm) and asserts the revealed cards never reach Blake's screens. Open: the one-off-through-7 branch."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -616,12 +618,12 @@ requirements:
   # ---------------------------------------------------------------------
   - id: R19.1
     prd: R19
-    title: "No horizontal scroll at 360-430px"
+    title: "No horizontal scroll at the iPhone target widths"
     acceptance:
-      - "e2e-test: document.documentElement.scrollWidth <= clientWidth asserted on every screen and every CurtainState kind, at 360px and 430px CSS width (SPEC §5.9, §7.4)"
+      - "e2e-test: document.documentElement.scrollWidth <= clientWidth asserted on every screen and every CurtainState kind, at 393px and 430px CSS width (SPEC §5.9, §7.4; retargeted 2026-09-28 by David, PRD §10 A-5 — 360px dropped)"
     verify: [e2e-test]
     status: todo
-    evidence: ""
+    evidence: "Partial e2e 2026-09-28: web/tests/e2e/app-shell.spec.ts checks HomeScreen and GameScreen at 360/390/430 wide; game-happy-path.spec.ts and pickers.spec.ts check each curtain and picker screen at 390. Open: 393 and 430 on every screen and curtain kind."
     fails: 0
 
   - id: R19.2
@@ -655,6 +657,19 @@ requirements:
     evidence: ""
     fails: 0
 
+  - id: R19.5
+    prd: R19
+    title: "iPhone targets: safe areas and the short Safari viewport"
+    acceptance:
+      - "e2e-test: at 393x852 and 430x932 every board zone sits inside the viewport and clear of the safe-area insets, with no vertical scroll (PRD §10 A-5, docs/design.md §10 rule 6)"
+      - "e2e-test: at 393x660 (Mobile Safari with toolbars) the hand and the action bar are fully inside the viewport; only the board region scrolls, and the document never scrolls as a whole (PRD §10 A-5)"
+      - "unit-test: index.html's viewport meta carries viewport-fit=cover, and the board column's top and bottom padding use env(safe-area-inset-top) / env(safe-area-inset-bottom) (docs/design.md §10 rule 11)"
+    verify: [e2e-test, unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Added 2026-09-28 from David's target-device decision (PRD §10 A-5): every player's phone is an iPhone 15 or larger. The 360x740 compact target is dropped. Token values are tuned in the iPhone design pass (round-4 item W22, in progress)."
+
   # ---------------------------------------------------------------------
   # R20 — Game event feedback
   # ---------------------------------------------------------------------
@@ -662,7 +677,7 @@ requirements:
     prd: R20
     title: "Last move description shown after each action"
     acceptance:
-      - "e2e-test: after each applied move, the acting player's own screen displays lastMove.description verbatim from the envelope (PRD R20, SPEC §2.7 AppliedMove.description)"
+      - "e2e-test: after each applied move, the acting player's own screen displays the description of the last isRecapVisible entry in history, never raw lastMove, which can be a filtered-out Decline (PRD R20, SPEC §2.7 AppliedMove.description, §4.6; amended 2026-09-28 per the W13 GameScreen review)"
     verify: [e2e-test]
     status: todo
     evidence: ""
@@ -773,7 +788,7 @@ requirements:
     title: "Theme seam contract wiring"
     acceptance:
       - "unit-test: CardTheme registry entries conform to the Face/Back component contract (CardFaceProps: card, size, state); no component outside lib/theme/ renders a rank or suit glyph directly (SPEC §5.6 rule 1)"
-      - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the 2.5:3.5 aspect ratio and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
+      - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the --cuttle-card-aspect ratio token (about 1.3; amended 2026-09-28 by David, was 2.5:3.5) and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
     verify: [unit-test, e2e-test]
     status: todo
     evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows)."
