@@ -149,7 +149,7 @@ function resultSnapshot(): Snapshot {
     lastSeenSeq: { 0: 1, 1: 0 },
     viewer: 0,
     curtain: { kind: 'result' },
-    names: ['Alice', 'Bob'],
+    names: ['Alice', 'Blake'],
     seed: '42',
     dealer: 1,
   };
@@ -157,7 +157,7 @@ function resultSnapshot(): Snapshot {
 
 describe('App tally wiring (R2.3, R3.1): only a live transition into result records', () => {
   it('a win records once; an unrelated re-render does not re-record; a second live result records again', async () => {
-    session.setNames('Alice', 'Bob');
+    session.setNames('Alice', 'Blake');
     const el = await renderApp();
     await startLiveGame();
     expect(byTestId(el, 'game-screen')).not.toBeNull();
@@ -181,7 +181,7 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     expect(game.curtain.kind).toBe('none');
     await liveGameOver({ winner: 0, stalemate: false });
     expect(session.tally).toEqual({ 0: 2, 1: 0 });
-    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 2 – Bob 0');
+    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 2 – Blake 0');
   });
 
   it('a stalemate leaves the tally unchanged (R3)', async () => {
@@ -212,7 +212,7 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
   });
 
   it('the result screen holds no card identity from a view that contains both hands (N3)', async () => {
-    session.setNames('Alice', 'Bob');
+    session.setNames('Alice', 'Blake');
     const el = await renderApp();
     await startLiveGame();
     await liveGameOver({ winner: 0, stalemate: false });
@@ -228,8 +228,8 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     expect(shell.querySelectorAll('svg, img, canvas').length).toBe(0);
     // Every text node on the screen, verbatim: headline, tally, button. Nothing else.
     const texts = [...shell.querySelectorAll('h1, p, button')].map((n) => n.textContent?.trim());
-    expect(texts).toEqual(['Alice wins!', 'Alice 1 – Bob 0', 'Rematch']);
-    expect(shell.textContent?.replace(/\s+/g, '')).toBe('Alicewins!Alice1–Bob0Rematch');
+    expect(texts).toEqual(['Alice wins!', 'Alice 1 – Blake 0', 'Rematch']);
+    expect(shell.textContent?.replace(/\s+/g, '')).toBe('Alicewins!Alice1–Blake0Rematch');
   });
 });
 
@@ -248,7 +248,7 @@ describe('App restore into result (B2, R4.2)', () => {
     expect(game.curtain.kind).toBe('result');
     expect(byTestId(el, 'result-screen')).not.toBeNull();
     expect(session.tally).toEqual({ 0: 0, 1: 0 });
-    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 0 – Bob 0');
+    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 0 – Blake 0');
   });
 
   it('a store-level restore into result on a fresh session leaves the tally at 0-0', async () => {
@@ -322,7 +322,7 @@ describe('App error boundary (SPEC §2.9)', () => {
   });
 
   it('"New game" goes through the R4.3 abandon confirm when an in-progress snapshot exists (N5)', async () => {
-    session.setNames('Alice', 'Bob');
+    session.setNames('Alice', 'Blake');
     const el = await renderApp();
     await startLiveGame();
     const saved = localStorage.getItem(SNAPSHOT_KEY);
@@ -334,7 +334,7 @@ describe('App error boundary (SPEC §2.9)', () => {
 
     click(el, 'error-new-game');
     expect(byTestId(el, 'confirm-abandon')).not.toBeNull();
-    expect(byTestId(el, 'error-screen')?.textContent).toContain('Abandon Alice vs Bob?');
+    expect(byTestId(el, 'error-screen')?.textContent).toContain('Abandon Alice vs Blake?');
     expect(bridge.newGame).not.toHaveBeenCalled();
 
     click(el, 'cancel-abandon');

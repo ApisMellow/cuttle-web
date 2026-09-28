@@ -69,7 +69,7 @@ beforeEach(() => {
   game.error = null;
   game.screen = 'home';
   game.notice = null;
-  session.setNames('Alice', 'Bob');
+  session.setNames('Alice', 'Blake');
   session.lastDealer = null;
   settings.revealPreference = 'two-step';
 });

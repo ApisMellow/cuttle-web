@@ -79,7 +79,7 @@ const VALID_SNAPSHOT: Snapshot = {
   lastSeenSeq: { 0: 0, 1: 0 },
   viewer: 0,
   curtain: { kind: 'none' },
-  names: ['Alice', 'Bob'],
+  names: ['Alice', 'Blake'],
   seed: '42',
   dealer: 1,
 };
@@ -121,7 +121,7 @@ describe('HomeScreen abandon-confirm (R4.3)', () => {
     const cancelButton = el.querySelector('[data-testid="cancel-abandon"]');
     expect(confirmButton).not.toBeNull();
     expect(cancelButton).not.toBeNull();
-    expect(el.textContent).toContain('Abandon Alice vs Bob?');
+    expect(el.textContent).toContain('Abandon Alice vs Blake?');
   });
 
   it('Cancel dismisses the confirm dialog and leaves the snapshot untouched', () => {

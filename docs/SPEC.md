@@ -1140,7 +1140,7 @@ id: counter-chain
 description: "P1 plays a 9, P2 counters, P1 counters back, resolves."
 seed: "42"                # decimal uint64 as a string (§2.6)
 dealer: 1                 # P2 deals; P1 is non-dealer and goes first
-names: ["Alice", "Bob"]
+names: ["Alice", "Blake"]
 moves:
   - i: 0                  # index into legalMoves at this position
     expect: "draw a card" # description assertion — see the guard rail below

@@ -61,7 +61,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R1 — New game.** From the home screen, start a new game: shuffled 52-card deck, dealer alternates between games (first game: random), non-dealer gets 5 cards and goes first, dealer gets 6. Player names entered once per session (default "Player 1"/"Player 2").
 - **R2 — Win and stalemate.** Win detection, threshold display (21, lowered by Kings: 14/10/7/5), and three-consecutive-passes stalemate are all engine-driven. A win/stalemate screen names the result.
-- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Bob 1"). The tally does not survive a page reload.
+- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Blake 1"). The tally does not survive a page reload.
 - **R4 — Resume in-progress game.** Reloading the page mid-game restores the current game (state snapshot in `localStorage`). A "New game" action from the menu abandons it after a confirm.
 
 ### 6.2 Board and information display
@@ -90,7 +90,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 - **R17 — Rules screen.** A formatted, scrollable rules reference (content from the engine repo's `RULES.md`), reachable from the menu at any time without disturbing the game.
 - **R18 — PWA / offline.** Installable (manifest + icons); after first load the app — including the WASM engine — works fully offline via service-worker precache. WASM asset budget: ≤ 1.5 MB compressed.
 - **R19 — Mobile-first quality bar.** Primary target: portrait phones, 360–430 px CSS width. All tap targets ≥ 44 px. No horizontal scroll. Card animations (draw, play, scuttle-to-scrap, Jack steal) run as CSS-transform transitions; the game remains fully playable if animations are disabled (`prefers-reduced-motion` respected).
-- **R20 — Game event feedback.** The last move's description (`Move.Describe`) is displayed after each action (e.g., "Bob scuttled 7♥ with 9♠"), so the incoming player can see what happened while they were curtained — shown on their post-curtain screen as a short "while you were away" recap of moves since their last look.
+- **R20 — Game event feedback.** The last move's description (`Move.Describe`) is displayed after each action (e.g., "Blake scuttled 7♥ with 9♠"), so the incoming player can see what happened while they were curtained — shown on their post-curtain screen as a short "while you were away" recap of moves since their last look.
 
 ## 7. V2 design-ahead (not built in v1, but v1 leaves the slots open)
 

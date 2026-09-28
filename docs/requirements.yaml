@@ -92,7 +92,7 @@ requirements:
     prd: R3
     title: "Session win tally displays and increments"
     acceptance:
-      - "e2e-test: after fixture `win-with-kings` completes, ResultScreen shows a tally line (e.g. \"Alice 1 – Bob 0\"); a scripted second win for the same player increments it to 2"
+      - "e2e-test: after fixture `win-with-kings` completes, ResultScreen shows a tally line (e.g. \"Alice 1 – Blake 0\"); a scripted second win for the same player increments it to 2"
     verify: [e2e-test]
     status: implemented
     evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; mutants A (no once-guard), B (stalemates tallied) and C (no recordResult) were surfaced by a probe that mounted the real App, then killed (round-03.md). Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13)."

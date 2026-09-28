@@ -2,7 +2,7 @@ id: opening
 description: "Golden opening deal used by the P1b walking skeleton."
 seed: "42"
 dealer: 1
-names: ["Alice", "Bob"]
+names: ["Alice", "Blake"]
 moves:
   - i: 0
     expect: "draw a card"
