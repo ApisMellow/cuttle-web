@@ -13,7 +13,15 @@ import type { CardTheme } from './types';
 import VectorCardBack from './VectorCardBack.svelte';
 import VectorCardFace from './VectorCardFace.svelte';
 
-export type { CardTheme, CardFaceProps, CardBackProps, TableProps, CardSize, CardVisualState } from './types';
+export type {
+  CardTheme,
+  CardFaceProps,
+  CardFaceVariant,
+  CardBackProps,
+  TableProps,
+  CardSize,
+  CardVisualState,
+} from './types';
 
 /**
  * The single constant naming the ship-time default (SPEC §5.6 rule 5).

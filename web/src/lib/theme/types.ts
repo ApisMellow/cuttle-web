@@ -55,12 +55,22 @@ export type CardSize = 'hand' | 'field' | 'mini';
 /** Visual states a theme must honour (SPEC §5.6 rule 3). */
 export type CardVisualState = 'normal' | 'dimmed' | 'highlighted' | 'staged' | 'frozen';
 
+/**
+ * Which face to paint (W24). `standard` is the ordinary rank-and-suit card.
+ * `glasses` is an 8 in play as a permanent (R7): no rank, a pair of goggles
+ * on a suit-tinted ground, painted for a LANDSCAPE box (the container lays
+ * it sideways). A theme with no glasses art falls back to its standard face.
+ */
+export type CardFaceVariant = 'standard' | 'glasses';
+
 export interface CardFaceProps {
   card: Card;
   /** Rendering hint only; the container owns the box (rule 2). */
   size: CardSize;
   /** Defaults to 'normal'. Reflect it on the root as `data-state`. */
   state?: CardVisualState;
+  /** Defaults to 'standard'. Reflect it on the root as `data-variant`. */
+  variant?: CardFaceVariant;
 }
 
 export interface CardBackProps {

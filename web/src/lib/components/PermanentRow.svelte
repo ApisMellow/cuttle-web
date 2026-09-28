@@ -34,6 +34,15 @@
     return `perm:${rowId}:${index}`;
   }
 
+  // W24: the permanents row holds only Queens, Kings and glasses-8s (SPEC
+  // §3.2, `engine/state.go`), so every 8 here is glasses. It lies on its
+  // side (the traditional Cuttle cue: a sideways 8 is a pair of glasses)
+  // and draws the theme's glasses face. Same element, same testid, same
+  // `perm:` key: only the box's orientation changes.
+  function isGlasses(card: Card): boolean {
+    return card.Rank === 8;
+  }
+
   function stateFor(key: string): CardVisualState {
     if (staged.has(key)) return 'staged';
     if (highlighted.has(key)) return 'highlighted';
@@ -45,13 +54,15 @@
   <div class="permanent-row__cards">
     {#each cards as card, index (index)}
       {@const key = keyFor(index)}
+      {@const sideways = isGlasses(card)}
       <button
         type="button"
-        class="permanent-row__card"
+        class={['permanent-row__card', { 'permanent-row__card--sideways': sideways }]}
         data-testid={`perm-${rowId}-${index}`}
+        data-orientation={sideways ? 'sideways' : 'upright'}
         onclick={() => ontap(key)}
       >
-        <theme.Face {card} size="field" state={stateFor(key)} />
+        <theme.Face {card} size="field" state={stateFor(key)} variant={sideways ? 'glasses' : 'standard'} />
       </button>
     {/each}
     {#if cards.length === 0}
@@ -123,6 +134,16 @@
     cursor: pointer;
     /* Opt back in under a DropZones content layer (pointer events off). */
     pointer-events: auto;
+  }
+
+  /* W24: a glasses 8 lies sideways. The box is the card turned 90°:
+     one card-height wide and one card-width tall, so it sits inside the
+     row's reserved one-card height with room to spare and takes a little
+     more of the row's width. No transform: the box itself is landscape, so
+     layout, clipping and hit-testing all see the same rectangle. */
+  .permanent-row__card--sideways {
+    width: calc(var(--cu-row-card-width, var(--cuttle-card-width-field)) * var(--cuttle-card-aspect-ratio, 1.3));
+    aspect-ratio: var(--cuttle-card-aspect-ratio, 1.3);
   }
 
   .permanent-row__empty {
