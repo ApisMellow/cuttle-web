@@ -67,8 +67,11 @@
     justify-content: center;
     gap: var(--cu-space-4, 16px);
     box-sizing: border-box;
-    min-height: var(--cu-zone-hand, 104px);
-    padding: var(--cu-space-2, 8px) var(--cu-space-3, 12px);
+    /* W22: inside PlayerZone's pinned hand slot. Revealed cards don't
+       lift, so the panel reaches up into most of the slot's 12px lift room
+       and the slot keeps the hand's height (no reflow when a 7 resolves). */
+    margin-top: -8px;
+    padding: var(--cu-space-1, 4px) var(--cu-space-3, 12px);
     background: var(--cu-ink-raised, #30263a);
     border-radius: var(--cu-radius-well, 10px);
   }
@@ -110,7 +113,8 @@
     border: none;
     background: none;
     overflow: hidden;
-    border-radius: 8%;
+    border-radius: 7%;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
     cursor: pointer;
   }
 </style>

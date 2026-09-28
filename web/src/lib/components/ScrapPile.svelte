@@ -40,11 +40,12 @@
 
 <style>
   .scrap-pile {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0;
     min-width: 44px;
+    padding-bottom: 6px;
   }
 
   .scrap-pile__well {
@@ -59,7 +60,8 @@
     background: none;
     cursor: pointer;
     overflow: hidden;
-    border-radius: 8%;
+    border-radius: 7%;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
   }
 
   .scrap-pile__empty-card {
@@ -67,14 +69,27 @@
     width: 100%;
     height: 100%;
     border: 1px dashed var(--cu-ink-line, #4a3d57);
-    border-radius: 6%;
+    border-radius: 7%;
     box-sizing: border-box;
   }
 
+  /* W22: same bottom-edge tab as the deck count. */
   .scrap-pile__count {
-    font-size: var(--cu-text-sm, 14px);
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 16px;
+    padding: 1px 6px;
+    border: 1px solid var(--cu-ink-line, #4a3d57);
+    border-radius: var(--cu-radius-control, 999px);
+    background: var(--cu-ink, #241c2b);
+    font-size: var(--cu-text-xs, 12px);
+    font-weight: var(--cu-weight-bold, 700);
     line-height: 14px;
-    color: var(--cu-muted, #b4a8be);
+    color: var(--cu-pearl, #eee8f1);
     font-variant-numeric: tabular-nums;
+    text-align: center;
+    pointer-events: none;
   }
 </style>

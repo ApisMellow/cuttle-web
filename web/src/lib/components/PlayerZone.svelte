@@ -63,27 +63,50 @@
     {ontap}
     {theme}
   />
-  {#if handTray}
-    {@render handTray()}
-  {:else}
-    <PlayerHand
-      cards={you.hand}
-      frozenHandIndices={you.frozenHandIndices}
-      selectedHandIndex={selectedHand}
-      {highlighted}
-      {staged}
-      dimmedHandIndices={dimmedHand}
-      onselect={(handIndex) => ontap(`hand:${handIndex}`)}
-      {theme}
-    />
-  {/if}
+  <!-- W22: the hand's slot, pinned to the bottom of the scrolling board
+       (sticky), so a short viewport scrolls the field, never the hand. -->
+  <div class="player-zone__hand">
+    {#if handTray}
+      {@render handTray()}
+    {:else}
+      <PlayerHand
+        cards={you.hand}
+        frozenHandIndices={you.frozenHandIndices}
+        selectedHandIndex={selectedHand}
+        {highlighted}
+        {staged}
+        dimmedHandIndices={dimmedHand}
+        onselect={(handIndex) => ontap(`hand:${handIndex}`)}
+        {theme}
+      />
+    {/if}
+  </div>
 </div>
 
 <style>
   .player-zone {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding-inline: var(--cu-gutter-board, 12px);
+    gap: var(--cu-gap-zone, 4px);
+    padding-inline: var(--cu-gutter-board, 10px);
+  }
+
+  /* Sticky against the board's scrollport. Opaque ink so the field slides
+     under it, with a short fade on the top edge so the cut reads as the
+     table continuing, not a hard bar. The 12px top padding is the room a
+     lifted or staged card rises into. */
+  .player-zone__hand {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: var(--cu-zone-hand, 96px);
+    box-sizing: border-box;
+    margin-inline: calc(-1 * var(--cu-gutter-board, 10px));
+    padding: 12px var(--cu-gutter-board, 10px) 4px;
+    background: var(--cu-ink, #241c2b);
+    box-shadow: 0 -10px 10px -6px var(--cu-ink, #241c2b);
   }
 </style>

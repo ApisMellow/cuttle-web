@@ -15,13 +15,28 @@
 <span class="cuttle-card-back" data-size={size}></span>
 
 <style>
+  /* W22: the back borrows the curtain's chromatophore dots (design.md §1)
+     on --cu-back-a, framed by a thin iridophore line. No identity, no
+     geometry: it fills its container's box (rule 2). */
   .cuttle-card-back {
     box-sizing: border-box;
     display: block;
     width: 100%;
     height: 100%;
-    border: 1px solid #333;
-    border-radius: 6%;
-    background: repeating-linear-gradient(45deg, #2b4c7e, #2b4c7e 4px, #1d3457 4px, #1d3457 8px);
+    border: 1px solid rgb(0 0 0 / 0.35);
+    border-radius: 7%;
+    background:
+      radial-gradient(circle, rgb(92 207 196 / 0.34) 0 1.1px, transparent 1.5px) 0 0 / 6px 6px,
+      radial-gradient(circle, rgb(240 181 74 / 0.22) 0 1px, transparent 1.4px) 3px 3px / 6px 6px,
+      var(--cu-back-a, #3b2f4a);
+    box-shadow:
+      inset 0 0 0 3px var(--cu-back-a, #3b2f4a),
+      inset 0 0 0 4px rgb(92 207 196 / 0.45);
+  }
+
+  .cuttle-card-back[data-size='mini'] {
+    box-shadow:
+      inset 0 0 0 2px var(--cu-back-a, #3b2f4a),
+      inset 0 0 0 3px rgb(92 207 196 / 0.45);
   }
 </style>

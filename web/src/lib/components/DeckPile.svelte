@@ -49,13 +49,13 @@
 
 <style>
   .deck-pile {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0;
     min-width: 44px;
     min-height: 44px;
-    padding: 0;
+    padding: 0 0 6px;
     border: none;
     background: none;
     cursor: pointer;
@@ -66,8 +66,14 @@
     flex: none;
     width: var(--cuttle-card-width-hand);
     aspect-ratio: var(--cuttle-card-aspect);
-    border-radius: 8%;
+    border-radius: 7%;
     overflow: hidden;
+    /* Two offset edges read as a pile, not a single card. */
+    box-shadow:
+      2px 2px 0 -1px var(--cu-back-a, #3b2f4a),
+      2px 2px 0 0 rgb(0 0 0 / 0.35),
+      4px 4px 0 -1px var(--cu-back-a, #3b2f4a),
+      4px 4px 0 0 rgb(0 0 0 / 0.35);
   }
 
   .deck-pile[data-state='highlighted'] .deck-pile__card {
@@ -84,10 +90,23 @@
     opacity: 0.55;
   }
 
+  /* W22: the count is a tab on the pile's bottom edge (design.md §6 keeps
+     it centred beneath the card; it now overlaps that edge by half). */
   .deck-pile__count {
-    font-size: var(--cu-text-sm, 14px);
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 16px;
+    padding: 1px 6px;
+    border: 1px solid var(--cu-ink-line, #4a3d57);
+    border-radius: var(--cu-radius-control, 999px);
+    background: var(--cu-ink, #241c2b);
+    font-size: var(--cu-text-xs, 12px);
+    font-weight: var(--cu-weight-bold, 700);
     line-height: 14px;
-    color: var(--cu-muted, #b4a8be);
+    color: var(--cu-pearl, #eee8f1);
     font-variant-numeric: tabular-nums;
+    text-align: center;
   }
 </style>

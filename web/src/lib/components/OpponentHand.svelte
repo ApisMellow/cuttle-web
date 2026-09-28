@@ -51,8 +51,9 @@
   .opponent-hand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 44px;
+    gap: var(--cu-space-2, 8px);
+    min-height: var(--cu-zone-opp-hand, 40px);
+    padding-inline: 4px;
   }
 
   .opponent-hand__cards {
@@ -63,13 +64,22 @@
     display: block;
     flex: none;
     overflow: hidden;
-    border-radius: 6%;
+    border-radius: 7%;
     width: var(--cuttle-card-width-mini);
     aspect-ratio: var(--cuttle-card-aspect);
-    margin-left: -14px;
+    margin-left: -18px;
+    box-shadow: -1px 0 2px rgb(0 0 0 / 35%);
   }
 
   .opponent-hand__card:first-child {
+    margin-left: 0;
+  }
+
+  .opponent-hand[data-revealed='true'] .opponent-hand__card {
+    margin-left: -12px;
+  }
+
+  .opponent-hand[data-revealed='true'] .opponent-hand__card:first-child {
     margin-left: 0;
   }
 

@@ -106,6 +106,10 @@
     inset: 0;
     display: flex;
     flex-direction: column;
+    /* W22: the ink fills the whole glass, under the Dynamic Island and the
+       home indicator; the content box stays inside the safe area. */
+    box-sizing: border-box;
+    padding: var(--cu-safe-top, 0px) 0 var(--cu-safe-bottom, 0px);
     background: var(--cu-curtain, #1a1420);
     color: var(--cu-pearl, #eee8f1);
     overflow: hidden;

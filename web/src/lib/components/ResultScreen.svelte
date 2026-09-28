@@ -54,7 +54,8 @@
     gap: var(--cu-space-4);
     min-height: 100dvh;
     box-sizing: border-box;
-    padding: var(--cu-gutter-sheet);
+    padding: calc(var(--cu-gutter-sheet) + var(--cu-safe-top)) var(--cu-gutter-sheet)
+      calc(var(--cu-gutter-sheet) + var(--cu-safe-bottom));
     background: var(--cu-ink);
     color: var(--cu-pearl);
     font-family: var(--cu-font-ui);

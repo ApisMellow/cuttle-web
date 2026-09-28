@@ -113,30 +113,30 @@
 </div>
 
 <style>
+  /* W22 (iPhone 15 pass): the board is the one scrolling region of the
+     game screen. It fills whatever height GameScreen leaves between the
+     safe-area padding and the action bar; the score bar sticks to its top
+     and the hand to its bottom (PlayerZone), so on a short viewport — Mobile
+     Safari with its toolbars, about 393x660 — only the field scrolls and
+     the hand and action bar never leave the screen.
+
+     The centre strip takes `margin-block: auto` (CenterZone), so on a tall
+     screen the spare height splits evenly either side of it (design.md §6)
+     and the two players' areas stay anchored to the top and bottom. */
   .board {
     display: flex;
     flex-direction: column;
-    gap: var(--cu-space-2, 8px);
-    background: var(--cu-ink, #241c2b);
+    flex: 1 1 auto;
+    gap: var(--cu-gap-zone, 4px);
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 0;
     max-width: var(--cu-board-max, 560px);
     margin: 0 auto;
+    background: var(--cu-ink, #241c2b);
     overflow-x: hidden;
-  }
-
-  /* P2 W14 (board polish, item B): docs/design.md §10.6's 360x740 fit
-     budget leaves no room for the phone-tier inter-zone gap once the
-     centre strip and hand rows use their own compact tokens. A 1px trim
-     per gap (3 gaps between the board's 4 children) is inside what
-     design.md's compact tier already narrows several tokens for.
-     W18 (round-4, item 1): trimmed a further 1px — the 360x740 worst
-     case (an 8-card hand, which wraps to two rows at this width, PLUS a
-     Jack on both points rows) needed every spare pixel this and the
-     PointRow trims (`--jack-offset`, the deck-edge slack) together could
-     safely give back; see this item's hand-back for the fit numbers that
-     remain. */
-  @media (max-height: 780px), (max-width: 374px) {
-    .board {
-      gap: 5px;
-    }
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
   }
 </style>
