@@ -14,6 +14,15 @@
   // remembered state participates. This also covers OQ-13 (a card that
   // freezes and clears before the owner's next turn): the marker tracks
   // whatever `frozenHandIndices` says on every render.
+  //
+  // P2 W9 (docs/design.md §7): `staged` and `dimmed` are now explicit
+  // booleans, resolved by the caller (Board/PlayerHand) from the round-4
+  // integrator's target-key sets — this component does no set membership
+  // logic of its own beyond `frozenHandIndices`. Precedence in the single
+  // `state` slot is frozen > staged > highlighted > dimmed > normal
+  // (docs/design.md §7); `selected` (the round-2 R9 pipeline flag) maps to
+  // `highlighted`, same as an explicit `highlighted` prop — both mean "the
+  // ring belongs on this card" and neither outranks the other.
   import type { Card } from '../bridge/schema';
   import '../styles/card-geometry.css';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
@@ -25,6 +34,12 @@
     frozenHandIndices: number[];
     /** Whether this card is the one currently selected in the R9 pipeline. */
     selected?: boolean;
+    /** SPEC §5.6 rule 3 / docs/design.md §7: a legal-target ring, same visual as `selected`. */
+    highlighted?: boolean;
+    /** docs/design.md §7: the ochre ring + ✓ tab. */
+    staged?: boolean;
+    /** docs/design.md §7: luminance drop; still tappable to inspect (Board brief). */
+    dimmed?: boolean;
     onselect?: (handIndex: number) => void;
     /** Injectable for testing / future theme wiring; defaults to the app default (rule 4). */
     theme?: CardTheme;
@@ -35,6 +50,9 @@
     handIndex,
     frozenHandIndices,
     selected = false,
+    highlighted = false,
+    staged = false,
+    dimmed = false,
     onselect,
     theme = getTheme(DEFAULT_THEME_ID),
   }: HandCardProps = $props();
@@ -42,10 +60,20 @@
   // R8.2: solely a membership check. Nothing else feeds this value.
   const isFrozen = $derived(frozenHandIndices.includes(handIndex));
 
-  // Assumption (reported): frozen takes precedence over selection in the
-  // single `state` slot CardFaceProps has. R9 dimmed/staged precedence is a
-  // later round's call.
-  const visualState: CardVisualState = $derived(isFrozen ? 'frozen' : selected ? 'highlighted' : 'normal');
+  // docs/design.md §7 precedence: frozen > staged > highlighted > dimmed >
+  // normal. `selected` and `highlighted` are two names for the same ring;
+  // either being true is enough.
+  const visualState: CardVisualState = $derived(
+    isFrozen
+      ? 'frozen'
+      : staged
+        ? 'staged'
+        : selected || highlighted
+          ? 'highlighted'
+          : dimmed
+            ? 'dimmed'
+            : 'normal',
+  );
 
   function handleClick(): void {
     onselect?.(handIndex);
@@ -53,13 +81,17 @@
 </script>
 
 <!-- The button is the only [data-testid] element: SPEC §5.9/§7.4 sweep every
-     testid for a 44px box, and `hand-card-` is the per-card prefix. Frozen
-     state is exposed as `data-frozen` on the button itself. -->
+     testid for a 44px box, and `hand-card-` is the per-card prefix. Frozen,
+     staged and dimmed state are each exposed as their own `data-*` attribute
+     on the button itself, independent of the single theme `state` slot, so a
+     test can assert each guarantee without inferring it from `data-state`. -->
 <button
   type="button"
   class="hand-card"
   data-testid={`hand-card-${handIndex}`}
   data-frozen={isFrozen ? 'true' : 'false'}
+  data-staged={staged ? 'true' : 'false'}
+  data-dimmed={dimmed ? 'true' : 'false'}
   aria-pressed={selected}
   onclick={handleClick}
 >
@@ -68,6 +100,11 @@
     <span class="hand-card__frozen-marker" data-frozen-marker>
       <span aria-hidden="true">❄</span>
       <span class="hand-card__sr-only">frozen</span>
+    </span>
+  {:else if staged}
+    <span class="hand-card__staged-tab" data-staged-tab>
+      <span aria-hidden="true">✓</span>
+      <span class="hand-card__sr-only">staged</span>
     </span>
   {/if}
 </button>
@@ -102,6 +139,27 @@
     font-size: 0.8rem;
     line-height: 1;
     color: #3b6ea8;
+    pointer-events: none;
+  }
+
+  /* docs/design.md §7 staged recipe: "a small ochre tab at the top centre
+     with a ✓", drawn by the app over the theme's `staged` ring, inside the
+     clipped box — same pattern as the frozen marker above. */
+  .hand-card__staged-tab {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -35%);
+    font-size: 0.7rem;
+    line-height: 1;
+    color: var(--cu-on-accent, #241c2b);
+    background: var(--cu-ochre, #f0b54a);
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     pointer-events: none;
   }
 
