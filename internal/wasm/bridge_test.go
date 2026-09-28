@@ -275,7 +275,8 @@ func TestSPEC2_7_AppliedMoveRecordsPreState(t *testing.T) {
 	}
 	after := okEnvelope(t, b.Apply(float64(idx)))
 	want := AppliedMove{Index: &idx, By: engine.P1, Kind: engine.MoveScuttle,
-		Card: &card.Card{Rank: card.Nine, Suit: card.Clubs}, Description: "scuttle opponent's 5♥ with 9♣", Seq: 1}
+		Card: &card.Card{Rank: card.Nine, Suit: card.Clubs}, TargetCard: &card.Card{Rank: card.Five, Suit: card.Hearts},
+		Description: "scuttle opponent's 5♥ with 9♣", Seq: 1}
 	if after.LastMove == nil || !reflect.DeepEqual(*after.LastMove, want) {
 		t.Fatalf("lastMove = %+v, want %+v", after.LastMove, want)
 	}
@@ -445,9 +446,17 @@ func TestSPEC2_9_BadRequest(t *testing.T) {
 		"restore bad active":       b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1), 0.0),
 		"restore bad phase":        b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1), 0.0),
 		"restore rank 0 in hand":   b.Restore(snapshotOf(t, engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{{}}}}}), 0.0),
-		"restore history no index": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"by":0,"kind":0,"card":null,"subKind":null,"description":"draw a card","seq":1}]`, 1), 0.0),
-		"restore subKind on draw":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":4,"card":null,"description":"draw a card","seq":1}]`, 1), 0.0),
-		"restore bad history":      b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"description":"draw a card","seq":2}]`, 1), 0.0),
+		"restore history no index": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"by":0,"kind":0,"card":null,"targetCard":null,"subKind":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore subKind on draw":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":4,"card":null,"targetCard":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore bad history":      b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"targetCard":null,"description":"draw a card","seq":2}]`, 1), 0.0),
+		"restore targetCard missing key": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore targetCard wrong type":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":"9C","description":"draw a card","seq":1}]`, 1), 0.0),
+		// S2 (review, round 2 cycle 1): AppliedMove.UnmarshalJSON's own
+		// dec.DisallowUnknownFields() must reject a history entry carrying
+		// an unrecognized field — the outer decodeStrict's setting does NOT
+		// propagate into a nested type's custom UnmarshalJSON, so this is a
+		// distinct code path from every other "unknown field" check.
+		"restore history unknown field": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":null,"description":"draw a card","seq":1,"bogus":true}]`, 1), 0.0),
 	} {
 		errCode(t, wire, "BAD_REQUEST")
 		if b.Snapshot() != before {
