@@ -835,9 +835,11 @@ class GameStore {
 
   async newGame(opts: NewGameOpts): Promise<void>
   async apply(moveIndex: number): Promise<void>   // then feeds the curtain machine
-  async setViewer(p: PlayerId): Promise<void>     // calls __cuttleView(p)
+  async refresh(): Promise<void>                  // re-fetches __cuttleView(this.viewer) only
 }
 ```
+
+*(Amended 2026-09-27, round 2.)* There is **no public viewer switch**. `setViewer(p)` was removed because it could expose the non-holder's view without a curtain (§2.4, §3.3 rule 4). The viewer changes only inside the curtain machine's transitions. `viewer` is nullable and is `null` while the curtain withholds the board. `refresh()` takes no argument and is allowed only at curtain `none` or a real counter window.
 
 - **`curtain.svelte.ts`** — the §4.2 machine. Pure: `next(pre, appliedMove, post) -> CurtainState`. Its purity is what makes the transition table of §4.4 unit-testable without WASM (§7.1).
 - **`staging.svelte.ts`** — R9/R12 selection pipeline (§6). Holds `selectedHandIndex`, `stagedMoveIndex`, `candidateMoveIndices`, `highlightedTargets`. Cleared on every `apply` and on every viewer change.
