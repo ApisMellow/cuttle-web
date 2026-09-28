@@ -50,14 +50,13 @@ async function expectFits(page: Page): Promise<void> {
   const m = await page.evaluate(() => ({
     sw: document.documentElement.scrollWidth,
     cw: document.documentElement.clientWidth,
-    // The game screen's own height (min-height 100dvh), not the document's:
-    // the document also carries the browser's default 8px body margin, which
-    // no component owns (reported as a pre-existing finding).
-    sh: document.querySelector('[data-testid="game-screen"]')?.getBoundingClientRect().height ?? Infinity,
+    // The whole document's height: tokens.css resets the default body
+    // margin (W19), so the page itself must fit the viewport.
+    sh: document.documentElement.scrollHeight,
     ih: window.innerHeight,
   }));
   expect(m.sw, 'horizontal scroll').toBeLessThanOrEqual(m.cw);
-  expect(m.sh, 'game screen taller than the viewport').toBeLessThanOrEqual(m.ih);
+  expect(m.sh, 'page taller than the viewport').toBeLessThanOrEqual(m.ih);
   // SPEC §5.9: every testid this item adds is a >= 44 x 44 tap target.
   const boxes = await page
     .locator('[data-testid^="seven-"], [data-testid^="scrap-"], [data-testid="discard-picker"], [data-testid^="staging-"]')

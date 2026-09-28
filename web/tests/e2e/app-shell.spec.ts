@@ -137,3 +137,18 @@ test('interactive testids clear the 44x44 tap-target floor at 390x844', async ({
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   }
 });
+
+test('W19: the game screen fills the viewport exactly, with no default body margin', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('new-game').click();
+  await expect(page.getByTestId('game-screen')).toBeVisible();
+  const m = await page.evaluate(() => ({
+    margin: getComputedStyle(document.body).margin,
+    doc: document.documentElement.scrollHeight,
+    screen: document.querySelector('[data-testid="game-screen"]')!.getBoundingClientRect().height,
+    ih: window.innerHeight,
+  }));
+  expect(m.margin).toBe('0px');
+  expect(m.screen).toBe(m.ih);
+  expect(m.doc).toBe(m.ih);
+});

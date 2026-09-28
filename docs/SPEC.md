@@ -803,21 +803,23 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   │   ├── PlayerZone.svelte
 │   │   │   ├── PointRow.svelte
 │   │   │   ├── PermanentRow.svelte
-│   │   │   └── PlayerHand.svelte
+│   │   │   └── handTray slot        # PlayerHand.svelte, or SevenRevealPanel while the 7's choice is open
 │   │   │       └── HandCard.svelte   # dim when no legal play (R9); FrozenBadge (R8)
 │   │   └── DropZones.svelte          # "Points" / "Permanents" / "One-off" targets
 │   ├── StagingBar.svelte         # R9/R12: staged move + Confirm/Cancel
 │   ├── AmbiguityChooser.svelte   # R11: >1 move for one (card, target) pair
 │   ├── CounterPrompt.svelte      # R14 — real window AND synthetic ack (§4.3)
 │   ├── DiscardPicker.svelte      # R15
-│   ├── SevenRevealPanel.svelte   # R16 — only when viewer === active
+│   ├── SevenRevealPanel.svelte   # R16 — mounted here, gated on viewer === active; RENDERS in Board's `handTray` slot, not here (see below)
 │   ├── ScrapBrowser.svelte       # R6 — browse mode and pick mode
 │   └── StuckState.svelte         # §2.10 — E-1/E-2 diagnostic + scenario export
 ├── ResultScreen.svelte           # R2/R3: win or stalemate, tally, Rematch
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
-`PointRow.svelte` renders a `PointEntry` including its `JackStack`: each Jack is the same size as the card it sits on, offset downward only; several Jacks cascade down, newest on top, and the per-Jack offset may shrink as the stack grows but never below the corner index height, so the stolen card's upper-left rank/suit index stays visible above the Jacks; an ownership badge is driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above"; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
+`PointRow.svelte` renders a `PointEntry` including its `JackStack`: only the top (newest) Jack is drawn, full card size, offset downward only, so the point card's upper-left corner index stays visible above it; extra Jacks are not drawn separately, and at 2 or more a thin "deck thickness" edge (two card-back slivers past the Jack's bottom-right corner) shows there's more than one. No count number and no player colour render on the stack; the count is exposed only via the aria-label ("stolen, N Jacks"), and only the top Jack is a legal tap target. An ownership badge is driven by `Controller` (§2.8(f)) when the controller differs from the owner. A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above" and the multi-Jack cascade; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
+
+**`SevenRevealPanel` mounting vs. rendering.** GameScreen mounts `SevenRevealPanel`, gated on `viewer === active` — that gate is where R16's privacy boundary lives and it stays in GameScreen, not in Board. The panel itself renders through Board's `handTray` slot, the same slot `PlayerHand` occupies, so while the 7's choice is open the reveal panel takes the hand's place in the layout instead of appearing as a separate overlay; the slot reverts to `PlayerHand` once the sub-move resolves.
 
 ### 5.3 State design
 
@@ -1053,7 +1055,7 @@ Totality table. Random-playout frequencies from the §2.10 survey are included s
 | `PlayPermanent` (2), **Jack** | — | Tap the Jack → each stealable opponent point card highlights. Engine omits all of them when a Queen protects (`apply.go:88-97`), so **the UI shows no targets and needs no Queen rule of its own.** | tap a point | "Steal 10♥ with J♣" |
 | `Scuttle` (3) | 9,527 | Tap hand card → opponent point cards it beats highlight. Beat rule is engine-side (`card/card.go:51-56`); the UI highlights what it is given. | tap a point | "Scuttle 7♥ with 9♠" |
 | `OneOff` (4), no target (A, 3, 4, 5, 6, 7) | 25,026 (all one-offs) | Tap hand card → the **One-off** zone highlights. | tap zone | "Play A♥ as a one-off" |
-| `OneOff` (4), **rank 3** | — | Same zone tap, then the **ScrapBrowser opens in pick mode** listing exactly the scrap cards the engine offered (one move per `ScrapIndex`, `apply.go:98-111`). | tap a scrap card | "Play 3♣ — take 5♠ from the scrap" |
+| `OneOff` (4), **rank 3** | — | Same zone tap, then the **ScrapBrowser opens in pick mode** listing exactly the scrap cards the engine offered (one move per `ScrapIndex`, `apply.go:98-111`). With exactly one card in the scrap, only one `ScrapIndex` candidate exists, so per §6.4's single-candidate rule the move stages directly — the browser never opens. | tap a scrap card (skipped when there's only one) | "Play 3♣ — take 5♠ from the scrap" |
 | `OneOff` (4), **rank 2 as scrap** | — | Tap the 2 → every legal target highlights: opponent/own permanents, and Jack-topped point stacks (`apply.go:44-69`). Queen protection is already applied by the engine. | tap a target | "Play 2♥ — scrap K♠" |
 | `OneOff` (4), **rank 9** | — | Tap the 9 → opponent points and permanents highlight (`apply.go:70-87`). | tap a target | "Play 9♥ — return 10♦ to their hand" |
 | `Counter` (5) | 2,008 | **CounterPrompt** (§4.3): one button per unfrozen 2. Not a board interaction. | none | "Counter with 2♠" |
@@ -1062,11 +1064,13 @@ Totality table. Random-playout frequencies from the §2.10 survey are included s
 | `DiscardPair` (8) | 2,598 | **DiscardPicker**: select 2 cards. A 1-card hand offers the single `{DiscardA:0, DiscardB:-1}` move as a pre-selected confirm (`apply.go:485-488`). Never reached with an empty hand (`apply.go:621-623`). | selection is the target step | "Discard 4♦ and 5♠" |
 | `Pass` (9) | 412 | **Pass control**, shown only when it is the sole legal move — which is engine-guaranteed (`apply.go:131-133`, re-checked at `:160-166`), so the UI applies no policy. | none | "Pass" |
 
+The `DiscardPair` confirm text names cards only for the acting player's own move: `recap.ts` builds it by reading the viewer's own hand at the selected indices, never from `history` or engine `Describe`. This is sound because it's the viewer's own hand — the opponent-facing recap line stays identity-free per §4.6.
+
 `Decline` is the single case where a one-tap button is the confirm. This does not violate R12: it commits nothing to the board, applies no card, and is reversible in effect only by the engine's own resolution. The misclick R12 protects against is playing the wrong card, and Decline plays none. **The synthetic ack's "Let it resolve" (§4.3) must be visually and positionally identical**, or the difference becomes the tell that R14 forbids.
 
 ### 6.4 Ambiguity chooser (R11)
 
-Triggered when, after target selection (or immediately, for affordances with no target step), **more than one** candidate move remains for the chosen `(handIndex, slot)`.
+Triggered when, after target selection (or immediately, for affordances with no target step), **more than one** candidate move remains for the chosen `(handIndex, slot)`. **Single-candidate rule:** when exactly one candidate remains — including the 3's scrap pick with only one card in the scrap (§6.3) — that move stages directly and no chooser (or, for the 3, no ScrapBrowser) ever opens.
 
 Canonical cases, all present in the golden scenario of §2.6:
 
