@@ -348,10 +348,11 @@ requirements:
     prd: R11
     title: "Ambiguity chooser resolves multi-candidate slots"
     acceptance:
-      - "e2e-test: golden fixture (seed \"42\", dealer 1) — tapping A♥ at hand index 2 opens AmbiguityChooser listing exactly the 2 candidate descriptions (\"play A♥ as one-off\", \"play A♥ as point card\"); selecting one goes to 'staged', not directly to apply (PRD R11, SPEC §6.4, §2.6)"
+      - "e2e-test: golden fixture (seed \"42\", dealer 1) — tapping A♥ at hand index 2 highlights both the One-off zone and the Points zone (moves [3] and [4]); tapping the One-off zone stages \"play A♥ as one-off\", tapping the Points zone stages \"play A♥ as point card\"; no AmbiguityChooser opens for this two-zone case — the move comes from which zone the card is dropped or tapped on, per the 8's identical two-zone handling (PRD R11, SPEC §6.4, §2.6)"
     verify: [e2e-test]
     status: todo
     evidence: ""
+    notes: "Decision: David, 2026-09-28. The Ace, like the 8, is resolved by zone tap (One-off vs Points), not by the AmbiguityChooser modal — SPEC §6.4 reserves the chooser as backstop for the genuinely ambiguous residue that zone/target geometry can't resolve. Principle: prefer implicit actions (zone/target disambiguation) over extra prompts."
     fails: 0
 
   - id: R11.4

@@ -815,7 +815,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
-`PointRow.svelte` renders a `PointEntry` including its `JackStack`: the point card with each Jack fanned above it and an ownership badge driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan.
+`PointRow.svelte` renders a `PointEntry` including its `JackStack`: each Jack is laid on top of the point card, shifted slightly down, so the stolen card's top strip stays visible above the Jacks and carries the card's identity (rank and suit); an ownership badge is driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above"; see `docs/design.md` §6–§7.)
 
 ### 5.3 State design
 

@@ -136,3 +136,35 @@ New requirements (decomposed into ledger entries like R1–R20):
 ### A-2 — A7 module-path correction (2026-08-23, factual; resolved 2026-09-26)
 
 A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. **Resolved 2026-09-26 (SPEC §8 OQ-3):** the engine repo was renamed to `github.com/ApisMellow/cuttle` to match its module path and tagged `v0.1.0`/`v0.2.0`; `cuttle-web` requires `v0.2.0` directly with no committed `replace` directive. A temporary local `replace` is fine for engine development but must never be committed.
+
+### A-3 — Mythic theme (2026-09-28, David)
+
+A second, optional look for the cards: the **Mythic theme**, in the vein of Magic: The Gathering. Cuttle already plays a lot like Magic minus the card buying, so the art leans into that instead of inventing a new idiom.
+
+- **Point cards (A–10 played for points) are creatures.** Together they make up the score (name still open — "life" or similar). Scuttling a smaller point card with a bigger one is creature combat.
+- **Royals and face-up 8s are enchantments** (permanents that stay on the table).
+- Every other one-off echoes a well-known Magic card, evoking its mood/color/composition without copying it:
+
+| Card | Cuttle effect | Magic echo |
+|---|---|---|
+| A | Wipes every point card | Wrath of God |
+| 2 | Cancels a spell / destroys an enchantment | Counterspell / Disenchant |
+| 3 | Returns a card from the scrap pile | Regrowth / Raise Dead |
+| 4 | Opponent discards 2 | Mind Rot |
+| 5 | Draw cards | Divination |
+| 6 | Destroys every enchantment | Tranquility |
+| 7 | Plays the top card of the deck | Future Sight |
+| 8 (face-up) | Opponent's hand shown | Telepathy |
+| 9 | Returns an enchantment to its owner's hand | Boomerang / Unsummon |
+| 10 | Points only — the biggest creature | — |
+| Jack | Steals an opponent's creature | Control Magic |
+| Queen | Protects other cards from targeting | a protective aura |
+| King | Lowers the win threshold | a crown or throne |
+
+**Suits become colors** — a first proposal, not final: Spades black, Hearts red, Clubs green, Diamonds white. Open question for David: Counterspell is iconically blue, and none of the four suit colors above is blue; resolving whether Diamonds becomes blue, a card's color follows what it does rather than its suit, or blue stays an accent only is still pending.
+
+Rank and suit fade into the background of the art; the card reads by its evocative image rather than its printed corner indices.
+
+**One layout rule binds both themes:** a Jack stacked on a stolen point card covers all but that card's top strip, so a card's identity (rank and suit) has to live in that strip regardless of theme — see `docs/design.md` §6–§7.
+
+Delivered under **R21–R23** (amendment A-1) as a theme layer on top of the vector baseline. No R1–R20 acceptance criterion depends on it, and this amendment adds no new R numbers.
