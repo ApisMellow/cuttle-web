@@ -45,6 +45,7 @@
   import { getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
   import Board from './Board.svelte';
+  import CardDetailPopover from './CardDetailPopover.svelte';
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
@@ -104,6 +105,13 @@
   const withheld = $derived(
     game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
   );
+
+  // R9.3 (W21): the dimmed-card detail popover. `staging.inspect` is a hand
+  // index into the VIEWER'S OWN hand only (staging.svelte.ts's #selectHand
+  // never sets it from anything else), so this never reads the opponent's
+  // hand or the deck. `staging.reset()` (viewer/curtain change, every apply)
+  // already clears `inspect`, so this can't survive past its own turn.
+  const inspectCard = $derived(board === null || staging.inspect === null ? null : (board.state.you.hand[staging.inspect] ?? null));
 
   // R10.1: the deck is live exactly when the engine offers Draw.
   const deckEnabled = $derived(board !== null && board.legalMoves.some((m) => m.Kind === MoveKind.Draw));
@@ -285,6 +293,10 @@
         onchoose={(index) => staging.choose(index)}
         oncancel={() => staging.cancel()}
       />
+    {/if}
+
+    {#if inspectCard !== null}
+      <CardDetailPopover card={inspectCard} onclose={() => (staging.inspect = null)} {theme} />
     {/if}
   {/if}
 </div>
