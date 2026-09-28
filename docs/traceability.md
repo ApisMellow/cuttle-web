@@ -19,20 +19,20 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R2.3 | Result screen names win vs stalemate | — | — | e2e-test | todo |
 | R3.1 | Rematch alternates dealer | — | — | e2e-test | todo |
 | R3.2 | Session win tally displays and increments | — | — | e2e-test | todo |
-| R3.3 | Tally does not survive reload | — | — | unit-test, e2e-test | todo |
+| R3.3 | Tally does not survive reload | `vitest: "the persisted snapshot JSON has no 'tally' key, even with a non-zero tally"` (game.test.ts) | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R4.1 | Mid-game reload restores state | — | — | e2e-test | todo |
 | R4.2 | Mid-curtain reload restores curtain, not board | — | — | e2e-test | todo |
 | R4.3 | New-game confirm before abandoning | — | — | e2e-test | todo |
-| R4.4 | Snapshot version mismatch discards cleanly | — | — | unit-test | todo |
+| R4.4 | Snapshot version mismatch discards cleanly | `vitest: snapshot.test.ts "a snapshot with v !== 1 decodes as version-mismatch, not thrown"`<br>`vitest: game-restore.test.ts "v !== 1 -> home screen with a notice, engine.restore never called, no throw"` | vitest | unit-test | verified |
 | R5.1 | All board zones visible on one portrait screen | — | — | screenshot-judge | todo |
 | R5.2 | Score bar always visible | — | — | e2e-test | todo |
 | R6.1 | Scrap pile browsable by either player, any time | — | — | e2e-test | todo |
 | R7.1 | Opponent hand hidden without glasses-8 | `TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit | unit-test | verified |
 | R7.2 | Opponent hand face-up under glasses-8 | — | — | e2e-test | todo |
 | R7.3 | Deck contents never transmitted | `TestR7_3a_DeckNeverTransmittedEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand` | go unit | unit-test | verified |
-| R7.4 | opponent.hand null-vs-empty distinguished through every layer | `TestR7_4a_OpponentHandNullVersusEmptyOnWire`<br>`TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip`<br>`vitest: "R7.4: preserves hidden null versus visible empty opponent hands"`<br>`vitest: "R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip"` | go unit + vitest (bridge/schema half done; store-update half open, out of scope until lib/stores exists) | unit-test | todo (PARTIAL) |
+| R7.4 | opponent.hand null-vs-empty distinguished through every layer | `TestR7_4a_OpponentHandNullVersusEmptyOnWire`<br>`TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip`<br>`vitest: schema.test.ts / engine.test.ts R7.4`<br>`vitest: game.test.ts, game-curtain.test.ts N4, game-restore.test.ts N4 (store leg, incl. real-WASM round trip)` | go unit + vitest | unit-test | verified |
 | R8.1 | Frozen marker visible to owner | — | — | e2e-test | todo |
-| R8.2 | Frozen marker derived from frozenHandIndices only | `TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze` | go unit (bridge half) | unit-test | todo (PARTIAL) |
+| R8.2 | Frozen marker derived from frozenHandIndices only | `TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze`<br>`vitest: hand-card.svelte.test.ts (single-instance OQ-13 freeze/clear, membership matrix)` | go unit + vitest | unit-test | verified |
 | R9.1 | Tap highlights exactly legal targets, all move kinds | — | — | e2e-test | todo |
 | R9.2 | Tapping a highlighted target stages; confirm commits | — | — | e2e-test | todo |
 | R9.3 | No-legal-play cards render dimmed but inspectable | — | — | e2e-test | todo |
@@ -70,7 +70,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R19.3 | CSS-transform-only animations; reduced-motion playable | — | — | e2e-test, unit-test | todo |
 | R19.4 | Phone-viewport legibility | — | — | screenshot-judge | todo |
 | R20.1 | Last move description shown after each action | — | — | e2e-test | todo |
-| R20.2 | Recap formatter is per-viewer and redaction-safe | `vitest: web/tests/unit/recap.test.ts` (all rows but Jack-steal/one-off target; awaits `targetCard`) | vitest (partial) | unit-test | todo (PARTIAL) |
+| R20.2 | Recap formatter is per-viewer and redaction-safe | `vitest: web/tests/unit/recap.test.ts` (every §4.6 row)<br>`TestSPEC2_7_TargetCardPerMoveKind`<br>`TestSPEC2_7_TargetCardNamesOnlyBoardCards`<br>`TestSPEC2_9_RestoreTargetCardKindConsistency` | vitest + go unit | unit-test | verified |
 | R20.3 | Recap presentation and lastSeenSeq stamping | — | — | e2e-test | todo |
 | R21.1 | Reference candidate set generated | — | — | image-judge | todo |
 | R21.2 | Style-lock document authored | — | — | image-judge | todo |
@@ -79,7 +79,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R22.2 | Consistency judge scoring with regeneration | — | — | image-judge | todo |
 | R22.3 | Complete theme asset budget ≤4MB | — | — | unit-test | todo |
 | R22.4 | Bitmap assets are runtime-cached, not precached | — | — | e2e-test | todo |
-| R23.1 | Theme seam contract wiring | — | — | unit-test, e2e-test | todo |
+| R23.1 | Theme seam contract wiring | `vitest: theme.test.ts "every registry entry conforms to the Face/Back component contract"`<br>`vitest: theme-glyph-boundary.test.ts` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R23.2 | User-facing theme toggle, persisted | — | — | e2e-test | todo |
 | R23.3 | Automatic fallback to vector baseline | — | — | e2e-test | todo |
 | R23.4 | Full playability with theme off | — | — | e2e-test | todo |

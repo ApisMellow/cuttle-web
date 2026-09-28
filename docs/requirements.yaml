@@ -1,5 +1,5 @@
 meta:
-  round: 1
+  round: 2
   launch: 1
 
 requirements:
@@ -106,7 +106,7 @@ requirements:
       - "e2e-test: reloading after a completed game shows the tally reset to 0-0"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-02 (W5): unit half done — web/tests/unit/game.test.ts \"the persisted snapshot JSON has no 'tally' key, even with a non-zero tally\"; Snapshot type has no tally field. Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (reload after a completed game shows 0-0; needs ResultScreen)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -148,8 +148,8 @@ requirements:
     acceptance:
       - "unit-test: Snapshot.v !== 1 is detected and the snapshot is discarded without a crash, returning to the home screen with a brief notice, and no migration is attempted (SPEC §5.7 'Version mismatch')"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-02 (W5): web/tests/unit/snapshot.test.ts \"a snapshot with v !== 1 decodes as version-mismatch, not thrown\"; web/tests/unit/game-restore.test.ts \"v !== 1 -> home screen with a notice, engine.restore never called, no throw\", \"the stale snapshot is removed from storage\", \"malformed JSON is discarded the same way\". Opus review accept (round-02.md). VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -227,8 +227,8 @@ requirements:
     acceptance:
       - "unit-test: normalization and view tests assert opponent.hand uses null (not visible) vs [] (visible and empty) and this distinction survives snapshot round-trip and store updates (SPEC §2.8(b) deliberate exception, §3.2)"
     verify: [unit-test]
-    status: todo
-    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. Open: the store-update leg specifically (lib/stores/game.svelte.ts persistence round-trip) — stores are out of scope for Batch 3 (SPEC §5.3 is a later batch's work)."
+    status: verified
+    evidence: "bridge half: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. | round-02 (W5) store leg: game.test.ts \"opponent.hand stays null through a plain apply\" and \"[] (visible, empty) is preserved distinctly from null\"; game-curtain.test.ts N4 ([] survives advanceCurtain -> none); game-restore.test.ts N4 (null and [] through a serializing fake engine, plus a real-WASM snapshot->restore). Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -250,8 +250,8 @@ requirements:
     acceptance:
       - "unit-test: HandCard's frozen state is driven solely by view.you.frozenHandIndices membership, including the OQ-13 self-freeze-then-clear-before-next-turn case, with no additional logic layered on top (SPEC §2.8(c), §8 OQ-13)"
     verify: [unit-test]
-    status: todo
-    evidence: "PARTIAL — bridge half done: TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze (OQ-13 self-freeze appears then clears, straight from engine FrozenIDs), TestSPEC2_8_FrozenIDsSortedDropFalse. Open: HandCard component unit test (UI half)."
+    status: verified
+    evidence: "bridge half: TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze (OQ-13 self-freeze appears then clears, straight from engine FrozenIDs), TestSPEC2_8_FrozenIDsSortedDropFalse. | round-02 (W8) UI half: web/tests/unit/hand-card.svelte.test.ts — one mounted HandCard driven by a $state props object through [] -> [3] -> [] from the owner's view (OQ-13 self-freeze then clear), a longer sequence on one instance, and a membership matrix (5 cards x onselect x selected x 5 lists); a remembered-freeze latch mutation is killed. Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -673,8 +673,8 @@ requirements:
     acceptance:
       - "unit-test: the recap formatter produces every SPEC §4.6 table row's exact phrasing per MoveKind, confirming DiscardPair names no identities and SevenPick names no unchosen card"
     verify: [unit-test]
-    status: todo
-    evidence: "PARTIAL round-01 (W3): web/src/lib/recap.ts + recap.test.ts cover every §4.6 row except the Jack-steal target card and the one-off target clause, which engine Describe omits. David 2026-09-27: bridge adds AppliedMove.targetCard (SPEC §2.7/§4.6 amended); round-2 item. Stays todo until then."
+    status: verified
+    evidence: "round-01 (W3) + round-02 (W6): web/src/lib/recap.ts + web/tests/unit/recap.test.ts cover every SPEC §4.6 row's exact phrasing, now including the Jack steal (\"stole your 10♥ with J♣.\", from AppliedMove.targetCard) and the one-off target clause; DiscardPair names no identities; SevenPick names no unchosen card. targetCard bridge coverage: internal/wasm/target_test.go TestSPEC2_7_TargetCardPerMoveKind (20 cases), TestSPEC2_7_TargetCardNamesOnlyBoardCards, TestSPEC2_9_RestoreTargetCard, TestSPEC2_9_RestoreTargetCardKindConsistency. Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R20.3
@@ -775,7 +775,7 @@ requirements:
       - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the 2.5:3.5 aspect ratio and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows)."
     fails: 0
 
   - id: R23.2
