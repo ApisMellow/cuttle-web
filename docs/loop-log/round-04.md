@@ -8,12 +8,15 @@
 
 - W13 (GameScreen integration) merged at `7e6f694`. Took 2 revise cycles; B1 was a last-move leak — the idle centre-strip line read raw `lastMove`, which can be a filtered-out kind like `Decline`, telling the acting player whether the opponent held a 2. Fixed by reading the last `isRecapVisible` entry in `history` instead. See `docs/requirements.yaml` R5.2, `AGENTS.md` "Redaction rules", `.claude/agents/cuttle-svelte-dev.md`, `docs/SPEC.md` §4.3, and `docs/design.md` §6, all amended 2026-09-28.
 - W14 (board polish) merged at `71bda8a`.
+- W15 (pickers — DiscardPicker, SevenRevealPanel, ScrapBrowser) merged. Review verdict: accept, backed by a 240-seed real-engine corpus and no privacy leak.
 - W16 (Pages deploy) merged at `4a1cc4c`. GitHub Pages is enabled at https://apismellow.github.io/cuttle-web/.
+- W17 (card-face redo) merged at `40efddc` — David, after a build screenshot: the upper-left corner index rule at every size and a shorter card ratio (`--cuttle-card-aspect`, about 1.3, tunable). See `docs/design.md` §4–§7, `docs/PRD.md` A-3, and `docs/SPEC.md` §5.2, all amended 2026-09-28.
+- W18 (single-Jack display) — supersedes W17's cascade treatment: only the top Jack is drawn, offset downward, with a deck-thickness edge once 2 or more are stacked; count moves to the aria-label only. See `docs/design.md` §6–§7 and `docs/SPEC.md` §5.2, all amended 2026-09-28.
+- **The family beta went live 2026-09-28** at https://apismellow.github.io/cuttle-web/ via PR #5 (merge `1caba19`), with the W18 update following in PR #6 (`46d1024`).
 
 ## In progress
 
-- W15 (pickers) — DiscardPicker, SevenRevealPanel, ScrapBrowser.
-- W17 (card-face redo) — David, after a build screenshot: the upper-left corner index rule at every size, same-size downward-only Jack cascade, and a shorter card ratio (`--cuttle-card-aspect`, about 1.3, tunable). See `docs/design.md` §4–§7, `docs/PRD.md` A-3, and `docs/SPEC.md` §5.2, all amended 2026-09-28.
+- W19 cleanup — in progress.
 
 ## Still open
 
