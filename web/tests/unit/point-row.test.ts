@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // P2 W9 (SPEC §5.2, Board props contract) — PointRow: shared between
-// OpponentZone and PlayerZone, `point:<rowId>:<index>` keys, the JackStack
-// fan, the Controller-vs-Owner ownership marker, the verbatim `pointTotal`
-// tally, and the viewer-only drop zone.
+// OpponentZone and PlayerZone, `point:<rowId>:<index>` keys, the shown
+// (top-only, W18) Jack and its "deck thickness" edge, the Controller-vs-
+// Owner ownership marker, the verbatim `pointTotal` tally, and the
+// viewer-only drop zone.
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -65,7 +66,7 @@ describe('PointRow (SPEC §5.2)', () => {
     expect(seen).toEqual(['point:1:0', 'point:1:1']);
   });
 
-  it('shows the JackStack stacked on the point card, one mini Face per Jack', () => {
+  it('shows only the top (newest) Jack on the point card, full field size, with the count on the stack (W18)', () => {
     const el = render({
       rowId: 0,
       entries: [
@@ -84,7 +85,9 @@ describe('PointRow (SPEC §5.2)', () => {
       ontap: () => {},
     });
     const slot = el.querySelector('[data-testid="point-0-0"]')?.closest('.point-row__slot') as HTMLElement;
-    expect(slot.querySelectorAll('.point-row__jack').length).toBe(2);
+    // W18 (product-owner revision, superseding the W17 cascade this test
+    // used to cover): only the top Jack ever renders as a card.
+    expect(slot.querySelectorAll('.point-row__jack').length).toBe(1);
     expect(slot.querySelector('[data-jack-count]')?.getAttribute('data-jack-count')).toBe('2');
   });
 
@@ -127,7 +130,7 @@ describe('PointRow (SPEC §5.2)', () => {
     expect(el.querySelector('[data-testid="point-0-1"]')?.querySelector('[data-state]')?.getAttribute('data-state')).toBe('highlighted');
   });
 
-  it('each Jack renders its JackStack card at the SAME size as the point card it sits on, not the point card (W17)', () => {
+  it('the shown Jack renders at the SAME size as the point card it sits on, not the point card (W17/W18)', () => {
     const el = render({
       rowId: 0,
       entries: [
@@ -151,18 +154,18 @@ describe('PointRow (SPEC §5.2)', () => {
     const pointFace = card.querySelector('.point-row__face [data-state]') as HTMLElement;
     // W17 (docs owner direction, 2026-09-28): a Jack is the same size as the
     // card it sits on — no narrowing to `mini`. Both the point card's Face
-    // and every Jack's Face render at `size="field"`, so the `data-size`
+    // and the shown Jack's Face render at `size="field"`, so the `data-size`
     // theme contracts (rule 2) match card-for-card.
     expect(pointFace.getAttribute('data-size')).toBe('field');
     const jackFaces = [...card.querySelectorAll('.point-row__jack [data-size="field"]')] as HTMLElement[];
-    expect(jackFaces.length).toBe(2);
+    // W18: only the TOP (last, newest) JackStack entry ever renders as a
+    // card — here Suit 2 (hearts), not Suit 0.
+    expect(jackFaces.length).toBe(1);
     // No mini-sized Jack face survives.
     expect(card.querySelectorAll('.point-row__jack [data-size="mini"]').length).toBe(0);
-    // Rank label of each Jack face is "J"; the point card's is "6".
-    expect(jackFaces.map((f) => f.firstElementChild?.textContent)).toEqual(['J', 'J']);
+    expect(jackFaces[0].firstElementChild?.textContent).toBe('J');
     expect(pointFace.firstElementChild?.textContent).toBe('6');
-    // The two Jacks differ by suit, so each face is its own JackStack entry.
-    expect(jackFaces[0].textContent).not.toBe(jackFaces[1].textContent);
+    expect(jackFaces[0].querySelector('.cuttle-card-face__suit')?.textContent).toBe(String.fromCodePoint(0x2665));
   });
 
   it('the Jack stack lives inside the point card\'s tap target, drawn after the face', () => {
@@ -271,7 +274,7 @@ describe('PointRow (SPEC §5.2)', () => {
     expect(marker?.hasAttribute('data-testid')).toBe(false);
   });
 
-  it('stacks Jacks on the point card in JackStack order: the newest (last) Jack is last in DOM order, so it paints on top with no z-index needed', () => {
+  it('shows the newest (last) JackStack entry, never an earlier one, for a 3-Jack stack (W18, replaces the W17 cascade)', () => {
     const el = render({
       rowId: 0,
       entries: [
@@ -292,17 +295,76 @@ describe('PointRow (SPEC §5.2)', () => {
     });
     const slot = el.querySelector('[data-testid="point-0-0"]')?.closest('.point-row__slot') as HTMLElement;
     const jacks = [...slot.querySelectorAll<HTMLElement>('.point-row__jack')];
-    expect(jacks.length).toBe(3);
-    // DOM order mirrors JackStack order (index 0..n-1): each jack's
-    // `--jack-i` custom property increments, and the LAST jack — the
-    // newest steal — is the LAST element, so it paints on top by default
-    // stacking (no explicit z-index required).
-    expect(jacks.map((j) => j.style.getPropertyValue('--jack-i'))).toEqual(['0', '1', '2']);
-    const suits = jacks.map((j) => j.querySelector('.cuttle-card-face__suit')?.textContent);
-    // Suits 0, 2, 3 (clubs, hearts, spades) map to distinct glyphs — this
-    // confirms DOM order matches JackStack array order card-for-card, not
-    // just count.
-    expect(new Set(suits).size).toBe(3);
+    // W18: only ONE Jack card ever renders — the last (newest) entry in
+    // JackStack, Suit 3 (spades) here, not Suit 0 or Suit 2.
+    expect(jacks.length).toBe(1);
+    expect(jacks[0].querySelector('.cuttle-card-face__suit')?.textContent).toBe(String.fromCodePoint(0x2660));
+    expect(slot.querySelector('[data-jack-count]')?.getAttribute('data-jack-count')).toBe('3');
+  });
+
+  it('adds no "deck thickness" edge for a single Jack, and the same edge at 2, 3 or 4 Jacks (W18)', () => {
+    const stackOf = (count: number) =>
+      render({
+        rowId: 0,
+        entries: [
+          entry({
+            Owner: 0,
+            Controller: 0,
+            JackStack: Array.from({ length: count }, (_, i) => ({ Rank: 11 as const, Suit: (i % 4) as 0 | 1 | 2 | 3 })),
+            JackOwners: Array.from({ length: count }, () => 0 as const),
+          }),
+        ],
+        pointTotal: 4,
+        label: 'Points',
+        ontap: () => {},
+      });
+
+    const one = stackOf(1).querySelector('[data-testid="point-0-0"]') as HTMLElement;
+    expect(one.querySelectorAll('.point-row__jack-edge').length).toBe(0);
+
+    for (const count of [2, 3, 4]) {
+      const card = stackOf(count).querySelector('[data-testid="point-0-0"]') as HTMLElement;
+      const edges = [...card.querySelectorAll('.point-row__jack-edge')];
+      // Same look at every count ≥ 2 — no count-dependent variation, no digits.
+      expect(edges.length).toBe(2);
+      expect(edges.every((e) => e.textContent === '')).toBe(true);
+      expect(edges.every((e) => e.getAttribute('aria-hidden') === 'true')).toBe(true);
+    }
+  });
+
+  it('carries the Jack count only as the stack\'s aria-label ("stolen, N Jacks") — none for a single Jack (W18)', () => {
+    const single = render({
+      rowId: 0,
+      entries: [entry({ Owner: 0, Controller: 0, JackStack: [{ Rank: 11, Suit: 0 }], JackOwners: [0] })],
+      pointTotal: 4,
+      label: 'Points',
+      ontap: () => {},
+    });
+    expect(
+      single.querySelector('[data-testid="point-0-0"] .point-row__jack-stack')?.getAttribute('aria-label'),
+    ).toBeNull();
+
+    const triple = render({
+      rowId: 0,
+      entries: [
+        entry({
+          Owner: 0,
+          Controller: 0,
+          JackStack: [
+            { Rank: 11, Suit: 0 },
+            { Rank: 11, Suit: 2 },
+            { Rank: 11, Suit: 3 },
+          ],
+          JackOwners: [0, 0, 0],
+        }),
+      ],
+      pointTotal: 4,
+      label: 'Points',
+      ontap: () => {},
+    });
+    expect(
+      triple.querySelector('[data-testid="point-0-0"] .point-row__jack-stack')?.getAttribute('aria-label'),
+    ).toBe('stolen, 3 Jacks');
   });
 
   it('with no dropZoneKey, renders a plain row and no zone testid; with one, wraps in a DropZones with that testid', () => {

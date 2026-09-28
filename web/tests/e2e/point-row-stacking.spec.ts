@@ -10,18 +10,37 @@ import { expect, test } from '@playwright/test';
 const HARNESS_URL = '/tests/e2e/harness/mount-board.ts';
 type Harness = typeof import('./harness/mount-board');
 
-// P2 W14 (board polish, round-4) — the Jack-stacking ruling, and its W17
-// revision (round-4, item W17): the product owner reviewed a screenshot of
-// the W14 centred-top-strip treatment and redirected it. The new rules
-// (docs/design.md is being updated to match, see this item's hand-back):
+// P2 W14 (board polish, round-4) introduced Jack stacking; W17 (round-4)
+// redirected it to a full-size, corner-indexed downward cascade. Round-4
+// item W18 found the W17 cascade clipped — a 2-Jack stack's lowest layer
+// showed only its own corner, cut off by the row's fixed height budget
+// (`--cu-zone-points`, sized for a bare point card, never a stacked one).
 //
-//   1. A Jack is the same size as the card it sits on — offset DOWNWARD
-//      ONLY, no narrowing, no sideways shift. Several Jacks cascade
-//      downward, newest on top.
-//   2. The rank/suit indicator moves to the upper-left CORNER, at every
-//      card size (hand, field, mini), replacing the W14 centred top strip.
-//      The downward offset must leave the covered card's corner index fully
-//      visible.
+// Mid-item, the product owner redirected W18 itself, twice:
+//
+//   1. Don't cascade multiple Jacks. Render only the TOP (newest,
+//      `JackStack[length - 1]`) Jack — full card size, offset downward,
+//      exactly as the W17 cascade's first layer — so the point card's
+//      corner index stays visible. Only the top Jack is ever a legal
+//      target and steals alternate owners, so one layer loses no
+//      information. 2+ Jacks get a small badge... which a THIRD redirect
+//      then dropped in favour of a "deck thickness" cue: two thin,
+//      plain card-back-coloured edges peeking 2-4px past the shown Jack's
+//      own right/bottom edge, identical at 2, 3 or 4 Jacks (no per-count
+//      variation, no digits anywhere on the board). The count survives
+//      only as the stack's `aria-label` ("stolen, N Jacks") for screen
+//      readers.
+//
+// docs/design.md §6/§7, as currently written, still describes the W17
+// cascade (full-size Jacks stacking downward, several deep) — this is a
+// SPEC tension flagged in this item's hand-back, not resolved here; the
+// product-owner redirect above governs the implementation and this file.
+//
+// Because the cascade is gone, PointRow's `--cu-zone-points` row can also
+// go back to a FIXED height per row (still grown when any entry in the
+// row holds a Jack, since a full-size Jack never fit the bare-card budget
+// even one layer deep — but that growth is now the SAME fixed amount
+// regardless of stack depth, not depth-dependent).
 //
 // jsdom (web/tests/unit/point-row.test.ts) has no real layout engine, so
 // the geometry criteria below — a real, measured corner index, and
@@ -43,7 +62,135 @@ for (const { name, width, height } of BREAKPOINTS) {
   test.describe(name, () => {
     test.use({ viewport: { width, height } });
 
-    test('the covered card\'s upper-left corner index stays fully visible above every Jack (W17 criterion 1), and the point card face — not a Jack — answers a tap on that corner (W17 criterion 3)', async ({
+    test('the shown Jack is fully visible — its whole box sits inside the row, never clipped (W18 problem 1, the original bug)', async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await page.waitForSelector('#app, body');
+
+      const measured = await page.evaluate(async (harnessUrl) => {
+        const { mountPointRow, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
+        unmountAll();
+        const host = mountPointRow({
+          rowId: 0,
+          entries: [
+            pointEntry({
+              Card: card(6, 1),
+              Owner: 1,
+              Controller: 0,
+              JackStack: [card(11, 0), card(11, 2)],
+              JackOwners: [1, 0],
+            }),
+          ],
+          pointTotal: 6,
+          label: 'Points',
+          highlighted: new Set<string>(),
+          staged: new Set<string>(),
+          ontap: () => {},
+        });
+
+        const rowBox = host.querySelector('.point-row__cards') as HTMLElement;
+        const jack = host.querySelector('.point-row__jack') as HTMLElement;
+        const rowRect = rowBox.getBoundingClientRect();
+        const jackRect = jack.getBoundingClientRect();
+
+        return {
+          jackTop: jackRect.top,
+          jackBottom: jackRect.bottom,
+          jackHeight: jackRect.height,
+          rowTop: rowRect.top,
+          rowBottom: rowRect.bottom,
+        };
+      }, HARNESS_URL);
+
+      // The whole Jack — not just a corner peek — sits inside the row's
+      // (grown) box: nothing clips it top or bottom.
+      expect(measured.jackTop).toBeGreaterThanOrEqual(measured.rowTop - 0.5);
+      expect(measured.jackBottom).toBeLessThanOrEqual(measured.rowBottom + 0.5);
+      // Sanity: a real, non-degenerate card box, not a 0-height clip.
+      expect(measured.jackHeight).toBeGreaterThan(40);
+    });
+
+    test('the same fixed row growth applies for any Jack-holding card, regardless of stack depth; a Jack-free row stays at the design budget', async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await page.waitForSelector('#app, body');
+
+      const measured = await page.evaluate(async (harnessUrl) => {
+        const { mountPointRow, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
+        const heightFor = (jackStack: ReturnType<typeof card>[]) => {
+          unmountAll();
+          const host = mountPointRow({
+            rowId: 0,
+            entries: [
+              pointEntry({
+                Card: card(6, 1),
+                Owner: 0,
+                Controller: 0,
+                JackStack: jackStack,
+                JackOwners: jackStack.map(() => 0 as const),
+              }),
+            ],
+            pointTotal: 6,
+            label: 'Points',
+            highlighted: new Set<string>(),
+            staged: new Set<string>(),
+            ontap: () => {},
+          });
+          return (host.querySelector('.point-row__cards') as HTMLElement).getBoundingClientRect().height;
+        };
+        const noJackHost = (() => {
+          unmountAll();
+          const host = mountPointRow({
+            rowId: 0,
+            entries: [pointEntry({ Card: card(6, 1), Owner: 0, Controller: 0 })],
+            pointTotal: 6,
+            label: 'Points',
+            highlighted: new Set<string>(),
+            staged: new Set<string>(),
+            ontap: () => {},
+          });
+          return (host.querySelector('.point-row__cards') as HTMLElement).getBoundingClientRect().height;
+        })();
+
+        const budget = (() => {
+          unmountAll();
+          const host = mountPointRow({
+            rowId: 0,
+            entries: [],
+            pointTotal: 0,
+            label: 'Points',
+            highlighted: new Set<string>(),
+            staged: new Set<string>(),
+            ontap: () => {},
+          });
+          const box = host.querySelector('.point-row__cards') as HTMLElement;
+          return parseFloat(getComputedStyle(box).getPropertyValue('--cu-zone-points').trim());
+        })();
+
+        return {
+          noJack: noJackHost,
+          budget,
+          one: heightFor([card(11, 0)]),
+          two: heightFor([card(11, 0), card(11, 2)]),
+          three: heightFor([card(11, 0), card(11, 2), card(11, 3)]),
+          four: heightFor([card(11, 0), card(11, 1), card(11, 2), card(11, 3)]),
+        };
+      }, HARNESS_URL);
+
+      // No Jack anywhere in the row: exactly the design budget.
+      expect(measured.noJack).toBeCloseTo(measured.budget, 0);
+      // Any Jack at all: the SAME grown height, whether the stack is 1,
+      // 2, 3 or 4 deep — the row no longer follows stack depth (only the
+      // TOP Jack is ever drawn, W18), so it doesn't need to.
+      expect(measured.one).toBeGreaterThan(measured.budget);
+      expect(measured.two).toBeCloseTo(measured.one, 0);
+      expect(measured.three).toBeCloseTo(measured.one, 0);
+      expect(measured.four).toBeCloseTo(measured.one, 0);
+    });
+
+    test("the covered card's upper-left corner index stays fully visible above the shown Jack, and the point card face — not the Jack — answers a tap on that corner", async ({
       page,
     }) => {
       await page.goto('/');
@@ -73,17 +220,16 @@ for (const { name, width, height } of BREAKPOINTS) {
         const slot = host.querySelector('.point-row__slot') as HTMLElement;
         const rankEl = host.querySelector('.point-row__face .cuttle-card-face__rank') as HTMLElement;
         const suitEl = host.querySelector('.point-row__face .cuttle-card-face__suit') as HTMLElement;
-        const jacks = [...host.querySelectorAll<HTMLElement>('.point-row__jack')];
+        const jack = host.querySelector('.point-row__jack') as HTMLElement;
 
         const slotRect = slot.getBoundingClientRect();
         const rankRect = rankEl.getBoundingClientRect();
         const suitRect = suitEl.getBoundingClientRect();
-        const jackRects = jacks.map((j) => j.getBoundingClientRect());
-        const lowestJackTop = Math.min(...jackRects.map((r) => r.top));
+        const jackRect = jack.getBoundingClientRect();
 
         // A point inside the corner index content (rank+suit), comfortably
-        // above every Jack's top edge and near the card's LEFT edge (W17:
-        // upper-left corner, not centred): the rank glyph's own midpoint.
+        // above the Jack's top edge and near the card's LEFT edge (upper-
+        // left corner, not centred): the rank glyph's own midpoint.
         const x = rankRect.left + rankRect.width / 2;
         const y = rankRect.top + rankRect.height / 2;
         const hit = document.elementFromPoint(x, y);
@@ -91,33 +237,70 @@ for (const { name, width, height } of BREAKPOINTS) {
         const hitIsJack = hit?.closest('.point-row__jack') !== null;
 
         return {
-          // How far below the slot's top the index content sits — should be
-          // near the left edge, not centred.
           rankLeftOffset: rankRect.left - slotRect.left,
           slotWidth: slotRect.width,
           indexBottom: Math.max(rankRect.bottom, suitRect.bottom) - slotRect.top,
-          lowestJackTopOffset: lowestJackTop - slotRect.top,
+          jackTopOffset: jackRect.top - slotRect.top,
           hitTestid,
           hitIsJack,
-          jackCount: jacks.length,
         };
       }, HARNESS_URL);
 
-      expect(measured.jackCount).toBe(2);
-      // W17 criterion 2: the index sits at the LEFT edge, not centred — well
-      // inside the left third of the card width.
+      // The index sits at the LEFT edge, not centred — well inside the
+      // left third of the card width.
       expect(measured.rankLeftOffset).toBeLessThan(measured.slotWidth / 3);
-      // W17 criterion 1: the corner index content sits entirely above the
-      // lowest Jack's top edge — the covered card's upper-left index is
-      // fully visible, not spilling under the stack.
-      expect(measured.indexBottom).toBeLessThanOrEqual(measured.lowestJackTopOffset);
-      // W17 criterion 3: elementFromPoint on the corner glyph hits the point
-      // card's face, not a Jack.
+      // The corner index content sits entirely above the Jack's top edge.
+      expect(measured.indexBottom).toBeLessThanOrEqual(measured.jackTopOffset);
+      // elementFromPoint on the corner glyph hits the point card's face,
+      // not the Jack.
       expect(measured.hitTestid).toBe('point-0-0');
       expect(measured.hitIsJack).toBe(false);
     });
 
-    test('a Jack is the same size as the card it sits on — offset downward only, no narrowing, no sideways shift (W17 criterion 1)', async ({
+    test("the shown Jack's own upper-left corner index is never covered by the deck-thickness edge, and a tap there hits the Jack", async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await page.waitForSelector('#app, body');
+
+      const measured = await page.evaluate(async (harnessUrl) => {
+        const { mountPointRow, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
+        unmountAll();
+        const host = mountPointRow({
+          rowId: 0,
+          entries: [
+            pointEntry({
+              Card: card(6, 1),
+              Owner: 0,
+              Controller: 0,
+              JackStack: [card(11, 0), card(11, 2), card(11, 3)],
+              JackOwners: [0, 0, 0],
+            }),
+          ],
+          pointTotal: 6,
+          label: 'Points',
+          highlighted: new Set<string>(),
+          staged: new Set<string>(),
+          ontap: () => {},
+        });
+
+        const jackRankEl = host.querySelector('.point-row__jack .cuttle-card-face__rank') as HTMLElement;
+        const rect = jackRankEl.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+
+        return {
+          hitIsJack: hit?.closest('.point-row__jack') !== null,
+          hitIsEdge: hit?.closest('.point-row__jack-edge') !== null,
+        };
+      }, HARNESS_URL);
+
+      expect(measured.hitIsJack).toBe(true);
+      expect(measured.hitIsEdge).toBe(false);
+    });
+
+    test('the shown Jack is the same size as the card it sits on — offset downward only, no narrowing, no sideways shift', async ({
       page,
     }) => {
       await page.goto('/');
@@ -146,42 +329,39 @@ for (const { name, width, height } of BREAKPOINTS) {
 
         const slot = host.querySelector('.point-row__slot') as HTMLElement;
         const face = host.querySelector('.point-row__face') as HTMLElement;
-        const jacks = [...host.querySelectorAll<HTMLElement>('.point-row__jack')];
+        const jack = host.querySelector('.point-row__jack') as HTMLElement;
 
         const slotRect = slot.getBoundingClientRect();
         const faceRect = face.getBoundingClientRect();
-        const jackRects = jacks.map((j) => j.getBoundingClientRect());
+        const jackRect = jack.getBoundingClientRect();
 
         return {
           slotWidth: slotRect.width,
           slotHeight: faceRect.height,
-          jackWidths: jackRects.map((r) => r.width),
-          jackHeights: jackRects.map((r) => r.height),
-          jackLeftOffsets: jackRects.map((r) => r.left - slotRect.left),
-          jackTopOffsets: jackRects.map((r) => r.top - slotRect.top),
+          jackWidth: jackRect.width,
+          jackHeight: jackRect.height,
+          jackLeftOffset: jackRect.left - slotRect.left,
+          jackTopOffset: jackRect.top - slotRect.top,
         };
       }, HARNESS_URL);
 
-      // Same width as the covered card — no narrowing.
-      for (const w of measured.jackWidths) expect(w).toBeCloseTo(measured.slotWidth, 0);
-      // Same height as the covered card's face.
-      for (const h of measured.jackHeights) expect(h).toBeCloseTo(measured.slotHeight, 0);
-      // No sideways shift — every Jack's left edge lines up with the card's.
-      for (const l of measured.jackLeftOffsets) expect(Math.abs(l)).toBeLessThanOrEqual(0.5);
-      // Offset downward only, and the second (newest) Jack sits further down
-      // than the first.
-      expect(measured.jackTopOffsets[0]).toBeGreaterThan(0);
-      expect(measured.jackTopOffsets[1]).toBeGreaterThan(measured.jackTopOffsets[0]);
+      // Same width and height as the covered card — no narrowing.
+      expect(measured.jackWidth).toBeCloseTo(measured.slotWidth, 0);
+      expect(measured.jackHeight).toBeCloseTo(measured.slotHeight, 0);
+      // No sideways shift — the Jack's left edge lines up with the card's.
+      expect(Math.abs(measured.jackLeftOffset)).toBeLessThanOrEqual(0.5);
+      // Offset downward only.
+      expect(measured.jackTopOffset).toBeGreaterThan(0);
     });
 
-    test('the newest Jack (last in JackStack) paints on top where Jacks overlap (criterion 4)', async ({ page }) => {
+    test('shows the newest (last) JackStack entry as the visible Jack, not an earlier one', async ({ page }) => {
       await page.goto('/');
       await page.waitForSelector('#app, body');
 
       const result = await page.evaluate(async (harnessUrl) => {
         const { mountPointRow, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
         unmountAll();
-        // Three suits (clubs, hearts, spades) so each Jack's glyph is
+        // Three suits (clubs, hearts, spades) so the shown Jack's glyph is
         // distinguishable; JackOwners is irrelevant to rendering here.
         const host = mountPointRow({
           rowId: 1,
@@ -202,67 +382,74 @@ for (const { name, width, height } of BREAKPOINTS) {
         });
 
         const jacks = [...host.querySelectorAll<HTMLElement>('.point-row__jack')];
-        const rects = jacks.map((j) => j.getBoundingClientRect());
-        // The overlap point: just below the last (newest) Jack's own top
-        // edge. W17 Jacks are full card size (not `mini`), so most of each
-        // Jack's box falls outside the row's fixed-height, `overflow-y:
-        // hidden` clip (criterion 6) — a point at the Jack's own CENTRE can
-        // land in the clipped-out, unpainted region and hit nothing. A point
-        // just below its top edge is always inside the painted strip, and
-        // by construction (each Jack shifted only slightly down) sits inside
-        // every earlier Jack's box too.
-        const last = rects[rects.length - 1];
-        const x = last.left + last.width / 2;
-        const y = last.top + 8;
-        const hit = document.elementFromPoint(x, y);
-        const hitJack = hit?.closest('.point-row__jack');
-        const hitIndex = hitJack ? jacks.indexOf(hitJack as HTMLElement) : -1;
+        const suits = jacks.map((j) => j.querySelector('.cuttle-card-face__suit')?.textContent);
 
-        return { jackCount: jacks.length, hitIndex };
+        return { jackCount: jacks.length, suits };
       }, HARNESS_URL);
 
-      expect(result.jackCount).toBe(3);
-      // The hit-tested element is the LAST Jack (index 2, the newest).
-      expect(result.hitIndex).toBe(2);
+      // Only ONE Jack card renders (W18) — the last JackStack entry,
+      // Suit 3 (spades: ♠), not Suit 0 (clubs) or Suit 2 (hearts).
+      expect(result.jackCount).toBe(1);
+      expect(result.suits).toEqual(['♠']);
     });
 
-    test('the row stays within its height budget (criterion 6)', async ({ page }) => {
+    test('no deck-thickness edge for a single Jack; the same edge (2 slivers) for 2, 3 or 4 Jacks', async ({ page }) => {
       await page.goto('/');
       await page.waitForSelector('#app, body');
 
       const result = await page.evaluate(async (harnessUrl) => {
         const { mountPointRow, pointEntry, card, unmountAll } = (await import(harnessUrl)) as Harness;
-        unmountAll();
-        const host = mountPointRow({
-          rowId: 0,
-          entries: [
-            pointEntry({ Card: card(4, 0), Owner: 0, Controller: 0 }),
-            pointEntry({
-              Card: card(6, 1),
-              Owner: 1,
-              Controller: 0,
-              JackStack: [card(11, 0), card(11, 2)],
-              JackOwners: [1, 0],
-            }),
-          ],
-          pointTotal: 10,
-          label: 'Points',
-          highlighted: new Set<string>(),
-          staged: new Set<string>(),
-          ontap: () => {},
-        });
-        const cardsBox = host.querySelector('.point-row__cards') as HTMLElement;
-        const budget = getComputedStyle(cardsBox).getPropertyValue('--cu-zone-points').trim();
+        const edgeCountFor = (jackStack: ReturnType<typeof card>[]) => {
+          unmountAll();
+          const host = mountPointRow({
+            rowId: 0,
+            entries: [
+              pointEntry({
+                Card: card(6, 1),
+                Owner: 0,
+                Controller: 0,
+                JackStack: jackStack,
+                JackOwners: jackStack.map(() => 0 as const),
+              }),
+            ],
+            pointTotal: 6,
+            label: 'Points',
+            highlighted: new Set<string>(),
+            staged: new Set<string>(),
+            ontap: () => {},
+          });
+          const jackRect = (host.querySelector('.point-row__jack') as HTMLElement).getBoundingClientRect();
+          const edges = [...host.querySelectorAll<HTMLElement>('.point-row__jack-edge')];
+          const stackLabel = host.querySelector('.point-row__jack-stack')?.getAttribute('aria-label') ?? null;
+          return {
+            edgeCount: edges.length,
+            // Every edge sticks out past the Jack's own box on the
+            // bottom-right — never covers the top-left corner.
+            allBeyondBottomRight: edges.every(
+              (e) => e.getBoundingClientRect().bottom > jackRect.bottom && e.getBoundingClientRect().right > jackRect.right,
+            ),
+            stackLabel,
+          };
+        };
+
         return {
-          rowHeight: host.getBoundingClientRect().height,
-          budgetPx: parseFloat(budget),
+          one: edgeCountFor([card(11, 0)]),
+          two: edgeCountFor([card(11, 0), card(11, 2)]),
+          three: edgeCountFor([card(11, 0), card(11, 2), card(11, 3)]),
+          four: edgeCountFor([card(11, 0), card(11, 1), card(11, 2), card(11, 3)]),
         };
       }, HARNESS_URL);
 
-      expect(result.rowHeight).toBeLessThanOrEqual(result.budgetPx + 0.5);
-      // Sanity: the compact/phone budget values from tokens.css.
-      expect(result.budgetPx).toBeGreaterThanOrEqual(84);
-      expect(result.budgetPx).toBeLessThanOrEqual(96);
+      expect(result.one.edgeCount).toBe(0);
+      expect(result.one.stackLabel).toBeNull();
+
+      for (const r of [result.two, result.three, result.four]) {
+        expect(r.edgeCount).toBe(2);
+        expect(r.allBeyondBottomRight).toBe(true);
+      }
+      expect(result.two.stackLabel).toBe('stolen, 2 Jacks');
+      expect(result.three.stackLabel).toBe('stolen, 3 Jacks');
+      expect(result.four.stackLabel).toBe('stolen, 4 Jacks');
     });
   });
 }

@@ -87,14 +87,18 @@
   }
 
   /* Reserve one field card's height so an empty row and a full row are the
-     same size (staging and first plays never reflow the board). */
+     same size (staging and first plays never reflow the board). W18
+     (round-4, item 2): derived from the shared aspect-ratio token
+     (card-geometry.css) instead of a hard-coded `* 1.4` — that literal was
+     the pre-W17 ratio and had drifted from the card's real (now ~1.3)
+     shape. */
   .permanent-row__cards {
     display: flex;
     align-items: center;
     gap: 6px;
     flex: 1;
     min-width: 0;
-    min-height: calc(var(--cuttle-card-width-field) * 1.4);
+    min-height: calc(var(--cuttle-card-width-field) * var(--cuttle-card-aspect-ratio, 1.3));
     overflow-x: auto;
   }
 
