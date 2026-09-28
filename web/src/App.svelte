@@ -1,23 +1,42 @@
 <script lang="ts">
-  // P1b Batch 3 walking-skeleton status page (SPEC §1.2, §5.1). This is
-  // deliberately NOT the routed app shell of §5.2 — no curtain, no board,
-  // no stores. It exists only to prove the bridge boundary end to end:
-  // ensureEngine() boots the real compiled WASM, and the golden-deal smoke
-  // check runs newGame() through engine.ts and renders the result.
+  // SPEC §5.2 — the app shell: ensureEngine(), the global error boundary,
+  // and the route switch between HomeScreen / GameScreen / ResultScreen.
   //
-  // SPEC §3.3 rule 4: this page renders only the envelope for the viewer
-  // holding the phone. newGame() returns the first actor's own envelope
-  // (§2.4) — there is no second viewer's data anywhere in this component.
-  import { onMount } from 'svelte';
+  // This replaces the P1b walking-skeleton status page (§1.2) now that the
+  // routed shell exists (AGENTS.md "SPEC text superseded by rulings": there
+  // is no `web/src/routes/`, the shell IS this file and main.ts).
+  //
+  // Routing precedence, most urgent first:
+  //   1. still booting the WASM bridge -> a loading screen.
+  //   2. ensureEngine() rejected -> a boot-failure screen (nothing else
+  //      can work without the engine).
+  //   3. `game.error` is set (a real EngineError from a failed newGame/
+  //      apply/restore call, SPEC §2.9) -> the global error boundary, with
+  //      a "New game" action. Checked BEFORE `game.screen`, because
+  //      `GameStore.newGame()` can set `error` and return before ever
+  //      flipping `screen` away from 'home' (game.svelte.ts `newGame()`:
+  //      the `!result.ok` branch returns early).
+  //   4. `game.screen === 'home'` -> HomeScreen.
+  //   5. `game.curtain.kind === 'result'` -> ResultScreen (game.svelte.ts
+  //      keeps `envelope` populated at 'result': it is a resting,
+  //      non-withheld curtain state, SPEC §5.7).
+  //   6. otherwise -> GameScreen (the board host; its board is a later
+  //      round's work — this round ships a skeleton, per the brief).
+  import { onMount, untrack } from 'svelte';
 
-  import { newGame } from './lib/bridge/engine';
+  import GameScreen from './lib/components/GameScreen.svelte';
+  import HomeScreen from './lib/components/HomeScreen.svelte';
+  import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
+  import { game } from './lib/stores/game.svelte';
+  import { session } from './lib/stores/session.svelte';
+  import { SNAPSHOT_KEY, decodeSnapshot } from './lib/stores/snapshot';
+  import './lib/styles/tokens.css';
 
   type EngineStatus = 'loading' | 'ready' | 'failed';
 
   let engineStatus = $state<EngineStatus>('loading');
   let engineError = $state<string | null>(null);
-  let goldenResult = $state<string | null>(null);
 
   onMount(() => {
     ensureEngine()
@@ -30,32 +49,203 @@
       });
   });
 
-  function runGoldenSmoke(): void {
-    // SPEC §2.6 golden scenario: seed "42", dealer 1 (P2 deals, so P1 is
-    // non-dealer and goes first) — 7 legal moves, including "play A♥ as
-    // one-off" at index 3.
-    const result = newGame({ seed: '42', dealer: 1 });
-    if (!result.ok) {
-      goldenResult = `${result.code}: ${result.message}`;
+  type Screen = 'loading' | 'boot-failed' | 'error' | 'home' | 'result' | 'game';
+
+  const screen = $derived<Screen>(
+    engineStatus === 'loading'
+      ? 'loading'
+      : engineStatus === 'failed'
+        ? 'boot-failed'
+        : game.error !== null
+          ? 'error'
+          : game.screen === 'home'
+            ? 'home'
+            : game.curtain.kind === 'result'
+              ? 'result'
+              : 'game',
+  );
+
+  // R2.3/R3: the app layer's job, not ResultScreen's (which is a pure
+  // presentational component; see its own file doc). Stalemates are never
+  // tallied (SPEC §5.3 session.svelte.ts / R3).
+  //
+  // B2: only a LIVE transition into 'result' records, i.e. one from a game
+  // this App instance has watched being played (`game.apply()` taking the
+  // curtain from none / a real ack to result). `game.restore()` into a
+  // finished game flips `screen` from 'home' to 'game' and the curtain to
+  // 'result' in one synchronous block, so this effect never sees an
+  // in-game, non-result state first, and the win already recorded before
+  // the reload (or in another session) is not recorded again.
+  //
+  // `taliedThisResult` therefore starts true (nothing to tally yet), is set
+  // true again whenever the home screen shows, and is cleared only by an
+  // observed in-game, non-result state. A plain `let`, not `$state`: it is
+  // bookkeeping for this effect alone and must not re-trigger it.
+  let taliedThisResult = true;
+
+  $effect(() => {
+    if (game.screen !== 'game') {
+      taliedThisResult = true;
       return;
     }
-    const lines = result.descriptions.map((description, index) => `[${index}] ${description}`);
-    goldenResult = `${result.legalMoves.length} legal moves\n${lines.join('\n')}`;
+    if (game.curtain.kind !== 'result') {
+      taliedThisResult = false;
+      return;
+    }
+    if (taliedThisResult) return;
+    const view = game.view;
+    if (view && view.winner !== null) {
+      const winner = view.winner;
+      // untrack: recordResult reads the tally it writes; that read must not
+      // become a dependency of this effect.
+      untrack(() => session.recordResult(winner));
+    }
+    taliedThisResult = true;
+  });
+
+  // N5: the error boundary's "New game" goes through the same R4.3 abandon
+  // confirm HomeScreen uses when the saved game is still in progress, so a
+  // possibly recoverable game is never silently discarded. A snapshot
+  // resting at 'result' is a finished game: R4.3 covers "an in-progress
+  // game" only, so that case starts immediately (orchestrator ruling).
+  let errorAbandonNames = $state<[string, string] | null>(null);
+
+  function inProgressSnapshotNames(): [string, string] | null {
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(SNAPSHOT_KEY);
+    } catch {
+      return null;
+    }
+    const decoded = decodeSnapshot(raw);
+    if (!decoded.ok || decoded.snapshot.curtain.kind === 'result') return null;
+    return decoded.snapshot.names;
+  }
+
+  function handleErrorNewGame(): void {
+    const names = inProgressSnapshotNames();
+    if (names !== null) {
+      errorAbandonNames = names;
+      return;
+    }
+    void game.newGame();
+  }
+
+  function confirmErrorAbandon(): void {
+    errorAbandonNames = null;
+    void game.newGame();
+  }
+
+  function cancelErrorAbandon(): void {
+    errorAbandonNames = null;
+  }
+
+  // SPEC §8 OQ-12: `game.newGame()` already reads `session.nextDealer`
+  // itself (game.svelte.ts `newGame()`), so a rematch needs no dealer
+  // argument here — the alternation is entirely the store's existing
+  // responsibility.
+  function handleRematch(): void {
+    void game.newGame();
   }
 </script>
 
 <main data-testid="app-shell">
-  <h1>Cuttle</h1>
-
-  {#if engineStatus === 'loading'}
-    <p data-testid="engine-status">Loading engine…</p>
-  {:else if engineStatus === 'failed'}
-    <p data-testid="engine-status">Engine failed: {engineError}</p>
+  {#if screen === 'loading'}
+    <p data-testid="engine-status" class="status-screen">Loading engine…</p>
+  {:else if screen === 'boot-failed'}
+    <div data-testid="engine-status" class="status-screen status-screen--error">
+      <p>Engine failed to load{engineError ? `: ${engineError}` : ''}.</p>
+    </div>
+  {:else if screen === 'error'}
+    <!-- N4: the error CODE and generic copy only. A bridge `message` can
+         embed a move description (card identities), so it never renders.
+         Stand-in until the §2.10 stuck-state screen lands. -->
+    <div data-testid="error-screen" class="status-screen status-screen--error">
+      <p>Something went wrong. The game hit an error it could not recover from.</p>
+      <p class="status-screen__code">Error code: {game.error?.code}</p>
+      <button type="button" data-testid="error-new-game" class="status-screen__button" onclick={handleErrorNewGame}>
+        New game
+      </button>
+      {#if errorAbandonNames}
+        <div class="status-screen__confirm" role="alertdialog" aria-modal="true">
+          <p>Abandon {errorAbandonNames[0]} vs {errorAbandonNames[1]}?</p>
+          <div class="status-screen__confirm-actions">
+            <button type="button" data-testid="cancel-abandon" class="status-screen__button" onclick={cancelErrorAbandon}>
+              Cancel
+            </button>
+            <button type="button" data-testid="confirm-abandon" class="status-screen__button" onclick={confirmErrorAbandon}>
+              Abandon
+            </button>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {:else if screen === 'home'}
+    <HomeScreen />
+  {:else if screen === 'result' && game.view}
+    <ResultScreen
+      state={{ winner: game.view.winner, stalemate: game.view.stalemate }}
+      names={session.names}
+      tally={session.tally}
+      onRematch={handleRematch}
+    />
   {:else}
-    <p data-testid="engine-status">Engine ready</p>
-    <button data-testid="golden-smoke" onclick={runGoldenSmoke}>Run golden-deal check</button>
-    {#if goldenResult}
-      <pre data-testid="golden-result">{goldenResult}</pre>
-    {/if}
+    <GameScreen />
   {/if}
 </main>
+
+<style>
+  .status-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cu-space-4);
+    min-height: 100dvh;
+    box-sizing: border-box;
+    padding: var(--cu-gutter-sheet);
+    background: var(--cu-ink);
+    color: var(--cu-pearl);
+    font-family: var(--cu-font-ui);
+    text-align: center;
+  }
+
+  .status-screen--error {
+    color: var(--cu-pearl);
+  }
+
+  .status-screen__code {
+    margin: 0;
+    color: var(--cu-muted);
+    font-size: var(--cu-text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .status-screen__confirm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cu-space-3);
+    padding: var(--cu-gutter-sheet);
+    border-radius: var(--cu-radius-sheet);
+    background: var(--cu-ink-raised);
+  }
+
+  .status-screen__confirm-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--cu-space-3);
+  }
+
+  .status-screen__button {
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    min-width: var(--cu-tap-min);
+    padding: 0 var(--cu-space-5);
+    border-radius: var(--cu-radius-control);
+    border: none;
+    background: var(--cu-ochre);
+    color: var(--cu-on-accent);
+    font-size: var(--cu-text-md);
+    font-weight: var(--cu-weight-bold);
+  }
+</style>
