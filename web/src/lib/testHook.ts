@@ -8,7 +8,7 @@
 // (curtain `none` or a real counter window). Behind any other curtain every
 // accessor returns empty.
 
-import { boardTargetKey, groupAffordances, stagingAffordances } from './affordances';
+import { boardAffordances, boardTargetKey, groupAffordances } from './affordances';
 import type { Envelope, MoveKind, PlayerId } from './bridge/schema';
 import { MoveKind as MK } from './enums';
 import type { CurtainState } from './stores/curtain.svelte';
@@ -20,6 +20,12 @@ export interface TestHookMove {
   handIndex: number;
   targetKey: TargetKey | null;
   description: string;
+  /** P2 W15: the ScrapIndex a 3 takes (one level down for a SevenPick). */
+  scrapIndex: number;
+  discardA: number;
+  discardB: number;
+  /** P2 W15: for a SevenPick, which `sevenRevealed` card it plays; otherwise null. */
+  revealIndex: number | null;
 }
 
 export interface CuttleTestHook {
@@ -49,16 +55,15 @@ function looking(curtain: CurtainState, envelope: Envelope | null): Envelope | n
 }
 
 /**
- * What the UI makes reachable: the staging pipeline's map on the board, the
- * CounterPrompt's counter and decline slots in a real counter window, and
- * nothing anywhere else. Kinds whose UI is not built yet (SevenPick,
- * DiscardPair, a rank-3's scrap pick) are absent, so an invariant walk over
- * those positions fails until their components land.
+ * What the UI makes reachable: the board's map at `none` (the staging
+ * pipeline plus, since P2 W15, the SevenRevealPanel, DiscardPicker and
+ * ScrapBrowser pick mode), the CounterPrompt's counter and decline slots in
+ * a real counter window, and nothing anywhere else.
  */
 export function reachableAffordances(curtain: CurtainState, envelope: Envelope | null): Record<string, number[]> {
   const env = looking(curtain, envelope);
   if (env === null) return {};
-  if (curtain.kind === 'none') return stagingAffordances(env.legalMoves);
+  if (curtain.kind === 'none') return boardAffordances(env.legalMoves);
   const grouped = groupAffordances(env.legalMoves);
   const out: Record<string, number[]> = {};
   for (const [key, indices] of Object.entries(grouped)) {
@@ -83,13 +88,24 @@ export function installTestHook(source: TestHookSource): () => void {
     moves: () => {
       const env = looking(source.curtain(), source.envelope());
       if (env === null) return [];
-      return env.legalMoves.map((m, index) => ({
-        index,
-        kind: m.Kind,
-        handIndex: m.HandIndex,
-        targetKey: boardTargetKey(m),
-        description: env.descriptions[index],
-      }));
+      const revealed = env.state.sevenRevealed ?? [];
+      return env.legalMoves.map((m, index) => {
+        const reveal =
+          m.Kind === MK.SevenPick && m.Card !== null
+            ? revealed.findIndex((c) => c.Rank === m.Card?.Rank && c.Suit === m.Card?.Suit)
+            : -1;
+        return {
+          index,
+          kind: m.Kind,
+          handIndex: m.HandIndex,
+          targetKey: boardTargetKey(m),
+          description: env.descriptions[index],
+          scrapIndex: m.Kind === MK.SevenPick && m.SubMove !== null ? m.SubMove.ScrapIndex : m.ScrapIndex,
+          discardA: m.DiscardA,
+          discardB: m.DiscardB,
+          revealIndex: reveal >= 0 ? reveal : null,
+        };
+      });
     },
     curtain: () => source.curtain().kind,
     viewer: source.viewer,

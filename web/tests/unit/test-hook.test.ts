@@ -87,3 +87,47 @@ describe('test hook redaction (SPEC §6.5)', () => {
     expect(Object.keys(hook.affordances()).length).toBeGreaterThan(0);
   });
 });
+
+describe('test hook at curtain none covers the W15 pickers (SPEC §6.5)', () => {
+  const EIGHT = { Rank: 8, Suit: 1 } as const;
+  const THREE = { Rank: 3, Suit: 0 } as const;
+
+  it('SevenPick slots are reachable, with the revealed card index for each move', () => {
+    const env = envelope({
+      state: playerView({ viewer: 0, active: 0, phase: 2, sevenRevealed: [{ Rank: 11, Suit: 0 }, EIGHT] }),
+      legalMoves: [mv({ Kind: Kind.SevenPick, Card: EIGHT, SubMove: mv({ Kind: Kind.PlayPoint, Card: EIGHT }) })],
+      descriptions: ['7: play 8♦ as point card'],
+    });
+    expect(reachableAffordances({ kind: 'none' }, env)).toEqual({ 'seven:8:1|hand:0|zone:points': [0] });
+    const hook = install({ kind: 'none' }, env);
+    expect(hook.moves()[0]).toMatchObject({ index: 0, revealIndex: 1, targetKey: 'zone:points' });
+  });
+
+  it('every DiscardPair is reachable, and moves() exposes the pair', () => {
+    const env = envelope({
+      state: playerView({ viewer: 0, active: 0, phase: 3 }),
+      legalMoves: [
+        mv({ Kind: Kind.DiscardPair, DiscardA: 0, DiscardB: 1 }),
+        mv({ Kind: Kind.DiscardPair, DiscardA: 0, DiscardB: 2 }),
+      ],
+      descriptions: ['discard hand[0] and hand[1]', 'discard hand[0] and hand[2]'],
+    });
+    expect(reachableAffordances({ kind: 'none' }, env)).toEqual({ 'discard:0:1': [0], 'discard:0:2': [1] });
+    const hook = install({ kind: 'none' }, env);
+    expect(hook.moves()[1]).toMatchObject({ discardA: 0, discardB: 2, revealIndex: null });
+  });
+
+  it('a 3 scrap-pick group is reachable, and moves() exposes each ScrapIndex', () => {
+    const env = envelope({
+      state: playerView({ viewer: 0, active: 0 }),
+      legalMoves: [
+        mv({ Kind: Kind.OneOff, HandIndex: 1, Card: THREE, ScrapIndex: 0 }),
+        mv({ Kind: Kind.OneOff, HandIndex: 1, Card: THREE, ScrapIndex: 1 }),
+      ],
+      descriptions: ['play 3♣ as one-off', 'play 3♣ as one-off'],
+    });
+    expect(reachableAffordances({ kind: 'none' }, env)).toEqual({ 'hand:1|zone:oneoff': [0, 1] });
+    const hook = install({ kind: 'none' }, env);
+    expect(hook.moves().map((m) => m.scrapIndex)).toEqual([0, 1]);
+  });
+});

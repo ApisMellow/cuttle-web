@@ -7,6 +7,7 @@
 //   zone:points|permanents|oneoff   a drop zone
 //   point:<owner>:<i>     entry i of <owner>'s points row (engine Target.Owner/Index)
 //   perm:<owner>:<i>      entry i of <owner>'s permanents row
+//   seven:<i>             revealed card i of a 7 (view.sevenRevealed[i], P2 W15)
 
 import type { PlayerId } from './bridge/schema';
 
@@ -19,9 +20,10 @@ export type TargetKey =
   | 'pass'
   | ZoneKey
   | `point:${PlayerId}:${number}`
-  | `perm:${PlayerId}:${number}`;
+  | `perm:${PlayerId}:${number}`
+  | `seven:${number}`;
 
-const TARGET_KEY = /^(?:hand:\d+|deck|scrap|pass|zone:(?:points|permanents|oneoff)|(?:point|perm):[01]:\d+)$/;
+const TARGET_KEY = /^(?:hand:\d+|deck|scrap|pass|zone:(?:points|permanents|oneoff)|(?:point|perm):[01]:\d+|seven:\d+)$/;
 
 /** Narrows a raw string (a DOM-reported key) to a `TargetKey`, or `null` if it is not one. */
 export function parseTargetKey(raw: string): TargetKey | null {

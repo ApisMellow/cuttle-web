@@ -3,6 +3,8 @@
   // points, permanents, hand, closest to center to farthest (docs/design.md
   // §6). This is the only zone whose PointRow/PermanentRow carry a
   // drop-zone key (Board brief: "the viewer's drop zones").
+  import type { Snippet } from 'svelte';
+
   import type { PlayerId, PlayerView } from '../bridge/schema';
   import type { CardTheme } from '../theme/types';
   import PermanentRow from './PermanentRow.svelte';
@@ -19,10 +21,22 @@
     selectedHand: number | null;
     ontap: (key: string) => void;
     theme: CardTheme;
+    /** P2 W15: rendered in the hand's slot instead of the hand (the 7's SevenRevealPanel). */
+    handTray?: Snippet;
   }
 
-  let { you, viewerId, pointTotal, highlighted, staged, dimmedHand, selectedHand, ontap, theme }: PlayerZoneProps =
-    $props();
+  let {
+    you,
+    viewerId,
+    pointTotal,
+    highlighted,
+    staged,
+    dimmedHand,
+    selectedHand,
+    ontap,
+    theme,
+    handTray,
+  }: PlayerZoneProps = $props();
 </script>
 
 <div class="player-zone" data-testid="player-zone">
@@ -49,16 +63,20 @@
     {ontap}
     {theme}
   />
-  <PlayerHand
-    cards={you.hand}
-    frozenHandIndices={you.frozenHandIndices}
-    selectedHandIndex={selectedHand}
-    {highlighted}
-    {staged}
-    dimmedHandIndices={dimmedHand}
-    onselect={(handIndex) => ontap(`hand:${handIndex}`)}
-    {theme}
-  />
+  {#if handTray}
+    {@render handTray()}
+  {:else}
+    <PlayerHand
+      cards={you.hand}
+      frozenHandIndices={you.frozenHandIndices}
+      selectedHandIndex={selectedHand}
+      {highlighted}
+      {staged}
+      dimmedHandIndices={dimmedHand}
+      onselect={(handIndex) => ontap(`hand:${handIndex}`)}
+      {theme}
+    />
+  {/if}
 </div>
 
 <style>

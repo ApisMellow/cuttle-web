@@ -329,3 +329,29 @@ export function counterPromptEntries(history: readonly AppliedMove[]): AppliedMo
     origin.kind === KIND.OneOff || (origin.kind === KIND.SevenPick && origin.subKind === KIND.OneOff);
   return counterable ? history.slice(i) : [];
 }
+
+/**
+ * P2 W15, SPEC §6.3 DiscardPair row — the StagingBar text for a staged
+ * discard: "Discard 4♦ and 5♠", or "Discard 4♦" for the one-card hand
+ * (`b === -1`, apply.go:485-488). Engine `Describe` gives hand indices
+ * ("discard hand[0] and hand[3]"), which mean nothing to a player. Only the
+ * DISCARDER's own staging bar shows this; the opponent's recap line for the
+ * same move stays "NAME discarded 2 cards." (§4.6).
+ */
+export function discardStagingText(hand: readonly Card[], a: number, b: number): string {
+  const first = hand[a];
+  if (first === undefined) throw new Error(`discardStagingText: no hand card at ${a}`);
+  if (b === -1) return `Discard ${cardGlyph(first)}`;
+  const second = hand[b];
+  if (second === undefined) throw new Error(`discardStagingText: no hand card at ${b}`);
+  return `Discard ${cardGlyph(first)} and ${cardGlyph(second)}`;
+}
+
+/**
+ * P2 W15, SPEC §6.3 rank-3 row — the StagingBar text once a scrap card is
+ * picked for a 3: the engine's own description plus the card taken, e.g.
+ * "play 3♣ as one-off — take 5♠ from the scrap". The scrap is public (R6).
+ */
+export function scrapPickStagingText(description: string, taken: Card): string {
+  return `${description} — take ${cardGlyph(taken)} from the scrap`;
+}

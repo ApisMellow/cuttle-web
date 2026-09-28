@@ -12,6 +12,8 @@
   // PlayerView` (never `Envelope`/`history`) plus the caller-formatted
   // `lastMoveText` string. There is no code path here that can reach a card
   // identity this view does not already contain.
+  import type { Snippet } from 'svelte';
+
   import type { PlayerId, PlayerView } from '../bridge/schema';
   import { parseTargetKey, type TargetKey } from '../targetKey';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
@@ -36,6 +38,8 @@
     /** The caller-formatted last-move line (e.g. via `lib/recap.ts`); the centre strip's middle slot renders it (design §6). */
     lastMoveText?: string;
     theme?: CardTheme;
+    /** P2 W15: shown in the hand's slot instead of the hand (the integrator's SevenRevealPanel). */
+    handTray?: Snippet;
   }
 
   let {
@@ -50,6 +54,7 @@
     ontap,
     lastMoveText,
     theme = getTheme(DEFAULT_THEME_ID),
+    handTray,
   }: BoardProps = $props();
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
@@ -103,6 +108,7 @@
     {selectedHand}
     ontap={tap}
     {theme}
+    {handTray}
   />
 </div>
 

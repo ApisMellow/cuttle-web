@@ -306,3 +306,22 @@ export function stagingAffordances(legalMoves: Move[]): Record<string, number[]>
   }
   return result;
 }
+
+/**
+ * P2 W15 — what the live board makes reachable at curtain `none` once the
+ * pickers exist: every slot `groupAffordances` produces, including SevenPick
+ * (SevenRevealPanel), DiscardPair (DiscardPicker) and a rank-3 scrap-pick
+ * group (ScrapBrowser pick mode). Counter and Decline are left out: they
+ * belong to the CounterPrompt, which never shares a screen with the board.
+ * `stagingAffordances` above stays as W11 scoped it.
+ */
+export function boardAffordances(legalMoves: Move[]): Record<string, number[]> {
+  const grouped = groupAffordances(legalMoves);
+  const result: Record<string, number[]> = {};
+  for (const [key, indices] of Object.entries(grouped)) {
+    const kind = legalMoves[indices[0]].Kind;
+    if (kind === MOVE_COUNTER || kind === MOVE_DECLINE) continue;
+    result[key] = indices;
+  }
+  return result;
+}
