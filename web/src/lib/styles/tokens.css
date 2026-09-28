@@ -1,0 +1,143 @@
+/*
+ * Cuttle Web design tokens (docs/design.md).
+ * Imported once by App.svelte.
+ *
+ * Direction: "Ink and cuttlebone." A cuttlefish hides in its own ink; the
+ * phone hides the game behind an ink curtain. The table is deep ink, cards
+ * are cuttlebone stock, and the two interaction accents are borrowed from
+ * the animal's skin: iridophore teal (you can) and chromatophore ochre
+ * (you chose).
+ *
+ * Single theme: dark table only. There is no prefers-color-scheme branch
+ * on purpose (design.md §2).
+ *
+ * Prefix `--cu-` for app tokens. The geometry tokens keep their existing
+ * `--cuttle-card-*` names and live in lib/styles/card-geometry.css, which
+ * this file does not touch (docs/design.md §5's proposed geometry change
+ * is that file's owner's call, not this one's).
+ */
+
+:root {
+  /* ── Palette ───────────────────────────────────────────────────────── */
+  /* Table */
+  --cu-ink: #241c2b;            /* board background */
+  --cu-ink-raised: #30263a;     /* zone wells, bars, sheets */
+  --cu-ink-line: #4a3d57;       /* hairlines, empty-slot outlines (decorative, 1.64:1) */
+  --cu-curtain: #1a1420;        /* curtain screens only */
+
+  /* Text on ink */
+  --cu-pearl: #eee8f1;          /* primary text: 13.67:1 on ink, 14.98:1 on curtain */
+  --cu-muted: #b4a8be;          /* secondary text: 7.28:1 on ink, 6.34:1 on raised */
+
+  /* Card stock (used by the vector theme only) */
+  --cu-paper: #faf8f4;          /* card face: 15.52:1 against ink (edge read) */
+  --cu-suit-black: #1f1824;     /* 16.30:1 on paper */
+  --cu-suit-red: #b0172e;       /* 6.58:1 on paper */
+  --cu-suit-red-on-ink: #ff8a96;/* 7.31:1 on ink; only if a red glyph ever sits on the table */
+  --cu-back-a: #3b2f4a;         /* card back pattern */
+  --cu-back-b: #5ccfc4;
+
+  /* Interaction accents */
+  --cu-iris: #5ccfc4;           /* highlighted / legal target: 8.76:1 on ink */
+  --cu-ochre: #f0b54a;          /* staged / confirm: 8.94:1 on ink */
+  --cu-frost: #a9d2f5;          /* frozen chip: 10.36:1 on ink */
+  --cu-on-accent: #241c2b;      /* text on iris or ochre fills: 8.76 / 8.94:1 */
+
+  /* State recipes */
+  --cu-dim-scrim: rgb(36 28 43 / 0.42); /* over a dimmed face; red rank stays 4.01:1 */
+  --cu-ring-width: 3px;
+  --cu-ring-gap: 2px;           /* table-coloured gap between card edge and ring */
+
+  /* ── Type ──────────────────────────────────────────────────────────── */
+  /* Self-hosted, precached woff2 (SPEC §5.8 globPatterns include woff2). */
+  --cu-font-ui: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cu-font-index: "Atkinson Hyperlegible Next", system-ui, sans-serif; /* rank indices */
+  --cu-font-display: ui-serif, "New York", Georgia, "Times New Roman", serif; /* zero bytes */
+
+  /* Scale: 1.25 ratio on 16, rounded to whole px */
+  --cu-text-xs: 12px;   /* row tallies, badges */
+  --cu-text-sm: 14px;   /* secondary labels, recap lines on narrow */
+  --cu-text-md: 16px;   /* body, buttons, recap lines */
+  --cu-text-lg: 20px;   /* score numerals, "Pass the phone to" */
+  --cu-text-xl: 25px;   /* result screen, sheet titles */
+  --cu-text-2xl: 31px;  /* reserved */
+  --cu-text-name: 44px; /* curtain player name (display face) */
+
+  --cu-leading-tight: 1.1;
+  --cu-leading-body: 1.4;
+  --cu-weight-regular: 400;
+  --cu-weight-bold: 700;
+
+  /* Rank / suit glyph sizes per card size (vector theme reads these) */
+  --cu-index-rank-hand: 22px;
+  --cu-index-suit-hand: 18px;
+  --cu-index-rank-field: 22px;
+  --cu-index-suit-field: 18px;
+  --cu-index-rank-mini: 15px;
+  --cu-index-suit-mini: 12px;
+
+  /* ── Space and radius ──────────────────────────────────────────────── */
+  --cu-space-1: 4px;
+  --cu-space-2: 8px;
+  --cu-space-3: 12px;
+  --cu-space-4: 16px;
+  --cu-space-5: 24px;
+  --cu-space-6: 32px;
+  --cu-space-7: 48px;
+
+  --cu-gutter-board: 12px;      /* board side gutter; keeps an 8-card fan at 44px slices at 390 */
+  --cu-gutter-sheet: 16px;      /* curtain, recap, rules, result */
+
+  --cu-radius-card: 6%;         /* matches the existing faces */
+  --cu-radius-well: 10px;       /* zone wells */
+  --cu-radius-control: 999px;   /* buttons are pills; nothing else is */
+  --cu-radius-sheet: 18px;      /* bottom sheets: chooser, scrap browser */
+
+  --cu-tap-min: 44px;
+
+  /* ── Zone heights at 390x844 (design.md §5) ────────────────────────── */
+  --cu-zone-score: 48px;
+  --cu-zone-opp-hand: 48px;
+  --cu-zone-permanents: 92px;
+  --cu-zone-points: 96px;       /* +12 over permanents for Jack peeks */
+  --cu-zone-center: 88px;
+  --cu-zone-hand: 104px;       /* 78.4 card + 12 staged lift + 12 tab */
+  --cu-zone-action: 64px;
+
+  --cu-board-max: 560px;        /* column cap on tablet / desktop */
+
+  /* ── Motion ────────────────────────────────────────────────────────── */
+  --cu-dur-instant: 0ms;
+  --cu-dur-fast: 120ms;         /* select lift, press feedback */
+  --cu-dur-med: 200ms;          /* play, draw */
+  --cu-dur-slow: 320ms;         /* scuttle-to-scrap, Jack steal */
+  --cu-dur-hold: 600ms;         /* MUST equal HOLD_MS in lib/curtain.ts; set from TS at mount */
+  --cu-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --cu-ease-in-out: cubic-bezier(0.6, 0, 0.3, 1);
+
+  --cu-lift-selected: -8px;
+  --cu-lift-staged: -12px;
+}
+
+@media (max-height: 780px), (max-width: 374px) {
+  :root {
+    --cu-zone-score: 44px;
+    --cu-zone-opp-hand: 44px;
+    --cu-zone-permanents: 80px;
+    --cu-zone-points: 84px;
+    --cu-zone-center: 80px;
+    --cu-zone-hand: 96px;
+    --cu-zone-action: 56px;
+    --cu-text-name: 38px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --cu-dur-fast: 0ms;
+    --cu-dur-med: 0ms;
+    --cu-dur-slow: 0ms;
+    /* --cu-dur-hold is NOT zeroed: the hold still takes 600ms, the ring
+       fills in three discrete steps instead of a sweep (design.md §7). */
+  }
+}
