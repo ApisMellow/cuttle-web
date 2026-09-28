@@ -16,7 +16,10 @@
   //
   // SPEC §5.2: "the point card with each Jack fanned above it and an
   // ownership badge driven by `Controller`... a marker indicating the
-  // original `Owner`". The marker shows only when `entry.Controller !==
+  // original `Owner`" — the "fanned above it" placement is superseded by
+  // the docs/design.md §6/§7 Jack-stacking ruling (confirmed 2026-09-28):
+  // Jacks stack ON the point card, shifted down, leaving its top strip
+  // (rank + suit) visible. The marker shows only when `entry.Controller !==
   // entry.Owner` (a Jack-stolen point) and never otherwise. No indices from
   // `history` are used — `Owner`/`Controller` come straight off the
   // `PointEntry` the view already gave us (SPEC §3.3 rule 2: no
@@ -67,8 +70,10 @@
         <!-- The Jacks and the owner badge live INSIDE the tap target, after the
              face, so they paint over it and a tap anywhere on the stack is a
              tap on the point. Only the face box clips (container geometry
-             rule); the button does not, so the Jacks can fan 12 px above it
-             into the padding `.point-row__cards` reserves. -->
+             rule); the button does not, so the Jacks can sit on top of it
+             (docs/design.md §6/§7, confirmed 2026-09-28 — supersedes the
+             SPEC §5.2 "fanned above it" quote above and the earlier
+             fan-above treatment). -->
         <button
           type="button"
           class="point-row__card"
@@ -119,22 +124,31 @@
 {/if}
 
 <style>
-  /* docs/design.md §6: a points row is one field card (width x 1.4) plus the
-     12 px the Jack fan rises above it. The height is reserved even when the
-     row is empty, so a Jack or a first point never reflows the board. */
+  /* docs/design.md §6, the Jack-stacking ruling (confirmed 2026-09-28): the
+     row's height is the `--cu-zone-points` budget (96 phone / 84 compact),
+     fixed and reserved even when the row is empty, so a Jack or a first
+     point never reflows the board. */
+  /* P2 W14 (board polish, item C): matches DropZones' `.drop-zone__content`
+     padding/gap (the viewer's own row goes through that wrapper instead of
+     this one) so the opponent's row — which renders this plain div, no
+     drop zone — reserves the same tally clearance at the row's right end. */
   .point-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
-    padding-inline: 8px;
+    padding-inline: 4px;
     border-radius: var(--cu-radius-well, 10px);
     background: var(--cu-ink-raised, #30263a);
   }
 
-  /* `overflow-x: auto` forces `overflow-y` to auto as well, so the scroll
-     box clips at its padding edge. The 12 px top padding is where the Jacks
-     (at top: -12px of their point card) live, inside that edge. */
+  /* Height is the zone budget, not content-derived: Jacks now stack ON the
+     point card (never above it), so nothing needs extra top padding. The
+     explicit `overflow-y: hidden` is deliberate (not `overflow-x: auto`'s
+     usual side effect of forcing `overflow-y: auto`): it caps the row at
+     its budget even if a rare 3rd/4th Jack's downward shift would otherwise
+     push past it (criterion 6). `overflow-x: auto` still lets a wide row of
+     point cards scroll horizontally. */
   .point-row__cards {
     display: flex;
     align-items: center;
@@ -142,9 +156,9 @@
     flex: 1;
     min-width: 0;
     box-sizing: border-box;
-    min-height: calc(var(--cuttle-card-width-field) * 1.4 + 12px);
-    padding-top: 12px;
+    height: var(--cu-zone-points, 96px);
     overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .point-row__slot {
@@ -180,18 +194,23 @@
 
   .point-row__jacks {
     position: absolute;
-    top: -12px;
-    left: 0;
+    inset: 0;
     z-index: 1;
     display: block;
   }
 
-  /* Each Jack steps 12 px right of the one beneath it; the last Jack played
-     sits on top (DOM order). */
+  /* Jack stacking ruling (docs/design.md §6/§7, confirmed 2026-09-28): each
+     Jack sits ON the point card, shifted down from the one before it, so
+     the card's top strip (its rank/suit, drawn by the theme — see
+     VectorCardFace's `data-size='field'` rules) stays visible above the
+     stack. `--jack-strip` clears the theme's field identity block with
+     margin; `--jack-shift` is the small per-Jack drop. Later Jacks paint
+     over earlier ones by DOM order alone (no z-index needed): the newest
+     Jack is last in `JackStack`, so it renders last and sits on top. */
   .point-row__jack {
     position: absolute;
-    top: 0;
-    left: calc(var(--jack-i, 0) * 12px);
+    top: calc(var(--jack-strip, 40px) + var(--jack-i, 0) * var(--jack-shift, 6px));
+    left: 50%;
     display: block;
     flex: none;
     width: var(--cuttle-card-width-mini);
@@ -199,12 +218,13 @@
     overflow: hidden;
     border-radius: 6%;
     box-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+    transform: translateX(-50%);
   }
 
   /* Owner badge (SPEC §5.2, design §6 "a small ownership mark"): an ink
      disc on the paper face. --cu-ink on --cu-paper is 15.52:1 (design §3),
      well above the 3:1 non-text floor. A pearl ring keeps its edge when it
-     overlaps the face border. Bottom-right, clear of the Jack fan. */
+     overlaps the face border. Bottom-right, clear of the Jack stack. */
   .point-row__owner-marker {
     position: absolute;
     right: 4px;
@@ -239,7 +259,7 @@
     flex: none;
     align-self: flex-start;
     margin-top: 4px;
-    padding: 1px 6px;
+    padding: 1px 4px;
     border-radius: 999px;
     background: var(--cu-ink, #241c2b);
     font-variant-numeric: tabular-nums;

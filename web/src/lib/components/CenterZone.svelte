@@ -73,11 +73,21 @@
 </div>
 
 <style>
+  /* P2 W14 (board polish): height is the `--cu-zone-center` budget (88
+     phone / 80 compact, docs/design.md §6), not content-derived. DeckPile
+     and ScrapPile's hand-size card + count numeral (design §6: "Deck
+     (hand-size box, count numeral centred beneath)") is naturally taller
+     than the compact budget — the hand-size token doesn't narrow at
+     compact (docs/design.md §5) — so `overflow: visible` lets that content
+     bleed a few px into the `.board` gap above/below rather than reflow
+     the page past the fit budget (design.md §10.6). */
   .center-zone {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    height: var(--cu-zone-center, 88px);
+    overflow: visible;
     padding-inline: var(--cu-gutter-board, 12px);
   }
 

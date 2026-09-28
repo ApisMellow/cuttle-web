@@ -45,6 +45,14 @@
   /* `size` is a rendering hint: glyph scale only, never the box. */
   .cuttle-card-face[data-size='field'] {
     font-size: 1.1rem;
+    /* docs/design.md §7, confirmed 2026-09-28: identity lives in the top
+       strip so a Jack stacked on top of a stolen point card still leaves it
+       readable. `justify-content` moves the rank+suit block to the top of
+       the box instead of centring it; the rank/suit overrides below (plus
+       the base class's `line-height: 1`) keep that block compact so the
+       reserved strip stays small regardless of card width. */
+    justify-content: flex-start;
+    padding-top: 3px;
   }
 
   .cuttle-card-face[data-size='mini'] {
@@ -57,6 +65,14 @@
 
   .cuttle-card-face__suit {
     font-size: 1.1em;
+  }
+
+  .cuttle-card-face[data-size='field'] .cuttle-card-face__rank {
+    font-size: 1em;
+  }
+
+  .cuttle-card-face[data-size='field'] .cuttle-card-face__suit {
+    font-size: 0.75em;
   }
 
   .cuttle-card-face--red {

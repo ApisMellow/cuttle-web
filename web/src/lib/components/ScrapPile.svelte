@@ -43,7 +43,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 0;
     min-width: 44px;
   }
 
@@ -73,6 +73,7 @@
 
   .scrap-pile__count {
     font-size: var(--cu-text-sm, 14px);
+    line-height: 14px;
     color: var(--cu-muted, #b4a8be);
     font-variant-numeric: tabular-nums;
   }

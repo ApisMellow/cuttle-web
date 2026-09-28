@@ -108,6 +108,13 @@
     color: var(--cu-pearl, #eee8f1);
   }
 
+  /* P2 W14 (board polish, item C): docs/design.md §6 says five field cards
+     fit at 390 wide, tally included. Five 60px cards + four 6px gaps
+     already use 324px of the ~350px the row's chrome leaves at 390 wide,
+     so the original 8px padding + 6px gap left only ~20px for the tally
+     chip — not reliably enough (its own padding + a two-digit score) to
+     clear the 5th card. Trimmed here rather than by shrinking the card
+     gap, which design.md §6 pins at 6px. */
   .drop-zone__content {
     position: relative;
     z-index: 1;
@@ -115,8 +122,8 @@
     flex: 1;
     min-width: 0;
     align-items: center;
-    gap: 6px;
-    padding-inline: 8px;
+    gap: 4px;
+    padding-inline: 4px;
     pointer-events: none;
   }
 </style>

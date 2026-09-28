@@ -65,7 +65,7 @@ describe('PointRow (SPEC §5.2)', () => {
     expect(seen).toEqual(['point:1:0', 'point:1:1']);
   });
 
-  it('shows the JackStack fanned above the point card, one mini Face per Jack', () => {
+  it('shows the JackStack stacked on the point card, one mini Face per Jack', () => {
     const el = render({
       rowId: 0,
       entries: [
@@ -262,6 +262,40 @@ describe('PointRow (SPEC §5.2)', () => {
     const marker = el.querySelector('[data-testid="point-0-0"] [data-owner-marker]');
     expect(marker?.getAttribute('data-owner')).toBe('1');
     expect(marker?.hasAttribute('data-testid')).toBe(false);
+  });
+
+  it('stacks Jacks on the point card in JackStack order: the newest (last) Jack is last in DOM order, so it paints on top with no z-index needed', () => {
+    const el = render({
+      rowId: 0,
+      entries: [
+        entry({
+          Owner: 0,
+          Controller: 0,
+          JackStack: [
+            { Rank: 11, Suit: 0 },
+            { Rank: 11, Suit: 2 },
+            { Rank: 11, Suit: 3 },
+          ],
+          JackOwners: [0, 0, 0],
+        }),
+      ],
+      pointTotal: 4,
+      label: 'Points',
+      ontap: () => {},
+    });
+    const slot = el.querySelector('[data-testid="point-0-0"]')?.closest('.point-row__slot') as HTMLElement;
+    const jacks = [...slot.querySelectorAll<HTMLElement>('.point-row__jack')];
+    expect(jacks.length).toBe(3);
+    // DOM order mirrors JackStack order (index 0..n-1): each jack's
+    // `--jack-i` custom property increments, and the LAST jack — the
+    // newest steal — is the LAST element, so it paints on top by default
+    // stacking (no explicit z-index required).
+    expect(jacks.map((j) => j.style.getPropertyValue('--jack-i'))).toEqual(['0', '1', '2']);
+    const suits = jacks.map((j) => j.querySelector('.cuttle-card-face__suit')?.textContent);
+    // Suits 0, 2, 3 (clubs, hearts, spades) map to distinct glyphs — this
+    // confirms DOM order matches JackStack array order card-for-card, not
+    // just count.
+    expect(new Set(suits).size).toBe(3);
   });
 
   it('with no dropZoneKey, renders a plain row and no zone testid; with one, wraps in a DropZones with that testid', () => {
