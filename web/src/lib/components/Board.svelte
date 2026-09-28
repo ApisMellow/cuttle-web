@@ -108,4 +108,15 @@
     margin: 0 auto;
     overflow-x: hidden;
   }
+
+  /* P2 W14 (board polish, item B): docs/design.md §10.6's 360x740 fit
+     budget leaves no room for the phone-tier inter-zone gap once the
+     centre strip and hand rows use their own compact tokens. A 1px trim
+     per gap (3 gaps between the board's 4 children) is inside what
+     design.md's compact tier already narrows several tokens for. */
+  @media (max-height: 780px), (max-width: 374px) {
+    .board {
+      gap: 6px;
+    }
+  }
 </style>
