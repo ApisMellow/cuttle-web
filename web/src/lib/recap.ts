@@ -250,3 +250,58 @@ export function formatRecapLine(entry: AppliedMove, viewer: PlayerId, names: rea
   const predicate = predicateFor(entry.kind, entry.description, entry.subKind, entry, { targetPossessive });
   return `${name} ${predicate}.`;
 }
+
+/**
+ * SPEC §4.6 "each line pairs with a small card glyph where a card is named"
+ * (design.md §8: a theme `mini` face per named card). The cards a recap
+ * line names, in the order its sentence names them, for RecapPanel to render
+ * as faces. Additive helper: it doesn't touch `formatRecapLine`.
+ *
+ * Reads only `entry.kind`, `entry.subKind`, `entry.card` and
+ * `entry.targetCard`; never `index` (mover-only, SPEC §3.2) and never the
+ * description. Both card fields are public (SPEC §2.7, §3.2 redacts only
+ * `index`). Engine v0.2.0 shapes, as the bridge emits them
+ * (`internal/wasm/bridge.go` `cardOrNil(move.Card)`, `target.go`
+ * `targetCardFor`):
+ *   - `card` is null for Draw, Pass, Decline and DiscardPair;
+ *   - `card` is the played card for PlayPoint, PlayPermanent, Scuttle,
+ *     OneOff and Counter;
+ *   - for SevenPick `card` is the chosen revealed card, or the scrapped
+ *     card on a dead end (`subKind: null`); the 7's unchosen card never
+ *     enters an AppliedMove, so it can't be named here (R16);
+ *   - `targetCard` is the target, or null.
+ *
+ * Order follows `predicateFor`'s sentences:
+ *   Scuttle     "scuttled your 7♥ with 9♠"       -> [target, card]
+ *   Jack steal  "stole your 10♥ with J♣"          -> [target, card]
+ *   OneOff      "played 9♥ as a one-off, targeting 5♣" -> [card, target]
+ *   others      "played 7♥ for points", ...      -> [card]
+ * A Jack steal is the PlayPermanent whose `targetCard` is set (the bridge
+ * rejects a targetCard on any other PlayPermanent). DiscardPair returns []
+ * whatever the entry holds: it names no identities (§4.6).
+ */
+export function recapCards(entry: AppliedMove): Card[] {
+  const kind = entry.kind === KIND.SevenPick ? entry.subKind : entry.kind;
+  const played = entry.card;
+  const target = entry.targetCard;
+  let named: (Card | null)[];
+  switch (kind) {
+    case null: // dead-end SevenPick: the scrapped card only
+    case KIND.PlayPoint:
+    case KIND.Counter:
+      named = [played];
+      break;
+    case KIND.Scuttle:
+      named = [target, played];
+      break;
+    case KIND.PlayPermanent:
+      named = target === null ? [played] : [target, played];
+      break;
+    case KIND.OneOff:
+      named = [played, target];
+      break;
+    default: // Draw, Pass, Decline, DiscardPair
+      named = [];
+  }
+  return named.filter((cd): cd is Card => cd !== null).map((cd) => ({ Rank: cd.Rank, Suit: cd.Suit }));
+}
