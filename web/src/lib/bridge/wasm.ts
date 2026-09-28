@@ -51,11 +51,18 @@ function whenReady(): Promise<void> {
  * is the side effect of defining `globalThis.Go`.
  */
 function loadWasmExec(): Promise<void> {
+  // W16: `import.meta.env.BASE_URL` is Vite's configured `base` (always
+  // trailing-slashed), so this resolves under a GitHub Pages subpath
+  // (CUTTLE_BASE=/cuttle-web/) the same way it resolves at the '/' default
+  // used by dev and scripts/ci.sh. Both files are served straight out of
+  // publicDir (vite.config.ts), so Vite never rewrites a literal '/...'
+  // string the way it rewrites index.html's own asset references.
+  const src = `${import.meta.env.BASE_URL}wasm_exec.js`;
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '/wasm_exec.js';
+    script.src = src;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('failed to load /wasm_exec.js'));
+    script.onerror = () => reject(new Error(`failed to load ${src}`));
     document.head.appendChild(script);
   });
 }
@@ -74,7 +81,11 @@ export function ensureEngine(): Promise<void> {
       throw new Error('wasm_exec.js did not define globalThis.Go');
     }
     const go = new cuttleGlobal.Go();
-    const result = await WebAssembly.instantiateStreaming(fetch('/cuttle.wasm'), go.importObject);
+    // W16: same subpath reasoning as loadWasmExec() above.
+    const result = await WebAssembly.instantiateStreaming(
+      fetch(`${import.meta.env.BASE_URL}cuttle.wasm`),
+      go.importObject,
+    );
     void go.run(result.instance); // never await — resolves only when the Go program exits (§2.3)
     await whenReady();
   })();
