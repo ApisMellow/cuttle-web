@@ -57,7 +57,7 @@ Rule: red suit glyphs appear on `--cu-paper` only. Any red glyph placed directly
 
 Sentence case everywhere. No all-caps labels. Numerals in the score bar use `font-variant-numeric: tabular-nums`.
 
-Rank/suit glyph sizes (read by the vector theme only): hand and field 22/18 px, mini 15/12 px. Indices are centred, rank above suit, bold rank. No corner indices at mini.
+Rank/suit glyph sizes (read by the vector theme only): hand and field 22/18 px, mini 15/12 px. Every size renders its index as an upper-left corner index, rank above suit, bold rank — including `mini` *(amended 2026-09-28, David, after a build screenshot; supersedes the earlier "centred… no corner indices at mini" rule — see §7)*.
 
 ## 5. Space, radius, geometry
 
@@ -73,7 +73,9 @@ Radius has three levels, by hierarchy: cards `6%`, zone wells `10px`, controls a
 | `--cuttle-card-width-field` | 72 | **60** | **52** | 72 |
 | `--cuttle-card-width-mini` | 32 | 32 | 32 | 36 |
 
-Four field rows at 72 wide cost 403 px and don't fit with the center strip and action bar at 844. The ratio and the three-size model are unchanged.
+Four field rows at 72 wide cost 403 px and don't fit with the center strip and action bar at 844. The three-size model is unchanged.
+
+**Card ratio, amended 2026-09-28 (David, after a build screenshot).** Cards read as slightly shorter than the prior height-to-width ratio. The ratio is one token, `--cuttle-card-aspect` in `web/src/lib/styles/card-geometry.css`, about 1.3, tunable via the token — the developer is choosing the exact value now.
 
 ## 6. Board layout
 
@@ -98,9 +100,9 @@ Safe-area insets (`env(safe-area-inset-top/bottom)`) are padding outside the col
 
 **Opponent hand.** Mini backs overlapped at a 14 px offset, count as a numeral beside them ("5 cards"). Under glasses-8 (R7) the backs become mini faces, same slot, same offsets.
 
-**Field rows.** A `--cu-ink-raised` well with `--cu-radius-well`. Cards left-aligned with 6 px gaps; five fit at 390. Beyond that they cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. **Jack stacking, confirmed 2026-09-28 (David):** Jacks stolen onto a point card are laid on top of it, each shifted slightly down, so the stolen card's top strip stays visible above the Jacks — that strip is where the card's identity lives (§7). A small ownership mark shows when the controller differs from the owner. This supersedes the earlier fan-above treatment (§5.2).
+**Field rows.** A `--cu-ink-raised` well with `--cu-radius-well`. Cards left-aligned with 6 px gaps; five fit at 390. Beyond that they cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. **Jack stacking, confirmed 2026-09-28 (David); redone the same day after a build screenshot.** A Jack is the same size as the card it sits on, offset downward only — not fanned, not shrunk. Several Jacks cascade the same way, newest on top. The per-Jack offset may shrink as the stack grows, but never below the corner index height (§7), so the stolen card's upper-left index — and each Jack's own — stays visible. A small ownership mark shows when the controller differs from the owner. This supersedes the earlier fan-above treatment (§5.2) and the "top strip" identity phrasing below (§7).
 
-**Center strip.** Three slots: Deck (hand-size box, count numeral centred beneath), the One-off target (flex, middle), Scrap (hand-size box, top card face up, count beneath). When idle, the middle slot shows the last move as one line of `--cu-text-sm` muted text (R20). When a card that can be played as a one-off is selected, the middle slot becomes the One-off drop zone.
+**Center strip.** Three slots: Deck (hand-size box, count numeral centred beneath), the One-off target (flex, middle), Scrap (hand-size box, top card face up, count beneath). When idle, the middle slot shows the last move as one line of `--cu-text-sm` muted text (R20) — the last `isRecapVisible` entry in `history`, never raw `lastMove` *(amended 2026-09-28, W13 GameScreen review: `lastMove` can be a filtered-out kind like Decline, and reading it raw told the acting player whether the opponent held a 2)*. When a card that can be played as a one-off is selected, the middle slot becomes the One-off drop zone.
 
 **Your hand.** 56-wide faces, 4 px gaps, centred. When the row can't fit, it fans with equal overlap; the visible slice stays ≥ 44 px (8 cards need 364 px, which the 366 px content width at 390 allows). If the slice would fall below 44 px (for example 8 cards at 360), the hand wraps into two rows and the action bar keeps its height; the fields drop to compact sizes to pay for it.
 
@@ -126,7 +128,7 @@ Drop zones (Points row, Permanents row, One-off slot) use the same `highlighted`
 
 Because the ring sits outside the card box and the container clips, containers reserve `--cu-ring-width + --cu-ring-gap` of padding around a card that can be highlighted, or draw the ring on a wrapper. The face never grows.
 
-**Identity lives in the top strip, confirmed 2026-09-28 (David).** A Jack stacked on a stolen point card covers all but that card's top edge (§6), so every card face renders its identity — rank and suit — along the top strip rather than centred or on the lower body. This is a face-layout rule, binding on both the vector theme and any future theme, including the PRD §10 amendment A-3 mythic theme.
+**Identity lives in the upper-left corner index, amended 2026-09-28 (David, after a build screenshot) — rewrites the "top strip" rule above.** Every card shows its rank and suit as a corner index in the upper-left, at every size (hand, field, mini) — never centred, never as a full-width strip. A Jack stacked on a stolen point card is the same size as the card and offset downward only (§6); the per-Jack offset shrinks with the stack but never below the corner index's height, which is what stays visible through a cascade of any depth. This is a face-layout rule, binding on both the vector theme and any future theme, including the PRD §10 amendment A-3 mythic theme.
 
 ## 8. Curtain screens
 

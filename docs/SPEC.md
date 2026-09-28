@@ -652,13 +652,15 @@ Three facts make this total:
 |---|---|---|
 | Curtain text | "Pass the phone to `NAME`" | identical |
 | Reveal gate | tap-and-hold | identical |
-| Card shown | `pending.card`, plus `pending.target` highlighted on the board | the same card and target, from `lastMove` |
-| Counter chain | `pending.counterChain` rendered | prior chain from `history`, rendered identically |
+| Card shown | the target as a `mini` card face, read from `counterPromptEntries(history)` | identical — same `history` read, never `pending` |
+| Counter chain | the same `history` slice, rendered as mini faces | identical |
 | Controls | "Let it resolve" + one button per legal 2 | **"Let it resolve" only** |
 | On confirm | `apply(indexOf MoveDecline)` | no bridge call — advance the local curtain machine |
 | Minimum dwell | none beyond the reveal gate | **identical** — no artificial delay, no extra animation |
 
 The acting player observes exactly the same thing in both cases: the phone goes to the opponent, comes back (or doesn't, if the turn passed), and the one-off resolved. The two cases are indistinguishable because the only difference is the presence of a button the acting player cannot see.
+
+**The board never mounts at `ack`, real or synthetic** *(amended 2026-09-28, W13 GameScreen review)*. At a synthetic ack the one-off has already resolved; at a real window it hasn't. A board or `ScoreBar` would show post-resolution state on one path and pre-resolution state on the other — the exact tell R14 forbids. That is also why the card and chain above are read from `game.history` rather than `pending`: `pending` reflects the real window's in-progress state and has no synthetic equivalent, so it is the one field that could never render identically on both paths. See `docs/requirements.yaml` R5.2 and `AGENTS.md` "Redaction rules".
 
 **The `ack` screen must not be skippable, fast-forwardable, or auto-dismissed.** Any of those reintroduces a timing tell.
 
@@ -815,7 +817,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
-`PointRow.svelte` renders a `PointEntry` including its `JackStack`: each Jack is laid on top of the point card, shifted slightly down, so the stolen card's top strip stays visible above the Jacks and carries the card's identity (rank and suit); an ownership badge is driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above"; see `docs/design.md` §6–§7.)
+`PointRow.svelte` renders a `PointEntry` including its `JackStack`: each Jack is the same size as the card it sits on, offset downward only; several Jacks cascade down, newest on top, and the per-Jack offset may shrink as the stack grows but never below the corner index height, so the stolen card's upper-left rank/suit index stays visible above the Jacks; an ownership badge is driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above"; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
 
 ### 5.3 State design
 

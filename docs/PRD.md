@@ -165,7 +165,7 @@ A second, optional look for the cards: the **Mythic theme**, in the vein of Magi
 
 Rank and suit fade into the background of the art; the card reads by its evocative image rather than its printed corner indices.
 
-**One layout rule binds both themes:** a Jack stacked on a stolen point card covers all but that card's top strip, so a card's identity (rank and suit) has to live in that strip regardless of theme — see `docs/design.md` §6–§7.
+**One layout rule binds both themes:** a Jack stacked on a stolen point card is the same size as the card, offset downward only, and never covers below the corner index's height, so a card's identity (rank and suit) lives in the upper-left corner index regardless of theme *(amended 2026-09-28, David, after a build screenshot)* — see `docs/design.md` §6–§7.
 
 Delivered under **R21–R23** (amendment A-1) as a theme layer on top of the vector baseline. No R1–R20 acceptance criterion depends on it, and this amendment adds no new R numbers.
 

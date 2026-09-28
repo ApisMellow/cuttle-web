@@ -96,9 +96,9 @@ forms in the playbook's "Paths and Bash hygiene" table.
 
 ## Redaction in the DOM
 
-- Gate the board on `curtain.kind` (`none`, or ack with
-  `synthetic: false`), never on `view !== null`. Test "not in the DOM", not
-  visibility.
+- Gate the board on `curtain.kind === 'none'` only — never at `ack`, real
+  or synthetic *(amended 2026-09-28, W13 GameScreen review)* — and never on
+  `view !== null`. Test "not in the DOM", not visibility.
 - Handoff: a component test asserts, for every `HandoffReason`, that the raw
   reason appears nowhere in `innerHTML`, attributes, classes or testids, and
   that no count, score or scrap renders.
