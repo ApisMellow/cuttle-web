@@ -9,13 +9,13 @@ requirements:
   # ---------------------------------------------------------------------
   - id: R1.1
     prd: R1
-    title: "Golden-seed deal matches SPEC fixture"
+    title: "Golden-seed deal matches SPEC scenario"
     acceptance:
-      - "bridge-smoke: newGame({seed:\"42\", dealer:1}) reproduces SPEC §2.6's golden fixture byte-for-byte: P1 hand [2♥ 3♣ A♥ K♦ Q♣], P2 hand [5♥ 9♥ 8♦ 4♦ 5♠ 4♥], deck length 41 with top 5 [2♣ 9♠ 9♦ J♥ 7♣], Active=0, Phase=0, and all 7 legalMoves descriptions in order"
+      - "bridge-smoke: newGame({seed:\"42\", dealer:1}) reproduces SPEC §2.6's golden scenario byte-for-byte: P1 hand [2♥ 3♣ A♥ K♦ Q♣], P2 hand [5♥ 9♥ 8♦ 4♦ 5♠ 4♥], deck length 41 with top 5 [2♣ 9♠ 9♦ J♥ 7♣], Active=0, Phase=0, and all 7 legalMoves descriptions in order"
       - "unit-test: deck construction is suit-major (Clubs..Spades), rank-minor (Ace..King) canonical order before shuffle (SPEC §2.6 step 1)"
     verify: [bridge-smoke, unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest)."
     fails: 0
 
   - id: R1.2
@@ -48,10 +48,10 @@ requirements:
     title: "Win detection and King-lowered threshold display"
     acceptance:
       - "unit-test: view redaction table surfaces scoreboard.you/opponent {points, threshold, kings, hasWon} verbatim from engine.PointTotal/Threshold/KingCount/HasWon, never recomputed in TS (SPEC §3.2, §3.3 rule 2)"
-      - "e2e-test: fixture `win-with-kings` — threshold display updates through 21/14/10/7/5 as Kings are played, and the result screen fires on hasWon (PRD R2, SPEC Appendix A)"
+      - "e2e-test: scenario `win-with-kings` — threshold display updates through 21/14/10/7/5 as Kings are played, and the result screen fires on hasWon (PRD R2, SPEC Appendix A)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL — Go derivation half done: TestR2_1a_ScoreboardFromEngineHelpers (scoreboard = engine PointTotal/Threshold/KingCount/HasWon verbatim, both viewers). TS no-recompute unit check done: vitest \"R2.1: scoreboard fields cross verbatim from the engine's helpers, never recomputed in TS\" (web/tests/unit/schema.test.ts) — parseBridgeResult passes scoreboard through unchanged. Open: e2e scenario `win-with-kings` (ResultScreen, Batch 3+ out of scope)."
     fails: 0
 
   - id: R2.2
@@ -59,10 +59,10 @@ requirements:
     title: "Three-pass stalemate detection"
     acceptance:
       - "unit-test: state.stalemate is derived strictly as phase===4 && winner===null, never independently computed (SPEC §3.2, §4.4 PhaseGameOver row)"
-      - "e2e-test: fixture `stalemate` — three consecutive passes reach phase 4, winner null, and the stalemate result screen renders (PRD R2, SPEC §7.3)"
+      - "e2e-test: scenario `stalemate` — three consecutive passes reach phase 4, winner null, and the stalemate result screen renders (PRD R2, SPEC §7.3)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL — Go derivation half done: TestR2_2a_StalemateDerivedFromPhaseAndWinner, TestR2_2b_ThreePassesReachStalemateThroughBridge (drives passes via apply + view(active)). TS no-recompute unit check done: vitest \"R2.2: state.stalemate is passed through verbatim, never independently derived by the schema\" (web/tests/unit/schema.test.ts) — asserts the schema carries whatever value is on the wire (including a deliberately inconsistent one) rather than recomputing it. Open: e2e scenario `stalemate` (ResultScreen, Batch 3+ out of scope)."
     fails: 0
 
   - id: R2.3
@@ -197,8 +197,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() table-driven test asserts opponent.hand === null whenever viewerHasGlasses is false, across every phase (SPEC §3.2)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R7.2
@@ -217,8 +217,8 @@ requirements:
     acceptance:
       - "unit-test: a serialized-view grep for any card identity from state.Deck fails to match in either viewer's PlayerView, in every phase, for a sampled position set (SPEC §3.2 deckCount rule, §7.1 'blunt instrument' grep test)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R7.4
@@ -228,7 +228,7 @@ requirements:
       - "unit-test: normalization and view tests assert opponent.hand uses null (not visible) vs [] (visible and empty) and this distinction survives snapshot round-trip and store updates (SPEC §2.8(b) deliberate exception, §3.2)"
     verify: [unit-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. Open: the store-update leg specifically (lib/stores/game.svelte.ts persistence round-trip) — stores are out of scope for Batch 3 (SPEC §5.3 is a later batch's work)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -251,7 +251,7 @@ requirements:
       - "unit-test: HandCard's frozen state is driven solely by view.you.frozenHandIndices membership, including the OQ-13 self-freeze-then-clear-before-next-turn case, with no additional logic layered on top (SPEC §2.8(c), §8 OQ-13)"
     verify: [unit-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL — bridge half done: TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze (OQ-13 self-freeze appears then clears, straight from engine FrozenIDs), TestSPEC2_8_FrozenIDsSortedDropFalse. Open: HandCard component unit test (UI half)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -358,13 +358,13 @@ requirements:
     prd: R11
     title: "Zero legal-move-contract breaks across random corpus"
     acceptance:
-      - "bridge-smoke: N≥200 committed seed corpus, excluding known-bad seeds per SPEC §2.10's exclusion list — for every step, phase!==4 implies legalMoves.length>0, and apply() on any offered index never returns ILLEGAL_MOVE (SPEC §7.2 step 3, catches E-1/E-2)"
-      - "e2e-test: on NO_LEGAL_MOVES or ILLEGAL_MOVE, StuckState.svelte renders a diagnostic (seq, seed, dealer, full history, copy-to-clipboard fixture stanza) and offers only 'New game'; no auto-retry occurs (SPEC §2.10 'Required UI behavior')"
+      - "bridge-smoke: N≥200 committed seed corpus, unfiltered — for every step, phase!==4 implies legalMoves.length>0, and apply() on any offered index never returns ILLEGAL_MOVE (SPEC §7.2 step 3, catches E-1/E-2)"
+      - "e2e-test: on NO_LEGAL_MOVES or ILLEGAL_MOVE, StuckState.svelte renders a diagnostic (seq, seed, dealer, full history, copy-to-clipboard scenario stanza) and offers only 'New game'; no auto-retry occurs (SPEC §2.10 'Required UI behavior')"
     verify: [bridge-smoke, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL — bridge-smoke half done: R11.4: full committed seed corpus reaches terminal state via offered indices with zero legal-move-contract breaks (web/tests/smoke/bridge-smoke.mjs), 240/240 seeds, 0 defects, wins and stalemates both occur. Engine v0.2.0 fixes E-1 and handles E-2 with a dead-end scrap fallback; exclusions.json removed 2026-09-26 after confirming the full unfiltered corpus is clean twice (docs/loop-log/engine-issues.md). gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green (now builds a fresh wasm first). Open: e2e-test half (StuckState.svelte) — Batch 3+, web/src/** out of scope this batch."
     fails: 0
-    notes: "blocked-on-engine candidate: see SPEC §2.10 E-1/E-2 — the smoke corpus excludes known-bad seeds until the upstream engine fix lands; StuckState is the required mitigation until then."
+    notes: "E-1/E-2 resolved upstream in engine v0.2.0 (docs/loop-log/engine-issues.md, 2026-09-26 entry) — SPEC §2.10's E-1/E-2 text is historical; the committed corpus runs unfiltered. Acceptance text de-exclusioned by David 2026-09-27. StuckState.svelte (the e2e half) is still the required mitigation for the general NO_LEGAL_MOVES/ILLEGAL_MOVE contract and remains scheduled for Batch 3+ regardless of E-1/E-2's status, per SPEC §2.10 'Required UI behavior' items 1-3."
 
   # ---------------------------------------------------------------------
   # R12 — Misclick protection
@@ -520,8 +520,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() sets sevenRevealed non-null only when phase===PhaseSevenChoosing && viewer===state.active; it is null for the opponent's view of the same position (PRD R16, SPEC §3.2)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
     fails: 0
 
   - id: R16.2
@@ -576,8 +576,8 @@ requirements:
     acceptance:
       - "bridge-smoke: gzipped cuttle.wasm ≤ 1.5 MB, asserted as part of test:smoke (SPEC §7.6, §2.2 — measured baseline 806 KiB with -ldflags=\"-s -w\")"
     verify: [bridge-smoke]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget (web/tests/smoke/bridge-smoke.mjs), asserted inside test:smoke against a freshly built wasm (npm run build:wasm now runs first). Budget read literally per the stricter decimal interpretation: 1.5 MB = 1,500,000 bytes, not 1.5 MiB (docs/assumptions.md Batch 2, revised 2026-09-26). Measured on engine v0.2.0: 988,532 bytes gzipped (Node zlib level 9), well under budget. Check proven red/green by hand before landing: a temporary 100 KiB threshold failed against the real artifact, the real 1,500,000-byte threshold passed. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green."
     fails: 0
 
   - id: R18.2

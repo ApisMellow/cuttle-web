@@ -3,7 +3,7 @@
 **Status:** P1 output — binding for the loop
 **Date:** 2026-08-23
 **Companions:** `docs/PRD.md` (requirements R1–R20, architecture A1–A7), `docs/loop-workflow.md` (the loop that consumes this spec)
-**Engine under test:** `~/dev/Cuttle` @ module `github.com/ApisMellow/cuttle`, Go 1.25.2
+**Engine under test:** `github.com/ApisMellow/cuttle` v0.2.0, Go 1.25.2
 
 ---
 
@@ -24,7 +24,7 @@ Where this spec says "the UI must not compute X," it means X is available from t
 | Phase | Owner | Output |
 |---|---|---|
 | **P1a** | this document | `docs/SPEC.md` — the technical contract |
-| **P1b** | Codex agent, own feature branch | Walking skeleton: repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, and the test harness described in §7. **Test authoring is P1b's job.** §7 defines *what* the tests are; P1b writes the code. |
+| **P1b** | Claude developer agents (Sonnet and Opus, dispatched by an Opus manager), own feature branch | Walking skeleton: repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, and the test harness described in §7. **Test authoring is P1b's job.** §7 defines *what* the tests are; P1b writes the code. |
 | **P-ART** | separate loop phase (`loop-workflow.md` §11) | Generated bitmap card art (PRD R21–R23), consumed through the theme seam defined in §5.6. **Not a dependency of R1–R20**; the game is complete and shippable with no bitmap art at all (PRD §10 amendment A-1). |
 | **P2** | loop orchestrator | Feature implementation against this spec, per `docs/loop-workflow.md` §5. |
 
@@ -53,7 +53,7 @@ cuttle-web/
     tests/
       unit/                     # vitest
       e2e/                      # Playwright
-      fixtures/                 # §7.3 fixture files — shared by all layers
+      scenarios/                # §7.3 scenario files — shared by all layers
     vite.config.ts
   scripts/build-wasm.sh
   docs/
@@ -73,7 +73,7 @@ cuttle-web/
 
 ### 2.1 Correction to PRD A7 — the module path
 
-PRD A7 names the engine dependency `github.com/ApisMellow/Cuttle-card-game`. **That is not the module path.** `~/dev/Cuttle/go.mod:1` declares:
+PRD A7 originally named the engine dependency `github.com/ApisMellow/Cuttle-card-game`. **That was not the module path.** `go.mod:1` declares:
 
 ```
 module github.com/ApisMellow/cuttle
@@ -88,14 +88,13 @@ import (
 )
 ```
 
-`Cuttle-card-game` is the GitHub *repository* name; `cuttle` is the *module* name. Until the engine is published at a path matching its module declaration, `cuttle-web/go.mod` needs a local development directive:
+**Resolved 2026-09-26 (OQ-3, §8): the engine repo was renamed to `github.com/ApisMellow/cuttle`**, matching its module declaration, and is tagged `v0.1.0` (787bbf5) and `v0.2.0` (e4f91b8, latest). `cuttle-web/go.mod` requires the published module directly:
 
 ```
-require github.com/ApisMellow/cuttle v0.0.0
-replace github.com/ApisMellow/cuttle => ../Cuttle
+require github.com/ApisMellow/cuttle v0.2.0
 ```
 
-Flagged in §8 as **OQ-3** — David's call whether to correct the PRD, retag the engine repo, or keep the `replace`.
+No `replace` directive is committed. A temporary local `replace` is fine for engine development but must never land in a commit.
 
 ### 2.2 Toolchain, build, and measured budget
 
@@ -179,11 +178,13 @@ All functions take and return **JSON strings** (A2). None take or return objects
 | `__cuttleDescribe()` | — | `Envelope` | no |
 | `__cuttleView(viewerId)` | `0 \| 1` | `Envelope` | no |
 | `__cuttleSnapshot()` | — | `SnapshotJson` (full, unredacted) | no |
-| `__cuttleRestore(snapshotJson)` | `SnapshotJson` | `Envelope` | yes |
+| `__cuttleRestore(snapshotJson, viewerId)` | `SnapshotJson, 0 \| 1` | `Envelope` | yes |
 
 **Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). This is what makes the v2 transport swap a swap: in v2 the same envelope arrives over a WebSocket from the server's copy of exactly this code.
 
 `__cuttleApply` takes an **index into the legal-move list of the current state** (A3). The bridge recomputes `engine.LegalMoves(state)` and bounds-checks the index. An out-of-range index is an error, not a panic. Illegal moves are unrepresentable because the client can only name a position in a list the engine produced.
+
+**Which viewer each call returns** *(amended 2026-09-26)*. `__cuttleApply` returns the envelope for the **pre-apply `Active`** (the mover). After the curtain reveal the UI fetches the incoming actor's envelope with `__cuttleView(newActor)` (§3.3 rule 4). `__cuttleNewGame` returns the envelope for the first actor (`state.Active` after the deal). Whoever starts the game is the first player, so there is no opening curtain. `__cuttleRestore(snapshotJson, viewerId)` returns the envelope for `viewerId`; TS passes its persisted `Snapshot.viewer` (§5.7) and puts the persisted curtain back up before rendering (R4.2). A `viewerId` that isn't exactly 0 or 1 is `BAD_REQUEST`, and the held state is unchanged. `__cuttleLegalMoves` and `__cuttleDescribe` return the envelope for `state.Active`, and `__cuttleView(p)` returns `p`'s. No mutating call returns the view of a player who is not holding the phone.
 
 ### 2.5 Enum values, pinned from source
 
@@ -237,9 +238,9 @@ interface NewGameOpts {
 }
 ```
 
-`seed` is a **string**, not a number: uint64 seeds exceed `Number.MAX_SAFE_INTEGER` and JSON round-tripping through a JS number would silently corrupt fixtures. The Go side parses with `strconv.ParseUint(s, 10, 64)`.
+`seed` is a **string**, not a number: uint64 seeds exceed `Number.MAX_SAFE_INTEGER` and JSON round-tripping through a JS number would silently corrupt scenarios. The Go side parses with `strconv.ParseUint(s, 10, 64)`.
 
-Required algorithm — binding, because fixture reproducibility (§7.3) depends on every byte of it:
+Required algorithm — binding, because scenario reproducibility (§7.3) depends on every byte of it:
 
 ```go
 // internal/wasm/deal.go
@@ -270,9 +271,9 @@ func dealNewGame(seed uint64, dealer engine.PlayerID) engine.GameState {
 }
 ```
 
-Why `math/rand/v2`'s PCG rather than `math/rand`'s `NewSource`: PCG's output is a published, versioned specification, so a fixture seed produces the same deal on any Go version and any platform. The v1 `rand.NewSource` stream is a Go implementation detail. Fixtures are the backbone of the whole test strategy (§7.3); they must not drift under a Go upgrade.
+Why `math/rand/v2`'s PCG rather than `math/rand`'s `NewSource`: PCG's output is a published, versioned specification, so a scenario seed produces the same deal on any Go version and any platform. The v1 `rand.NewSource` stream is a Go implementation detail. Scenarios are the backbone of the whole test strategy (§7.3); they must not drift under a Go upgrade.
 
-**Golden fixture, verified against this exact algorithm:**
+**Golden scenario, verified against this exact algorithm:**
 
 ```
 seed = "42", dealer = P2 (so P1 is non-dealer and goes first)
@@ -376,12 +377,15 @@ export interface PlayerView {
 }
 
 export interface AppliedMove {
-  index: number;                    // index into the PRE-state legal-move list
+  index?: number;                   // index into the PRE-state legal-move list; present only
+                                     // when viewer === entry.by, else omitted (§3.2, amended 2026-09-26)
   by: PlayerId;                     // pre-state Active
   kind: MoveKind;
   card: Card | null;
   description: string;              // Move.Describe evaluated against the PRE-state
   seq: number;                      // 1-based, monotonic for the game
+  subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
+                                     // Public to both viewers. (amended 2026-09-26)
 }
 
 export interface Envelope {
@@ -404,6 +408,8 @@ export interface EngineError {
 
 export type BridgeResult = Envelope | EngineError;
 ```
+
+**Which viewer each call returns** *(amended 2026-09-26)*: see §2.4. No mutating call returns the view of a player who is not holding the phone.
 
 Invariants a reviewer checks:
 
@@ -488,9 +494,11 @@ When every revealed card is a Jack and the opponent has no stealable point (none
 **Required UI behavior (binding for P2).** The UI must not hang, must not silently retry, and must not present a dead board:
 
 1. `PhaseGameOver` is the **only** phase in which an empty legal-move list is normal. Detect `phase !== 4 && legalMoves.length === 0` and raise `NO_LEGAL_MOVES`.
-2. On `NO_LEGAL_MOVES` or `ILLEGAL_MOVE`, render a **stuck-state screen**: a plain statement that the game cannot continue, the current `seq`, the game's seed and dealer, the full `history` of applied-move descriptions, and a copy-to-clipboard button producing a fixture stanza (§7.3) that reproduces the position. Offer "New game" as the only forward action.
+2. On `NO_LEGAL_MOVES` or `ILLEGAL_MOVE`, render a **stuck-state screen**: a plain statement that the game cannot continue, the current `seq`, the game's seed and dealer, the full `history` of applied-move descriptions, and a copy-to-clipboard button producing a scenario stanza (§7.3) that reproduces the position. Offer "New game" as the only forward action.
 3. Never auto-retry an `ILLEGAL_MOVE`. It is deterministic — retrying loops forever.
 4. The bridge smoke test (§7.2) asserts a **zero** occurrence rate across its seed corpus, so if the engine is later fixed the test tightens automatically; until then the corpus is chosen to exclude known-bad seeds and the exclusion list cites this section.
+
+**Resolution note (2026-09-26):** both E-1 and E-2 are now fixed upstream in the engine, verified against the exact repros above at `engine/seven_test.go:209` (E-1) and `:242` (E-2), plus a green 500-game random playout. The smoke exclusion list (`web/tests/smoke/exclusions.json`) is expected to go away in P1b Batch 2; the diagnostic UI behavior above remains required as defense-in-depth.
 
 Two smaller contract notes for the same reason:
 
@@ -532,6 +540,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `pending.card` / `.target` / `.playedBy` | `state.Pending` | present whenever `Pending != nil` — the played one-off is public the moment it is played (R14 requires the opponent to see it) |
 | `pending.counterChain` | `state.Pending.CounterChain` | public; every 2 in the chain was played face-up |
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
+| `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
 
 **`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra and gets no indication beyond the glasses-8 visibly sitting in the opponent's permanents row — which is correct, since a permanent on the board is public.
 
@@ -795,7 +804,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   ├── DiscardPicker.svelte      # R15
 │   ├── SevenRevealPanel.svelte   # R16 — only when viewer === active
 │   ├── ScrapBrowser.svelte       # R6 — browse mode and pick mode
-│   └── StuckState.svelte         # §2.10 — E-1/E-2 diagnostic + fixture export
+│   └── StuckState.svelte         # §2.10 — E-1/E-2 diagnostic + scenario export
 ├── ResultScreen.svelte           # R2/R3: win or stalemate, tally, Rematch
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
@@ -915,8 +924,9 @@ interface Snapshot {
 ```
 
 - Written after every successful `apply` and every curtain transition, synchronously, before the UI updates. A crash between apply and write must not lose a move.
-- **`engineState` is opaque to TypeScript.** It is produced by `__cuttleSnapshot()` and handed back to `__cuttleRestore()` verbatim. No TS code reads inside it — that would be the redaction bypass of §3.3(1) through the back door.
-- **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads.
+- **`engineState` is opaque to TypeScript.** It is produced by `__cuttleSnapshot()` and handed back to `__cuttleRestore()` as the first argument, verbatim. No TS code reads inside it — that would be the redaction bypass of §3.3(1) through the back door.
+- **`viewer` is passed to restore, not inferred.** `__cuttleRestore(engineState, viewer)` (§2.4) takes the persisted `viewer` field as its second argument and returns that player's envelope. *(amended 2026-09-26)*
+- **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
 - **Version mismatch (`v !== 1`) discards the snapshot** and returns to the home screen with a brief notice. No migration code in v1; a bump means the old game is gone. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
 - **The session tally is not persisted** (R3, PRD §4). It lives in `session.svelte.ts` and dies with the tab. A restored game restores the game only.
 - "New game" from the menu requires a confirm before clearing (R4), and the confirm names the in-progress game.
@@ -1044,10 +1054,10 @@ Totality table. Random-playout frequencies from the §2.10 survey are included s
 
 Triggered when, after target selection (or immediately, for affordances with no target step), **more than one** candidate move remains for the chosen `(handIndex, slot)`.
 
-Canonical cases, all present in the golden fixture of §2.6:
+Canonical cases, all present in the golden scenario of §2.6:
 
 - **An 8** — point card or glasses permanent. Two different zones, so actually resolved by the zone tap; a chooser appears only if a design later merges the zones. Listed because R11 names it explicitly.
-- **An Ace** — one-off (wipe all points) or point card. In the golden fixture, `A♥` at hand index 2 yields moves `[3]` and `[4]`. Two different zones again.
+- **An Ace** — one-off (wipe all points) or point card. In the golden scenario, `A♥` at hand index 2 yields moves `[3]` and `[4]`. Two different zones again.
 - **A 2** — point card, or one-off against any of several targets. Mixed: the zone tap separates point from one-off, and the target tap separates the one-off variants.
 - **A 7 sub-pick** where one revealed card affords several plays — resolved on the board by the sub-move's own target step.
 
@@ -1068,7 +1078,7 @@ The app exposes a test-only hook — `window.__cuttleTestHook.affordances()`, co
 
 ## 7. Test strategy
 
-**Test authoring is P1b's assignment**, given to a Codex agent on its own feature branch. This section specifies *what* the tests are — layers, fixtures, seeds, assertions, and the invariant design. P1b writes the code. Everything here maps to a `verify:` value in the `requirements.yaml` ledger (`loop-workflow.md` §3.1): `unit-test`, `e2e-test`, `bridge-smoke`, `screenshot-judge`.
+**Test authoring is P1b's assignment**, given to Claude developer agents on its own feature branch. This section specifies *what* the tests are — layers, scenarios, seeds, assertions, and the invariant design. P1b writes the code. Everything here maps to a `verify:` value in the `requirements.yaml` ledger (`loop-workflow.md` §3.1): `unit-test`, `e2e-test`, `bridge-smoke`, `screenshot-judge`.
 
 ### 7.1 Layer 1 — vitest unit (`verify: unit-test`)
 
@@ -1088,7 +1098,7 @@ Pure TypeScript, **no WASM**, fast enough to run on every save. Everything here 
 Node, headless, the **real compiled `.wasm`**. This is PRD §9's named mitigation for WASM bridge friction and it is the first thing P1b makes green.
 
 1. **Boot** — load `wasm_exec.js` + `cuttle.wasm`, await readiness, assert every `__cuttle*` global is a function, assert the Go runtime is still alive after the first call (catches a `main` that returned).
-2. **Golden deal** — `newGame({seed:"42", dealer:1})` reproduces §2.6's fixture byte-for-byte: both hands, deck length 41, `Active` 0, and all 7 legal-move descriptions in order.
+2. **Golden deal** — `newGame({seed:"42", dealer:1})` reproduces §2.6's scenario byte-for-byte: both hands, deck length 41, `Active` 0, and all 7 legal-move descriptions in order.
 3. **Full random game × N seeds** (N ≥ 200, fixed corpus, committed): loop `legalMoves` → pick pseudo-randomly from a seeded PRNG → `apply`, until `phase === 4`. Assert per step:
    - `ok === true`;
    - `legalMoves.length === descriptions.length`;
@@ -1102,12 +1112,12 @@ Node, headless, the **real compiled `.wasm`**. This is PRD §9's named mitigatio
 
 Cost: seconds. Value: it fails loudly on the Go/JS lifecycle mistakes that are otherwise diagnosed as mysterious UI bugs three rounds later.
 
-### 7.3 Fixtures — the shared backbone
+### 7.3 Scenarios — the shared backbone
 
-**One fixture format, reused by unit, e2e, invariant, and judge layers.** A fixture is a seed plus a scripted sequence of move indices. Because dealing (§2.6) and `LegalMoves` enumeration are both deterministic, a seed plus an index sequence reproduces a position exactly.
+**One scenario format, reused by unit, e2e, invariant, and judge layers.** A scenario is a seed plus a scripted sequence of move indices. Because dealing (§2.6) and `LegalMoves` enumeration are both deterministic, a seed plus an index sequence reproduces a position exactly.
 
 ```yaml
-# web/tests/fixtures/counter-chain.yaml
+# web/tests/scenarios/counter-chain.yaml
 id: counter-chain
 description: "P1 plays a 9, P2 counters, P1 counters back, resolves."
 seed: "42"                # decimal uint64 as a string (§2.6)
@@ -1125,11 +1135,11 @@ checkpoints:              # optional assertions at a given step
     curtain: counter
 ```
 
-**The `expect` field is the guard rail, and it is not optional.** Move indices are positional, and `LegalMoves`'s enumeration order — while deterministic for a given engine version (it is a fixed loop order over hand, then targets, in `engine/apply.go:32-134`) — is **not a stability guarantee the engine makes**. An engine change that reorders enumeration would silently repoint every fixture at a different move. With `expect`, the same change fails with `step 4: expected "play A♥ as one-off", got "play K♦ as permanent"` — a diagnosis instead of a mystery. Every step in every committed fixture carries one.
+**The `expect` field is the guard rail, and it is not optional.** Move indices are positional, and `LegalMoves`'s enumeration order — while deterministic for a given engine version (it is a fixed loop order over hand, then targets, in `engine/apply.go:32-134`) — is **not a stability guarantee the engine makes**. An engine change that reorders enumeration would silently repoint every scenario at a different move. With `expect`, the same change fails with `step 4: expected "play A♥ as one-off", got "play K♦ as permanent"` — a diagnosis instead of a mystery. Every step in every committed scenario carries one.
 
-**Required fixture corpus** (P1b creates these; the loop adds more as requirements need them):
+**Required scenario corpus** (split 2026-09-26: P1b builds the scenario format, loader, and replayer, proven on `opening` only; P2 adds each remaining scenario below alongside the requirement it tests):
 
-| Fixture | Exercises |
+| Scenario | Exercises |
 |---|---|
 | `opening` | R1 deal, R5 layout, R9 first tap-to-play |
 | `counter-chain` | R14 real window, 2-counters-2, chain parity, curtain per link |
@@ -1146,11 +1156,11 @@ checkpoints:              # optional assertions at a given step
 
 ### 7.4 Layer 3 — Playwright e2e (`verify: e2e-test`)
 
-Real browser, **390×844 portrait**, driven by fixtures.
+Real browser, **390×844 portrait**, driven by scenarios.
 
-- **Fixture replay.** A test-only entry point seeds the game and applies a fixture's prefix, then the test drives the UI for the step under assertion. Tests never hand-navigate 20 moves to reach an interesting position.
-- **R11 invariant walk** — the centerpiece. For each fixture, at **every** position: read the envelope's `legalMoves` index set; read `window.__cuttleTestHook.affordances()`; assert set equality (both directions, §6.5). Then spot-check reachability by actually performing the tap sequence for a sampled index and asserting the correct move stages. This single test covers R9, R11, and R12 across every fixture and is the highest-value test in the suite.
-- **Curtain leak tests.** At every handoff in every fixture: assert the board is **not in the DOM** (not merely hidden), and assert the serialized page content contains no card identity belonging to the incoming player's opponent. The "not in the DOM" form matters — `visibility:hidden` passes a screenshot check and fails a real one.
+- **Scenario replay.** A test-only entry point seeds the game and applies a scenario's prefix, then the test drives the UI for the step under assertion. Tests never hand-navigate 20 moves to reach an interesting position.
+- **R11 invariant walk** — the centerpiece. For each scenario, at **every** position: read the envelope's `legalMoves` index set; read `window.__cuttleTestHook.affordances()`; assert set equality (both directions, §6.5). Then spot-check reachability by actually performing the tap sequence for a sampled index and asserting the correct move stages. This single test covers R9, R11, and R12 across every scenario and is the highest-value test in the suite.
+- **Curtain leak tests.** At every handoff in every scenario: assert the board is **not in the DOM** (not merely hidden), and assert the serialized page content contains no card identity belonging to the incoming player's opponent. The "not in the DOM" form matters — `visibility:hidden` passes a screenshot check and fails a real one.
 - **R14 indistinguishability.** Run `counter-chain` and `no-counter-ack` and assert the **acting player's** screen sequence — screen count, DOM structure, testids, and the presence/absence of any timing-visible element — is identical between them. This is the direct machine check of the R14 property.
 - **R12 misclick.** No single tap on any hand card, target, or zone changes the engine state. Assert `seq` is unchanged after each exploratory tap.
 - **R19 sweep, every screen and phase:** `scrollWidth <= clientWidth`; every `[data-testid]` bounding box ≥ 44 px; the suite runs once with `prefers-reduced-motion: reduce` forced and must fully pass.
@@ -1159,7 +1169,7 @@ Real browser, **390×844 portrait**, driven by fixtures.
 
 ### 7.5 Layer 4 — screenshot judge (`verify: screenshot-judge`)
 
-Per `loop-workflow.md` §4, the strongest available model, at 390×844, playing real moves. It rules on the criteria a machine cannot: board legibility at phone size, whether the curtain flow feels like a chore (PRD §9's named risk), animation quality, theme-swap consistency (§5.6), and whether a rules-aware human would find the board readable.
+Per `loop-workflow.md` §4, a Claude Opus model, at 390×844, playing real moves. It rules on the criteria a machine cannot: board legibility at phone size, whether the curtain flow feels like a chore (PRD §9's named risk), animation quality, theme-swap consistency (§5.6), and whether a rules-aware human would find the board readable.
 
 It runs on UI-visible items and on the final gate only — not on every submission (`loop-workflow.md` §8).
 
@@ -1190,14 +1200,14 @@ Two additions specific to this spec, run as part of `test:smoke`:
 
 Each carries a recommendation. Items marked **needs David** are outside the loop's authority (`loop-workflow.md` §10) and should be resolved before or at relaunch rather than discovered mid-round.
 
-**OQ-1 — Two engine defects break the `LegalMoves`/`Apply` contract in `PhaseSevenChoosing`.** E-1 (stale `FrozenIDs` index ⇒ every offered `MoveSevenPick` illegal, ~1.6% of random games) and E-2 (empty legal-move list when all revealed cards are unplayable Jacks, ~0.3%). Together ~1.9% of games become unwinnable. Full diagnosis and minimal repros in §2.10.
-**Recommendation:** write both to `docs/loop-log/engine-issues.md` at loop start, with the repros verbatim. Implement §2.10's stuck-state screen so the failure is diagnosable rather than a hang. Do **not** work around them in the UI — the fixes are one-liners in the engine (remap or clear `FrozenIDs` on hand mutation; emit a fallback when `legalSevenPickMoves` is empty) and belong there. **Needs David** to dispatch the engine fix; the web repo is not blocked meanwhile.
+**OQ-1 — RESOLVED 2026-09-26.** Two engine defects broke the `LegalMoves`/`Apply` contract in `PhaseSevenChoosing`: E-1 (stale `FrozenIDs` index ⇒ every offered `MoveSevenPick` illegal, ~1.6% of random games) and E-2 (empty legal-move list when all revealed cards are unplayable Jacks, ~0.3%). Full diagnosis and minimal repros in §2.10.
+**Resolved:** fixed upstream in the engine (`github.com/ApisMellow/cuttle` v0.2.0); verified against the SPEC §2.10 repros at `engine/seven_test.go:209` and `:242`, plus a green 500-game random playout. The smoke exclusion list (`web/tests/smoke/exclusions.json`) is expected to go away in P1b Batch 2.
 
 **OQ-2 — Should the bridge defend against E-1 by clearing stale frozen indices before `apply`?** It could drop `FrozenIDs` keys ≥ `len(hand)` in its held state.
 **Recommendation: no.** That is the UI implementing a rule, which PRD §2 forbids, and it would mask the defect from the smoke test that is meant to detect it. Surface the error; fix it upstream.
 
-**OQ-3 — PRD A7's module path is wrong.** A7 says `github.com/ApisMellow/Cuttle-card-game`; `go.mod:1` says `github.com/ApisMellow/cuttle` (§2.1).
-**Recommendation:** correct A7 to name the repo and the module separately. Use the `replace` directive for local development now; if the engine is not published at its declared path, either publish it there or vendor-pin. **Needs David.**
+**OQ-3 — RESOLVED 2026-09-26.** PRD A7's module path was wrong: A7 said `github.com/ApisMellow/Cuttle-card-game`; `go.mod:1` says `github.com/ApisMellow/cuttle` (§2.1).
+**Resolved:** the engine repo was renamed to `github.com/ApisMellow/cuttle` to match the module path and tagged `v0.1.0`/`v0.2.0`; `cuttle-web` requires `v0.2.0` directly with no committed `replace` (§2.1).
 
 **OQ-4 — A2 specifies four bridge functions; this spec adds three** (`view`, `snapshot`, `restore`, §2.4).
 **Recommendation: accept.** R4 cannot restore from a redacted view, and R13 must render the incoming player's view before that player is the viewer. The four mutation/read functions A2 names are unchanged; the additions are read-only or persistence-only and preserve the v2 story — a v2 server implements `view` natively and `snapshot`/`restore` become server-side session handling.
@@ -1208,14 +1218,13 @@ Each carries a recommendation. Items marked **needs David** are outside the loop
 **OQ-6 — R14's synthetic ack costs an extra full handoff for every 7.** Curtain to opponent, ack, curtain back (§4.3). Sevens occur in roughly two-thirds of games.
 **Recommendation: accept; it is required for the R14 property.** Mitigate with a fast reveal gate and let the playtest judge score it. If the judge flags it as intolerable, the fallback worth considering is a shortened hold duration on ack-only curtains — but **not** skipping the curtain, which would reintroduce the tell.
 
-**OQ-7 — Move-index fixtures are positional and depend on `LegalMoves` enumeration order.**
-**Recommendation:** mandatory `expect` description assertions on every fixture step (§7.3). Cheap, and converts a silent repoint into a named failure. Already specified as binding.
+**OQ-7 — Move-index scenarios are positional and depend on `LegalMoves` enumeration order.**
+**Recommendation:** mandatory `expect` description assertions on every scenario step (§7.3). Cheap, and converts a silent repoint into a named failure. Already specified as binding.
 
 **OQ-8 — Stalemates are 2.5% of random games**, so the smoke corpus will hit them but no single seed reliably does.
-**Recommendation:** the scripted `stalemate` fixture (§7.3) is the R2 evidence; the smoke test's role is only to confirm both terminal states occur across the corpus.
+**Recommendation:** the scripted `stalemate` scenario (§7.3) is the R2 evidence; the smoke test's role is only to confirm both terminal states occur across the corpus.
 
-**OQ-9 — `localStorage` holds the full unredacted state** (§3.4, §5.7).
-**Recommendation: accept for v1** — the threat model is a shoulder-glance, not devtools, and both players share the device. Revisit for v2, where the client should hold only its own redacted view plus `{roomCode, playerToken, seq}` per PRD §7. **Needs David** only if he disagrees with the threat model.
+**OQ-9 — RESOLVED 2026-09-26 (accepted for v1).** `localStorage` holds the full unredacted state (§3.4, §5.7); the threat model is a shoulder-glance, not devtools, and both players share the device. Revisit for v2, where the client should hold only its own redacted view plus `{roomCode, playerToken, seq}` per PRD §7.
 
 **OQ-10 — Workbox's 2 MiB default would silently exclude the WASM binary** from precache and break R18 offline with no build error (§2.2, §5.8).
 **Recommendation:** set `maximumFileSizeToCacheInBytes` to 5 MiB **and** add the precache-manifest assertion to the mechanical gate (§7.6). Config alone is too easy to lose in a refactor.
@@ -1224,7 +1233,7 @@ Each carries a recommendation. Items marked **needs David** are outside the loop
 **Recommendation: accept.** This is how the physical game works. The UI's obligation is to never re-display it, which §3.2 and §4.6 enforce.
 
 **OQ-12 — Dealer alternation and seed handling across a rematch** (R1, R3). The bridge is stateless across games; the client supplies `dealer`.
-**Recommendation:** `session.svelte.ts` holds `lastDealer` and passes `1 - lastDealer` on rematch; the first game of a session passes no `dealer` and gets a random one. Seeds are random in normal play and explicit only in fixtures — the UI should surface the current seed on the stuck-state screen (§2.10) and nowhere else.
+**Recommendation:** `session.svelte.ts` holds `lastDealer` and passes `1 - lastDealer` on rematch; the first game of a session passes no `dealer` and gets a random one. Seeds are random in normal play and explicit only in scenarios — the UI should surface the current seed on the stuck-state screen (§2.10) and nowhere else.
 
 **OQ-13 — A 9 played on your own Jack-stolen point returns the card to *your* hand with a freeze that expires before your next turn.** `resolveOneOffWith` sets the freeze on `pe.Owner` (`engine/apply.go:706-744`), which can be the acting player; `endTurn` then clears it before their turn comes around. The R8 marker will appear and vanish without ever restricting anything.
 **Recommendation:** render the marker straight from `frozenHandIndices` and do not special-case it. The display is truthful about engine state, which is the correct behaviour under PRD §2. Note it in the engine issues file as low-severity alongside OQ-1, since it shares a root cause with E-1 (`FrozenIDs` lifecycle).
