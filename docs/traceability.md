@@ -11,8 +11,8 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 
 | ID | Title | Test(s) | Layer | verify | Status |
 |---|---|---|---|---|---|
-| R1.1 | Golden-seed deal matches SPEC scenario | `TestR1_1a_GoldenSeedDeal`<br>`TestR1_1b_CanonicalDeckOrder`<br>`TestR1_1c_GoldenDealThroughBridge`<br>`smoke: reproduces the seed-42 golden deal byte-for-byte` | go unit + bridge-smoke | bridge-smoke, unit-test | implemented |
-| R1.2 | Dealer alternates across rematch/session | — | — | unit-test, e2e-test | todo |
+| R1.1 | Golden-seed deal matches SPEC scenario | `TestR1_1a_GoldenSeedDeal`<br>`TestR1_1b_CanonicalDeckOrder`<br>`TestR1_1c_GoldenDealThroughBridge`<br>`smoke: reproduces the seed-42 golden deal byte-for-byte` | go unit + bridge-smoke | bridge-smoke, unit-test | verified |
+| R1.2 | Dealer alternates across rematch/session | `vitest: "R1.2: the first game of a session passes no dealer"`<br>`vitest: "R1.2: computes dealer = 1 - lastDealer on rematch"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R1.3 | Deal counts, first-player, and default names | — | — | e2e-test | todo |
 | R2.1 | Win detection and King-lowered threshold display | `TestR2_1a_ScoreboardFromEngineHelpers`<br>`vitest: "R2.1: scoreboard fields cross verbatim from the engine's helpers, never recomputed in TS"` | go unit + vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R2.2 | Three-pass stalemate detection | `TestR2_2a_StalemateDerivedFromPhaseAndWinner`<br>`TestR2_2b_ThreePassesReachStalemateThroughBridge`<br>`vitest: "R2.2: state.stalemate is passed through verbatim, never independently derived by the schema"` | go unit + vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
@@ -27,9 +27,9 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R5.1 | All board zones visible on one portrait screen | — | — | screenshot-judge | todo |
 | R5.2 | Score bar always visible | — | — | e2e-test | todo |
 | R6.1 | Scrap pile browsable by either player, any time | — | — | e2e-test | todo |
-| R7.1 | Opponent hand hidden without glasses-8 | `TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit | unit-test | implemented |
+| R7.1 | Opponent hand hidden without glasses-8 | `TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand`<br>`TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly` | go unit | unit-test | verified |
 | R7.2 | Opponent hand face-up under glasses-8 | — | — | e2e-test | todo |
-| R7.3 | Deck contents never transmitted | `TestR7_3a_DeckNeverTransmittedEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand` | go unit | unit-test | implemented |
+| R7.3 | Deck contents never transmitted | `TestR7_3a_DeckNeverTransmittedEveryPhase`<br>`TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand` | go unit | unit-test | verified |
 | R7.4 | opponent.hand null-vs-empty distinguished through every layer | `TestR7_4a_OpponentHandNullVersusEmptyOnWire`<br>`TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip`<br>`vitest: "R7.4: preserves hidden null versus visible empty opponent hands"`<br>`vitest: "R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip"` | go unit + vitest (bridge/schema half done; store-update half open, out of scope until lib/stores exists) | unit-test | todo (PARTIAL) |
 | R8.1 | Frozen marker visible to owner | — | — | e2e-test | todo |
 | R8.2 | Frozen marker derived from frozenHandIndices only | `TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze` | go unit (bridge half) | unit-test | todo (PARTIAL) |
@@ -45,23 +45,23 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R11.4 | Zero legal-move-contract breaks across random corpus | `smoke: R11.4: full committed seed corpus reaches terminal state via offered indices with zero legal-move-contract breaks` | bridge-smoke | bridge-smoke, e2e-test | todo (PARTIAL) |
 | R12.1 | No single tap ever applies a move | — | — | e2e-test | todo |
 | R12.2 | Board inert during apply; no double-submit | — | — | e2e-test | todo |
-| R13.1 | Curtain fires exactly per actor-change predicate | — | — | unit-test | todo |
+| R13.1 | Curtain fires exactly per actor-change predicate | `vitest: "R13.1: [actor P1\|P2] <row>"` (every §4.4 row)<br>`vitest: "R13.1: curtainRequired matches …"`<br>`vitest: "R13.1: PhaseAwaitingDiscard double flip"`<br>`vitest: "R13.1: every unreachable (phase, MoveKind) pair raises an INTERNAL CurtainError"` | vitest | unit-test | verified |
 | R13.2 | Curtain shows zero state; board unmounted | — | — | e2e-test | todo |
-| R13.3 | Reveal gate: hold-with-abort and two-step fallback | — | — | unit-test, e2e-test | todo |
+| R13.3 | Reveal gate: hold-with-abort and two-step fallback | `vitest: "R13.3: the hold duration is the single constant 600 ms"`<br>`vitest: "R13.3: pointerup\|pointercancel\|pointerleave before 600 ms aborts …"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R13.4 | Curtain tap targets ≥44px; no auto-advance | — | — | e2e-test | todo |
 | R14.1 | Real counter window renders correctly | — | — | e2e-test | todo |
-| R14.2 | Synthetic ack indistinguishable from real decline | — | — | e2e-test, unit-test | todo |
-| R14.3 | Counter chain parity and repeated curtains | — | — | unit-test, e2e-test | todo |
+| R14.2 | Synthetic ack indistinguishable from real decline | `vitest: "R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff …"`<br>`vitest: "R14.2: real and synthetic paths walk identical curtain sequences"` | vitest (unit-test done; e2e-test open) | e2e-test, unit-test | todo (PARTIAL) |
+| R14.3 | Counter chain parity and repeated curtains | `vitest: "R14.3: issues one counter curtain per counter link"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R14.4 | Seven's synthetic-ack round trip | — | — | e2e-test | todo |
 | R15.1 | Four curtains to opponent for discard | — | — | e2e-test | todo |
-| R15.2 | One-card and empty-hand discard branches | — | — | unit-test | todo |
+| R15.2 | One-card and empty-hand discard branches | `vitest: "R15.2: a 1-card discarding hand pre-selects …"`<br>`vitest: "R15.2: the picker never renders outside PhaseAwaitingDiscard"`<br>`vitest (real WASM): pinned replay seed 2 / ply 23, 4 vs empty hand lands in phase 0` | vitest | unit-test | verified |
 | R15.3 | Curtain returns to discarder with no leak | — | — | e2e-test | todo |
-| R16.1 | Seven-reveal shown only to acting player | `TestR16_1a_SevenRevealedOnlyToActorWhileChoosing` | go unit | unit-test | implemented |
-| R16.2 | Unchosen seven card never re-shown | — | — | unit-test | todo |
+| R16.1 | Seven-reveal shown only to acting player | `TestR16_1a_SevenRevealedOnlyToActorWhileChoosing` | go unit | unit-test | verified |
+| R16.2 | Unchosen seven card never re-shown | `vitest: "R16.2: played branch names only the played card …"`<br>`vitest: "R16.2: dead-end … names the scrapped card …"`<br>`vitest: "R16.2: fails loudly … smuggles a second card"` | vitest | unit-test | verified |
 | R16.3 | Seven sub-move plays via normal affordances | — | — | e2e-test | todo |
 | R17.1 | Rules content built from engine RULES.md | — | — | e2e-test | todo |
 | R17.2 | Rules reachable from menu without disturbing game | — | — | e2e-test | todo |
-| R18.1 | WASM gzip size budget | `smoke: R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget` | bridge-smoke | bridge-smoke | implemented |
+| R18.1 | WASM gzip size budget | `smoke: R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget` | bridge-smoke | bridge-smoke | verified |
 | R18.2 | Precache manifest includes engine assets | — | — | bridge-smoke | todo |
 | R18.3 | Full offline run after first load | — | — | e2e-test | todo |
 | R18.4 | Installable PWA manifest | — | — | e2e-test | todo |
@@ -70,7 +70,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R19.3 | CSS-transform-only animations; reduced-motion playable | — | — | e2e-test, unit-test | todo |
 | R19.4 | Phone-viewport legibility | — | — | screenshot-judge | todo |
 | R20.1 | Last move description shown after each action | — | — | e2e-test | todo |
-| R20.2 | Recap formatter is per-viewer and redaction-safe | — | — | unit-test | todo |
+| R20.2 | Recap formatter is per-viewer and redaction-safe | `vitest: web/tests/unit/recap.test.ts` (all rows but Jack-steal/one-off target; awaits `targetCard`) | vitest (partial) | unit-test | todo (PARTIAL) |
 | R20.3 | Recap presentation and lastSeenSeq stamping | — | — | e2e-test | todo |
 | R21.1 | Reference candidate set generated | — | — | image-judge | todo |
 | R21.2 | Style-lock document authored | — | — | image-judge | todo |

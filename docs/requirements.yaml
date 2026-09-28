@@ -1,5 +1,5 @@
 meta:
-  round: 0
+  round: 1
   launch: 1
 
 requirements:
@@ -14,8 +14,8 @@ requirements:
       - "bridge-smoke: newGame({seed:\"42\", dealer:1}) reproduces SPEC §2.6's golden scenario byte-for-byte: P1 hand [2♥ 3♣ A♥ K♦ Q♣], P2 hand [5♥ 9♥ 8♦ 4♦ 5♠ 4♥], deck length 41 with top 5 [2♣ 9♠ 9♦ J♥ 7♣], Active=0, Phase=0, and all 7 legalMoves descriptions in order"
       - "unit-test: deck construction is suit-major (Clubs..Spades), rank-minor (Ace..King) canonical order before shuffle (SPEC §2.6 step 1)"
     verify: [bridge-smoke, unit-test]
-    status: implemented
-    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest)."
+    status: verified
+    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest). | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R1.2
@@ -26,7 +26,7 @@ requirements:
       - "e2e-test: fixture `opening` with no prior session shows a randomly assigned dealer; a scripted rematch shows the dealer flipped from the prior game"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W4): unit half done — web/tests/unit/session.test.ts 'R1.2: the first game of a session passes no dealer', 'R1.2: computes dealer = 1 - lastDealer on rematch'; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (HomeScreen/rematch, later round); round-2 game store must assert the dealer key is absent from first-game NewGameOpts."
     fails: 0
 
   - id: R1.3
@@ -197,8 +197,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() table-driven test asserts opponent.hand === null whenever viewerHasGlasses is false, across every phase (SPEC §3.2)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R7.2
@@ -217,8 +217,8 @@ requirements:
     acceptance:
       - "unit-test: a serialized-view grep for any card identity from state.Deck fails to match in either viewer's PlayerView, in every phase, for a sampled position set (SPEC §3.2 deckCount rule, §7.1 'blunt instrument' grep test)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R7.4
@@ -398,8 +398,8 @@ requirements:
     acceptance:
       - "unit-test: curtain.svelte.ts's next(pre, appliedMove, post) reproduces every row of SPEC §4.4's full transition table (all 5 phases × every reachable MoveKind), confirming curtainRequired matches post.active!==pre.active && post.phase!==PhaseGameOver exactly, including the PhaseAwaitingDiscard double-flip no-curtain case (SPEC §4.1, §4.4)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W1, loop/r01-curtain d961203): web/tests/unit/curtain.test.ts — 'R13.1: [actor P1|P2] <row>' (every SPEC §4.4 row, both actors), 'R13.1: curtainRequired matches post.active!==pre.active && post.phase!==PhaseGameOver on every phase pair', 'R13.1: PhaseAwaitingDiscard double flip', 'R13.1: every unreachable (phase, MoveKind) pair raises an INTERNAL CurtainError' (40 pairs). Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R13.2
@@ -420,7 +420,7 @@ requirements:
       - "e2e-test: with prefers-reduced-motion forced, and on a coarse-less pointer, the two-step tap fallback (\"I'm NAME\" → \"Show my hand\") is used and reaches the same live view as the hold path (SPEC §4.5)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W1): unit half done — web/tests/unit/curtain-hold.test.ts 'R13.3: the hold duration is the single constant 600 ms', '…pointerdown starts the hold and reaching 600 ms fires the reveal exactly once', '…pointerup|pointercancel|pointerleave before 600 ms aborts the reveal and resets the progress ring to 0', 'R13.3: pointerdown after dispose() does nothing'; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e two-step fallback (RevealGate component)."
     fails: 0
 
   - id: R13.4
@@ -454,7 +454,7 @@ requirements:
       - "unit-test: needsSyntheticAck() fires for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff) whenever post.phase !== PhaseAwaitingCounter, with no per-rank exclusion (SPEC §4.3 detection code)"
     verify: [e2e-test, unit-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability."
     fails: 0
 
   - id: R14.3
@@ -465,7 +465,7 @@ requirements:
       - "e2e-test: fixture `counter-chain` extended to a 2-counters-2 exchange — each link curtains to the next decider in turn, matching pending.counterChain growth (SPEC §4.3)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W1): unit bullet done — curtain.test.ts 'R14.3: issues one counter curtain per counter link', even-chain (0, 2) and odd-chain cancel cases; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e 2-counters-2 scenario."
     fails: 0
 
   - id: R14.4
@@ -497,8 +497,8 @@ requirements:
     acceptance:
       - "unit-test: a 1-card discarding hand pre-selects the single {DiscardA:0, DiscardB:-1} move as confirm; an empty discarding hand never reaches PhaseAwaitingDiscard because the engine auto-resumes (apply.go:621-623), so DiscardPicker never renders for it (SPEC §6.3, §4.4)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W2, loop/r01-affordances 0821b5e): web/tests/unit/affordances.test.ts — 'R15.2: a 1-card discarding hand pre-selects the single {DiscardA:0, DiscardB:-1} move as confirm', 'R15.2: the picker never renders outside PhaseAwaitingDiscard' (deriveDiscardPicker model), and a real-WASM replay (pinned seed 2, ply 23) where a 4 against an empty hand lands in phase 0 with the victim still at handCount 0 and the turn passed. Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R15.3
@@ -520,8 +520,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() sets sevenRevealed non-null only when phase===PhaseSevenChoosing && viewer===state.active; it is null for the opponent's view of the same position (PRD R16, SPEC §3.2)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R16.2
@@ -530,8 +530,8 @@ requirements:
     acceptance:
       - "unit-test: the recap formatter's SevenPick line names only the played card, never the unchosen revealed card, audited row-by-row against SPEC §4.6's table (SPEC §4.6, §8 OQ-11)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W3, loop/r01-recap 393d623): web/tests/unit/recap.test.ts — 'R16.2: played branch names only the played card…', 'R16.2: dead-end (no legal play) names the scrapped card…', 'R16.2: fails loudly rather than silently accept a description that smuggles a second card'; SevenPick wording per SPEC §4.6 amended 2026-09-27 ('revealed the top of the deck'). Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R16.3
@@ -576,8 +576,8 @@ requirements:
     acceptance:
       - "bridge-smoke: gzipped cuttle.wasm ≤ 1.5 MB, asserted as part of test:smoke (SPEC §7.6, §2.2 — measured baseline 806 KiB with -ldflags=\"-s -w\")"
     verify: [bridge-smoke]
-    status: implemented
-    evidence: "R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget (web/tests/smoke/bridge-smoke.mjs), asserted inside test:smoke against a freshly built wasm (npm run build:wasm now runs first). Budget read literally per the stricter decimal interpretation: 1.5 MB = 1,500,000 bytes, not 1.5 MiB (docs/assumptions.md Batch 2, revised 2026-09-26). Measured on engine v0.2.0: 988,532 bytes gzipped (Node zlib level 9), well under budget. Check proven red/green by hand before landing: a temporary 100 KiB threshold failed against the real artifact, the real 1,500,000-byte threshold passed. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green."
+    status: verified
+    evidence: "R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget (web/tests/smoke/bridge-smoke.mjs), asserted inside test:smoke against a freshly built wasm (npm run build:wasm now runs first). Budget read literally per the stricter decimal interpretation: 1.5 MB = 1,500,000 bytes, not 1.5 MiB (docs/assumptions.md Batch 2, revised 2026-09-26). Measured on engine v0.2.0: 988,532 bytes gzipped (Node zlib level 9), well under budget. Check proven red/green by hand before landing: a temporary 100 KiB threshold failed against the real artifact, the real 1,500,000-byte threshold passed. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R18.2
@@ -674,7 +674,7 @@ requirements:
       - "unit-test: the recap formatter produces every SPEC §4.6 table row's exact phrasing per MoveKind, confirming DiscardPair names no identities and SevenPick names no unchosen card"
     verify: [unit-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W3): web/src/lib/recap.ts + recap.test.ts cover every §4.6 row except the Jack-steal target card and the one-off target clause, which engine Describe omits. David 2026-09-27: bridge adds AppliedMove.targetCard (SPEC §2.7/§4.6 amended); round-2 item. Stays todo until then."
     fails: 0
 
   - id: R20.3

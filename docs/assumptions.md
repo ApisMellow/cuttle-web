@@ -364,3 +364,17 @@ per section so a later batch can see the reasoning without re-deriving it.
   exist yet — stores are explicitly out of scope here ("no … stores beyond
   what the bridge needs"). `requirements.yaml`'s evidence field says so
   directly so a later batch doesn't mistake this for closed.
+
+## P2 round 01 (launch 1)
+
+Logged by the orchestrator from developer reports and review rulings. Full verdicts in `docs/loop-log/round-01.md`.
+
+- **Curtain machine (W1, `lib/stores/curtain.svelte.ts`).** The real counter window is `{kind:'ack', synthetic:false}`; it rests until a bridge `apply` and a fresh `next()`, and `advance()` on it throws. After a synthetic ack, control hands back to `post.active` when that isn't the acknowledger, with reason `seven-return` for SevenChoosing and `turn` otherwise; this covers the 7's round trip and a Counter-with-no-2 that cancels on an odd chain (§4.3, §4.4). Game over beats the synthetic ack (no curtain on a winning move). A dead-end SevenPick (`subKind` null) is a plain `turn` curtain. `advance()` on `none`/`result` throws `INTERNAL`.
+- **The machine sees only `{active, phase}` (W1 review).** Every `pre`/`post` it takes is `CurtainView = Pick<PlayerView,'active'|'phase'>`, so the store never has to keep the mover's hand in memory across a curtain (§3.3 rule 4).
+- **Handoff label (SPEC §4.5 amended).** `handoffLabel()` maps `turn`/`seven-return` to "Your turn" and `counter`/`acknowledge`/`discard` to "Your response". The internal reason never reaches the DOM before the reveal gate.
+- **Hold gate (`lib/curtain.ts`).** Timer-injectable; `pointerdown` after `dispose()` is a no-op.
+- **Recap (W3, `lib/recap.ts`).** Own moves use second person ("You drew a card."); §4.6 only specifies the opponent's view. A one-card discard (`hand[-1]`) reads "discarded 1 card."; §4.6 has no one-card row. `formatRecapLine` throws on a Decline because callers must filter with `isRecapVisible` first (SPEC §4.6 amended). Until `AppliedMove.targetCard` lands (round 2), a Jack steal reads "stole your point card with J♣" and one-offs carry no target clause.
+- **Affordances (W2, `lib/affordances.ts`).** The ScrapIndex collapse is detected structurally (targetless OneOff candidates on the same card with distinct ScrapIndex), never by rank, and it recurses into a SevenPick's sub-moves so a 3 revealed by a 7 routes to scrap pick. A dead-end SevenPick keys as `seven:<card>|scrap` (SPEC §6.2 amended). `deriveDiscardPicker` pre-selects whenever exactly one legal move exists, which covers 1- and 2-card hands; Confirm is still required (R12). A Scuttle with no Target throws `SlotKeyError`.
+- **Stores (W4).** Settings persist under `cuttle-web:settings`, separate from the game snapshot. Defaults: `themeId 'vector'`, `revealPreference 'hold'`, `reducedMotion false`, which means "no in-app override" of the OS `prefers-reduced-motion` query, never "force motion on". Settings have no schema version; bad fields fall back one by one. The session store exposes `nextDealer` (undefined on the first game, `1 - lastDealer` after) and `recordDealer`; the game store composes `NewGameOpts`. Stalemates are not tallied.
+- **Enum constants** are private copies in each round-1 module, pinned to §2.5; round 2 consolidates them.
+- **eslint.** `**/*.svelte.ts` rune modules go through the same `tseslint.parser` block as `**/*.svelte`.
