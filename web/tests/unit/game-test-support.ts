@@ -35,13 +35,18 @@ export const Kind = {
   Pass: 9,
 } as const satisfies Record<string, MoveKind>;
 
-/** THE factory: every AppliedMove in these tests is built through this. */
+/**
+ * THE factory: every AppliedMove in these tests is built through this.
+ * `targetCard` (SPEC §2.7, amended 2026-09-27) defaults to null (an
+ * untargeted move); pass `targetCard: { Rank, Suit }` to override.
+ */
 export function appliedMove(overrides: Partial<AppliedMove> & { by: PlayerId; kind: MoveKind }): AppliedMove {
   return {
     card: null,
     description: 'fixture move',
     seq: 1,
     subKind: null,
+    targetCard: null,
     ...overrides,
   };
 }

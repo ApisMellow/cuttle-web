@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { PlayerId } from '../../src/lib/bridge/schema';
 import { type Snapshot, decodeSnapshot, encodeSnapshot } from '../../src/lib/stores/snapshot';
+import { appliedMove } from './game-test-support';
 
 function validSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -79,7 +80,7 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     // engineState is opaque, but history/curtain are ordinary JSON this
     // module DOES look inside the shape of (not the content of) — prove
     // round-tripping doesn't coerce null into [] or vice versa anywhere.
-    const entry = { by: 0 as const, kind: 0 as const, card: null, description: 'draw a card', seq: 1, subKind: null };
+    const entry = appliedMove({ by: 0, kind: 0, description: 'draw a card', seq: 1 });
     const snap = validSnapshot({
       viewer: 1,
       history: [entry],
@@ -97,7 +98,7 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
 });
 
 describe('N1: structural validation of curtain and lastSeenSeq (malformed, cleanly, like a v mismatch)', () => {
-  const entry = { by: 0 as const, kind: 0 as const, card: null, description: 'draw a card', seq: 1, subKind: null };
+  const entry = appliedMove({ by: 0, kind: 0, description: 'draw a card', seq: 1 });
   const withHistory = (curtain: unknown, viewer: PlayerId = 1) =>
     JSON.stringify({ ...validSnapshot({ viewer, history: [entry] }), curtain });
 

@@ -275,8 +275,10 @@ export class GameStore {
    * one: the final `none` (the board) or an `ack` (the counter-prompt needs
    * `pending`). Every transition into `handoff`/`reveal`/`recap` drops
    * whatever view was held — including an acknowledger's, when a synthetic
-   * ack hands the phone back (B1). `lastSeenSeq[viewer]` is stamped only at
-   * the transition into `none` (§4.6), never at reveal or recap.
+   * ack hands the phone back (B1). `lastSeenSeq[viewer]` is stamped when the
+   * viewer leaves `recap` (recap dismissal, §4.6 amended 2026-09-27) and at
+   * the transition into `none`; never at `handoff`, `reveal`, or on entering
+   * `recap`. (A successful `apply()` separately stamps the mover.)
    */
   async advanceCurtain(): Promise<void> {
     const ctx = this.#requireCurtainContext();
