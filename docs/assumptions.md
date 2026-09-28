@@ -335,8 +335,8 @@ per section so a later batch can see the reasoning without re-deriving it.
   and only the former is inherently browser/server-shaped.
 
 - **`docs/requirements.yaml`/`docs/traceability.md` edited are the ones in
-  this repo (`~/dev/cuttle-web/docs/`), not the stale, all-`todo` copy in
-  the `cuttle-web-docs` sibling repo's `docs/p1b-decisions` branch.** The
+  the feature branch, not the stale, all-`todo` copy on the
+  `docs/p1b-decisions` branch.** The
   latter is `SPEC.md`'s home and was read-only per this batch's
   instructions; its `requirements.yaml`/`traceability.md` predate Batch 1/2
   and don't reflect any of the `implemented`/`PARTIAL` work already landed
