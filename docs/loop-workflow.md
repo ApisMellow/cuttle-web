@@ -22,7 +22,7 @@ This document specifies the autonomous, loop-based multi-agent workflow that imp
 |---|---|---|
 | P0 — PRD | done | `docs/PRD.md`, this file |
 | P1a — Spec docs | done (2026-08-23) | `docs/SPEC.md` (technical spec: JSON envelope schema, component breakdown, redacted-view rules, curtain state machine, test strategy) + `docs/requirements.yaml` (the ledger, seeded from PRD R1–R23 broken into machine-checkable items) + PRD/workflow amendments. **No code is written in P1a.** |
-| P1b — Walking skeleton | fresh dispatch, reads SPEC | Repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script) and the WASM bridge smoke test (headless full random game through the compiled engine). **Assigned to a Codex developer agent** on its own feature branch; test authoring per SPEC §test-strategy is Codex's. Git ceremony via the DevOps agent; local only. |
+| P1b — Walking skeleton | done (2026-09-27) | Repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, the TS bridge boundary and the bridge smoke test (headless full random games through the compiled engine). Built test-first by Claude developer agents under a manager session, on its own feature branch; git ceremony via the DevOps agent. |
 | P2 — Loop | fresh orchestrator session(s) | working software; loop runs until ledger is green |
 | P-ART — Card art pipeline | own launches, §11; unblocked by R21's human gate | Style-locked reference set, then the massively parallel full-deck generation + consistency QA (PRD §10 A-1, R21–R23) |
 | P3 — Ship | after David plays it | Fly.io deploy, PR ceremony |
@@ -64,13 +64,14 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 
 | Role | Does | Model |
 |---|---|---|
-| **Orchestrator** | Runs rounds: reads ledger, batches work, writes briefs, dispatches, routes verdicts, integrates, updates ledger, writes logs. Never writes application code. | Sonnet/Opus-class |
-| **Developer** (N per round) | Implements assigned requirement IDs in an isolated git worktree, TDD, returns a branch + test evidence. | Sonnet/Opus-class |
-| **Code reviewer** | Reviews a submission's diff against SPEC + acceptance criteria; flags correctness, contract violations (envelope/move-index/redaction), and drift. | Sonnet/Opus-class |
-| **Playtest judge** | Runs the built app in a browser at phone viewport (Playwright, 390×844), plays real moves, screenshots, and rules each `screenshot-judge` acceptance criterion accept/revise with written reasons. Also scores UX regressions (tap targets, overflow, curtain leaks). | **Strongest available** — taste and rules-correctness verdicts are where model quality pays |
-| **Skeleton/test author (P1b)** | Builds the walking skeleton and authors the test suites defined in SPEC's test strategy, on its own feature branch. | **Codex** (dispatched via dispatch-codex) |
-| **Art generators (P-ART)** | Generate reference candidates, then the full-deck fan-out conditioned on the locked references. Parallel batches; each worker gets the style lock + its asset list, nothing else. | Image-generation tooling (photographer-agent pipeline); orchestration model Sonnet-class |
-| **Art consistency judge (P-ART)** | Scores every generated asset against the style lock (accept/regenerate, written reasons); samples cross-asset pairs for drift. | **Strongest available vision model** — consistency verdicts are the phase's quality gate |
+| **Orchestrator** | Runs rounds: reads ledger, batches work, writes briefs, dispatches, routes verdicts, integrates, updates ledger, writes logs. Never writes application code. | Claude Opus 5.5 |
+| **Developer** (N per round) | Implements assigned requirement IDs in an isolated git worktree, TDD, returns a branch + test evidence. | Claude Opus 5.5 |
+| **Code reviewer** | Reviews a submission's diff against SPEC + acceptance criteria; flags correctness, contract violations (envelope/move-index/redaction), and drift. | Claude Opus 5.5 |
+| **Playtest judge** | Runs the built app in a browser at phone viewport (Playwright, 390×844), plays real moves, screenshots, and rules each `screenshot-judge` acceptance criterion accept/revise with written reasons. Also scores UX regressions (tap targets, overflow, curtain leaks). | Claude Opus 5.5 |
+| **Art generators (P-ART)** | Generate reference candidates, then the full-deck fan-out conditioned on the locked references. Parallel batches; each worker gets the style lock + its asset list, nothing else. | Image-generation tooling (photographer-agent pipeline); orchestration by Claude Opus 5.5 |
+| **Art consistency judge (P-ART)** | Scores every generated asset against the style lock (accept/regenerate, written reasons); samples cross-asset pairs for drift. | Claude Opus 5.5 (vision) |
+
+**Model rule (David, 2026-09-27):** every role above runs on Claude Opus 5.5. No other coding agents, no model downshifts.
 
 Dispatch briefs are curated: they name exact requirement IDs with acceptance criteria verbatim, the SPEC sections that bind them, the files in scope, and explicit out-of-scope lines. Developers never "scan the repo for what to do."
 
