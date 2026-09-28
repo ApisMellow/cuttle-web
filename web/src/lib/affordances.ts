@@ -1,0 +1,215 @@
+// SPEC §6.2–§6.4 — deriving UI affordances from the engine's flat
+// legal-move list. Every function here is pure and knows nothing about
+// game rules: it only organizes the `Move[]` the engine already decided
+// was legal. If a function here ever needs to know whether a play is
+// *allowed* (Queen protection, scuttle beats, discard counts), that is a
+// sign it has drifted into rule logic and does not belong in this file
+// (P2 W2 brief, "Zero rule logic").
+//
+// MoveKind/Phase values are pinned from SPEC §2.5 as private constants. A
+// shared enums module is out of scope for this round (see AGENTS.md); it
+// ships in round 2.
+
+import type { Card, Move, Phase } from './bridge/schema';
+
+const MOVE_DRAW = 0;
+const MOVE_PLAY_POINT = 1;
+const MOVE_PLAY_PERMANENT = 2;
+const MOVE_SCUTTLE = 3;
+const MOVE_ONE_OFF = 4;
+const MOVE_COUNTER = 5;
+const MOVE_DECLINE = 6;
+const MOVE_SEVEN_PICK = 7;
+const MOVE_DISCARD_PAIR = 8;
+const MOVE_PASS = 9;
+
+const PHASE_AWAITING_DISCARD = 3;
+
+/** Identifies a card for the SevenPick slot key's nested `cardKey` term (SPEC §6.2). */
+function cardKey(c: Card): string {
+  return `${c.Rank}:${c.Suit}`;
+}
+
+function cardKeyOrNull(c: Card | null): string | null {
+  return c ? cardKey(c) : null;
+}
+
+/** Thrown when a `Move` is structurally incomplete for the `MoveKind` it claims (SPEC §6.2). */
+export class SlotKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SlotKeyError';
+  }
+}
+
+/**
+ * SPEC §6.2 — identifies the affordance a move belongs to. Total over all
+ * ten `MoveKind`s: every case is handled explicitly, and the `default`
+ * branch is unreachable by construction — TypeScript narrows `m.Kind` to
+ * `never` there once all ten literals are covered, so an eleventh
+ * `MoveKind` added later fails to *compile*, not just to run.
+ */
+export function slotKey(m: Move): string {
+  switch (m.Kind) {
+    case MOVE_DRAW:
+      return 'deck';
+    case MOVE_PASS:
+      return 'pass';
+    case MOVE_DECLINE:
+      return 'decline';
+    case MOVE_COUNTER:
+      return `counter:${m.HandIndex}`;
+    case MOVE_DISCARD_PAIR:
+      return `discard:${m.DiscardA}:${m.DiscardB}`;
+    case MOVE_PLAY_POINT:
+      return `hand:${m.HandIndex}|zone:points`;
+    case MOVE_PLAY_PERMANENT:
+      return m.JackTarget
+        ? `hand:${m.HandIndex}|jack:${m.JackTarget.Owner}:${m.JackTarget.Index}`
+        : `hand:${m.HandIndex}|zone:permanents`;
+    case MOVE_SCUTTLE:
+      if (!m.Target) {
+        throw new SlotKeyError('slotKey: Scuttle move has no Target — SPEC §6.2 assumes one always exists');
+      }
+      return `hand:${m.HandIndex}|scuttle:${m.Target.Owner}:${m.Target.Index}`;
+    case MOVE_ONE_OFF:
+      return m.Target
+        ? `hand:${m.HandIndex}|oneoff:${m.Target.Owner}:${m.Target.Zone}:${m.Target.Index}`
+        : `hand:${m.HandIndex}|zone:oneoff`; // rank-3 ScrapIndex variants collapse here on purpose (§6.2 last para)
+    case MOVE_SEVEN_PICK:
+      // Amended per orchestrator cycle-1 review (B1): a dead-end SevenPick
+      // (no revealed card has any legal play) carries `SubMove: null`
+      // (engine/apply.go:535-541; internal/wasm/bridge.go:452-454). The
+      // original SPEC §6.2 pseudocode's unconditional `slotKey(m.SubMove!)`
+      // crashed on exactly this shape.
+      return m.SubMove ? `seven:${cardKey(m.Card!)}|${slotKey(m.SubMove)}` : `seven:${cardKey(m.Card!)}|scrap`;
+    default: {
+      const exhaustive: never = m.Kind;
+      throw new SlotKeyError(`slotKey: unhandled MoveKind ${String(exhaustive)}`);
+    }
+  }
+}
+
+/**
+ * SPEC §6.2 — groups a flat legal-move list into affordances, keyed by
+ * `slotKey`. Every index in `legalMoves` lands in exactly one slot
+ * (guaranteed by iterating the array once and `slotKey` being total);
+ * every returned slot has at least one index, because slots are only
+ * created when an index is pushed into them.
+ */
+export function groupAffordances(legalMoves: Move[]): Record<string, number[]> {
+  const map: Record<string, number[]> = {};
+  legalMoves.forEach((move, index) => {
+    const key = slotKey(move);
+    const bucket = map[key];
+    if (bucket) {
+      bucket.push(index);
+    } else {
+      map[key] = [index];
+    }
+  });
+  return map;
+}
+
+/**
+ * SPEC §6.2 last paragraph — the rank-3 one-off's `ScrapIndex` variants
+ * share a single targetless-one-off slot (`hand:X|zone:oneoff`) but are
+ * deliberately NOT the R11 chooser's concern: they are resolved by the
+ * scrap-pick browser (§6.3) instead. Detected structurally, from the move
+ * shapes alone — every candidate is a targetless `OneOff` for the same
+ * hand card, agreeing on every field except a distinct `ScrapIndex` —
+ * never by asking which rank the card is (that would be rule logic).
+ *
+ * Amended per orchestrator cycle-1 review (B2): a rank-3 revealed by a 7
+ * replays "exactly as a hand card would" (SPEC §6.3), so its ScrapIndex
+ * variants collapse the same way one level down — every candidate is a
+ * `SevenPick` for the same revealed card, each wrapping a non-null
+ * SubMove, and the SubMoves themselves collapse by this same check.
+ */
+function isScrapPickCollapse(candidates: Move[]): boolean {
+  if (candidates.length < 2) return false;
+  const [first, ...rest] = candidates;
+
+  if (first.Kind === MOVE_SEVEN_PICK) {
+    if (first.SubMove === null) return false; // a dead-end 7 has nothing to collapse
+    const subCandidates: Move[] = [first.SubMove];
+    for (const m of rest) {
+      if (m.Kind !== MOVE_SEVEN_PICK || m.SubMove === null) return false;
+      if (cardKeyOrNull(m.Card) !== cardKeyOrNull(first.Card)) return false;
+      subCandidates.push(m.SubMove);
+    }
+    return isScrapPickCollapse(subCandidates);
+  }
+
+  if (first.Kind !== MOVE_ONE_OFF || first.Target !== null || first.JackTarget !== null) return false;
+  const scrapIndices = new Set<number>([first.ScrapIndex]);
+  for (const m of rest) {
+    if (m.Kind !== MOVE_ONE_OFF || m.Target !== null || m.JackTarget !== null) return false;
+    if (m.HandIndex !== first.HandIndex) return false;
+    if (cardKeyOrNull(m.Card) !== cardKeyOrNull(first.Card)) return false;
+    scrapIndices.add(m.ScrapIndex);
+  }
+  return scrapIndices.size === candidates.length;
+}
+
+/**
+ * SPEC §6.4 — a slot is ambiguous, and must be resolved by the R11
+ * ambiguity chooser, exactly when it holds more than one candidate index
+ * — except the rank-3 scrap-pick collapse (§6.2), which resolves via the
+ * scrap browser instead and is never ambiguous no matter how many
+ * `ScrapIndex` variants it holds.
+ */
+export function isAmbiguousSlot(indices: number[], legalMoves: Move[]): boolean {
+  if (indices.length <= 1) return false;
+  const candidates = indices.map((i) => legalMoves[i]);
+  return !isScrapPickCollapse(candidates);
+}
+
+/**
+ * The full set of move indices an affordance map covers — what
+ * `window.__cuttleTestHook.affordances()` will expose for the R11
+ * completeness/soundness walk (SPEC §6.5). Sorted for a stable, readable
+ * comparison against `legalMoves`' own index range in that test.
+ */
+export function flattenAffordances(map: Record<string, number[]>): number[] {
+  const indices: number[] = [];
+  for (const bucket of Object.values(map)) {
+    indices.push(...bucket);
+  }
+  return indices.sort((a, b) => a - b);
+}
+
+export interface DiscardCandidate {
+  moveIndex: number;
+  discardA: number;
+  discardB: number;
+}
+
+export type DiscardPickerModel =
+  | { mode: 'preselected'; moveIndex: number; discardA: number; discardB: number }
+  | { mode: 'select'; candidates: DiscardCandidate[] };
+
+/**
+ * SPEC §6.3 `DiscardPair` row, §4.4 `PhaseAwaitingDiscard` — models what
+ * the `DiscardPicker` should show.
+ *
+ * Returns `null` outside `PhaseAwaitingDiscard` — the picker never renders
+ * there. This is the unit-provable half of R15.2.
+ *
+ * The other half of R15.2 — an empty-hand discarder never reaching this
+ * phase at all, because the engine auto-resumes first (`apply.go:621-623`)
+ * — is NOT provable by this function: a pure function has no way to
+ * observe a phase the engine never produces. That half is exercised
+ * against the real WASM engine in `affordances.test.ts` instead.
+ */
+export function deriveDiscardPicker(phase: Phase, legalMoves: Move[]): DiscardPickerModel | null {
+  if (phase !== PHASE_AWAITING_DISCARD) return null;
+  if (legalMoves.length === 1) {
+    const [only] = legalMoves;
+    return { mode: 'preselected', moveIndex: 0, discardA: only.DiscardA, discardB: only.DiscardB };
+  }
+  return {
+    mode: 'select',
+    candidates: legalMoves.map((m, moveIndex) => ({ moveIndex, discardA: m.DiscardA, discardB: m.DiscardB })),
+  };
+}
