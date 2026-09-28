@@ -192,6 +192,17 @@ Every player's phone is an **iPhone 15 or larger**. This replaces R19's "360–4
 - **Safe areas are respected.** The Dynamic Island takes about 59 pt at the top and the home indicator about 34 pt at the bottom. The page sets `viewport-fit=cover` and pads with `env(safe-area-inset-*)`, so no control or card index sits under either.
 - **Mobile Safari with its toolbars showing leaves a shorter visible area, down to about 393×660.** There the hand and the action bar must stay fully visible; only the board region above them may scroll. The page itself never scrolls horizontally.
 - **The 360×740 compact target is dropped.** Nothing is sized, tested or judged against it any more (`docs/design.md` §5, §6, §10; ledger R19.1, R19.5).
-- A design pass for these screens is in progress. Token values for the new targets are **tuned in the iPhone design pass**; until it lands, the 390×844 Playwright viewport stays in use as a slightly smaller stand-in for 393×852.
+- The iPhone design pass landed as W22 (`16d2507`). Its token values are in `docs/design.md` §4–§6 and §10.
 
 This amendment adds no new R numbers; it retargets R19 (and the viewport named in R5/R19 judge criteria) and adds ledger item R19.5.
+
+### A-6 — Several themes, player's choice (2026-09-28, David)
+
+A-1 and A-3 described one art theme. David wants **several themes**, and players pick one. The theme seam from R23 already supports this. Every theme is a skin over the same rules and the same vector baseline. Every theme keeps the upper-left rank and suit index readable at 60–80 px. If a theme's assets are missing, the game falls back to the vector baseline. Candidates under exploration (art lives outside the repo until a style is locked):
+
+- **Mythic:** painted, Magic-flavoured art. Colour comes from what the rank does, and the suit shows only in the index.
+- **Stained-glass vector:** a hand-written SVG set. It could replace the plain vector faces as the standard deck, since it's small and crisp at any size.
+- **Cathedral:** palette-knife impasto in gold and violet, from a photograph David took. It might become a whole theme, or one suit style set against stained glass inside a single deck.
+- **Webb playmat and card backs:** photographic deep-space art that could pair with any theme.
+
+R23 is extended from a theme toggle to a theme picker. No new R numbers until the first theme ships.
