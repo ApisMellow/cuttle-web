@@ -127,7 +127,7 @@ describe('PointRow (SPEC §5.2)', () => {
     expect(el.querySelector('[data-testid="point-0-1"]')?.querySelector('[data-state]')?.getAttribute('data-state')).toBe('highlighted');
   });
 
-  it('each Jack\'s mini face renders its JackStack card, not the point card (M41)', () => {
+  it('each Jack renders its JackStack card at the SAME size as the point card it sits on, not the point card (W17)', () => {
     const el = render({
       rowId: 0,
       entries: [
@@ -149,8 +149,15 @@ describe('PointRow (SPEC §5.2)', () => {
     });
     const card = el.querySelector('[data-testid="point-0-0"]') as HTMLElement;
     const pointFace = card.querySelector('.point-row__face [data-state]') as HTMLElement;
-    const jackFaces = [...card.querySelectorAll('.point-row__jack [data-size="mini"]')] as HTMLElement[];
+    // W17 (docs owner direction, 2026-09-28): a Jack is the same size as the
+    // card it sits on — no narrowing to `mini`. Both the point card's Face
+    // and every Jack's Face render at `size="field"`, so the `data-size`
+    // theme contracts (rule 2) match card-for-card.
+    expect(pointFace.getAttribute('data-size')).toBe('field');
+    const jackFaces = [...card.querySelectorAll('.point-row__jack [data-size="field"]')] as HTMLElement[];
     expect(jackFaces.length).toBe(2);
+    // No mini-sized Jack face survives.
+    expect(card.querySelectorAll('.point-row__jack [data-size="mini"]').length).toBe(0);
     // Rank label of each Jack face is "J"; the point card's is "6".
     expect(jackFaces.map((f) => f.firstElementChild?.textContent)).toEqual(['J', 'J']);
     expect(pointFace.firstElementChild?.textContent).toBe('6');

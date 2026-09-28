@@ -464,7 +464,7 @@ describe('Board testids are stable across legality changes (playbook "Testids an
 });
 
 describe('JackStack and the ownership marker (SPEC §5.2)', () => {
-  it('renders a mini Face per JackStack card and a marker only when Controller differs from Owner', () => {
+  it('renders a field-size Face per JackStack card and a marker only when Controller differs from Owner', () => {
     const view = richView();
     const el = render(baseProps({ view }));
     // view.you.points[1] is Jack-stacked and stolen (Owner 1, Controller 0).
@@ -481,12 +481,12 @@ describe('JackStack and the ownership marker (SPEC §5.2)', () => {
     expect(ownSlot.querySelector('[data-owner-marker]')).toBeNull();
   });
 
-  it('each Jack\'s mini face shows the JackStack card on both sides, not the point card (M41)', () => {
+  it('each Jack\'s field-size face shows the JackStack card on both sides, not the point card (W17)', () => {
     const view = richView();
     const el = render(baseProps({ view }));
     for (const id of [`point-${view.viewer}-1`, `point-${1 - view.viewer}-1`]) {
       const card = testid(el, id);
-      const jackRanks = [...card.querySelectorAll('.point-row__jack [data-size="mini"]')].map(
+      const jackRanks = [...card.querySelectorAll('.point-row__jack [data-size="field"]')].map(
         (f) => f.firstElementChild?.textContent,
       );
       expect(jackRanks).toEqual(['J']);
