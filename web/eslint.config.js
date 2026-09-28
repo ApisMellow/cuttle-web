@@ -22,7 +22,9 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.svelte'],
+    // Rune modules (*.svelte.ts) go through the Svelte parser too; they need
+    // the TS sub-parser or type-only syntax fails to parse.
+    files: ['**/*.svelte', '**/*.svelte.ts'],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
