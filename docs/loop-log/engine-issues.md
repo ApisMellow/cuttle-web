@@ -1,5 +1,7 @@
 # Upstream engine issues
 
+> **Status (2026-09-27):** E-1 and E-2 are **resolved** in engine v0.2.0 (see the 2026-09-26 section below). The exclusion list and `exclusions.json` are gone, and the smoke corpus runs seeds 1–240 unfiltered. The sections before that entry are kept as history.
+
 These defects are in `github.com/ApisMellow/cuttle` and must not be hidden or
 repaired in Cuttle Web. The intentionally red bridge tests require future
 implementation to report `ILLEGAL_MOVE` and `NO_LEGAL_MOVES`, so a later UI can

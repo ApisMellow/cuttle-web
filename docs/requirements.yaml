@@ -1,6 +1,6 @@
 meta:
-  round: 0
-  launch: 0
+  round: 3
+  launch: 1
 
 requirements:
 
@@ -14,8 +14,8 @@ requirements:
       - "bridge-smoke: newGame({seed:\"42\", dealer:1}) reproduces SPEC §2.6's golden scenario byte-for-byte: P1 hand [2♥ 3♣ A♥ K♦ Q♣], P2 hand [5♥ 9♥ 8♦ 4♦ 5♠ 4♥], deck length 41 with top 5 [2♣ 9♠ 9♦ J♥ 7♣], Active=0, Phase=0, and all 7 legalMoves descriptions in order"
       - "unit-test: deck construction is suit-major (Clubs..Spades), rank-minor (Ace..King) canonical order before shuffle (SPEC §2.6 step 1)"
     verify: [bridge-smoke, unit-test]
-    status: implemented
-    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest)."
+    status: verified
+    evidence: "go: TestR1_1a_GoldenSeedDeal, TestR1_1b_CanonicalDeckOrder, TestR1_1c_GoldenDealThroughBridge; bridge-smoke: 'reproduces the seed-42 golden deal byte-for-byte'. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. Deck-order criterion is covered by a Go unit test (dealing is Go-only; no TS surface to vitest). | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R1.2
@@ -26,7 +26,7 @@ requirements:
       - "e2e-test: fixture `opening` with no prior session shows a randomly assigned dealer; a scripted rematch shows the dealer flipped from the prior game"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W4): unit half done — web/tests/unit/session.test.ts 'R1.2: the first game of a session passes no dealer', 'R1.2: computes dealer = 1 - lastDealer on rematch'; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (HomeScreen/rematch, later round); round-2 game store must assert the dealer key is absent from first-game NewGameOpts."
     fails: 0
 
   - id: R1.3
@@ -36,8 +36,8 @@ requirements:
       - "e2e-test: fixture `opening` — non-dealer hand size is 5 and is Active at kickoff; dealer hand size is 6 (PRD R1, SPEC §2.6 step 3)"
       - "e2e-test: HomeScreen accepts player names once per session; leaving both blank defaults to \"Player 1\"/\"Player 2\""
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): HomeScreen (name entry + defaults) and the GameScreen skeleton's kickoff wiring landed; Opus review accept cycle 1 (round-03.md), gate 9/9 (516 unit, 8 e2e) in its own worktree. Post-integration e2e against the fixture corpus is round-4's job (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -71,8 +71,8 @@ requirements:
     acceptance:
       - "e2e-test: ResultScreen shows distinct copy for a named winner (fixture `win-with-kings`) versus a stalemate outcome (fixture `stalemate`)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle (round-03.md); reviewer probe mounted the real App and confirmed the tally counts once and stalemates are excluded from it, which exercises ResultScreen's win-vs-stalemate copy split. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -84,8 +84,8 @@ requirements:
     acceptance:
       - "e2e-test: tapping Rematch from ResultScreen starts a new game with dealer = 1 - previous dealer (PRD R3, SPEC §8 OQ-12)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; mutant K ('dead Rematch') was surfaced and killed, proving the Rematch handler is wired and tested (round-03.md). Dealer-alternation logic itself is R1.2 (still open its e2e half). Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13)."
     fails: 0
 
   - id: R3.2
@@ -94,8 +94,8 @@ requirements:
     acceptance:
       - "e2e-test: after fixture `win-with-kings` completes, ResultScreen shows a tally line (e.g. \"Alice 1 – Bob 0\"); a scripted second win for the same player increments it to 2"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; mutants A (no once-guard), B (stalemates tallied) and C (no recordResult) were surfaced by a probe that mounted the real App, then killed (round-03.md). Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13)."
     fails: 0
 
   - id: R3.3
@@ -106,7 +106,7 @@ requirements:
       - "e2e-test: reloading after a completed game shows the tally reset to 0-0"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-02 (W5): unit half done — web/tests/unit/game.test.ts \"the persisted snapshot JSON has no 'tally' key, even with a non-zero tally\"; Snapshot type has no tally field. Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (reload after a completed game shows 0-0; needs ResultScreen)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -138,8 +138,8 @@ requirements:
     acceptance:
       - "e2e-test: \"New game\" from the menu during an in-progress game shows a confirm dialog naming the in-progress game; cancelling leaves the game untouched; confirming clears the snapshot (PRD R4, SPEC §5.7 last bullet)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; the abandon-confirm dialog was built and folded in to also cover the error screen's 'New game' path (round-03.md), proving the confirm mechanism is wired and tested. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13)."
     fails: 0
 
   - id: R4.4
@@ -148,8 +148,8 @@ requirements:
     acceptance:
       - "unit-test: Snapshot.v !== 1 is detected and the snapshot is discarded without a crash, returning to the home screen with a brief notice, and no migration is attempted (SPEC §5.7 'Version mismatch')"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-02 (W5): web/tests/unit/snapshot.test.ts \"a snapshot with v !== 1 decodes as version-mismatch, not thrown\"; web/tests/unit/game-restore.test.ts \"v !== 1 -> home screen with a notice, engine.restore never called, no throw\", \"the stale snapshot is removed from storage\", \"malformed JSON is discarded the same way\". Opus review accept (round-02.md). VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -169,10 +169,10 @@ requirements:
     prd: R5
     title: "Score bar always visible"
     acceptance:
-      - "e2e-test: ScoreBar (both players' points + thresholds) is present and visible across every fixture checkpoint and every live CurtainState kind; only the handoff/reveal screens legitimately show zero game state by design (PRD R5, SPEC §4.5)"
+      - "e2e-test: ScoreBar (both players' points + thresholds) is present and visible across every fixture checkpoint and every live CurtainState kind; the handoff/reveal screens and the ack screen (real or synthetic) legitimately show zero game state by design — after a synthetic ack the scores already reflect the resolved one-off and at a real window they don't, so showing them would leak under R14 (PRD R5, SPEC §4.3, §4.5, amended 2026-09-28 per the W13 GameScreen review)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): ScoreBar built and reviewed accept after re-review (round-03.md), 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e across every curtain kind deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -197,8 +197,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() table-driven test asserts opponent.hand === null whenever viewerHasGlasses is false, across every phase (SPEC §3.2)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase (table over phases 0-4 x both viewers x opponent-has-glasses), TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (30 seeded games, every step), TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R7.2
@@ -217,8 +217,8 @@ requirements:
     acceptance:
       - "unit-test: a serialized-view grep for any card identity from state.Deck fails to match in either viewer's PlayerView, in every phase, for a sampled position set (SPEC §3.2 deckCount rule, §7.1 'blunt instrument' grep test)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR7_3a_DeckNeverTransmittedEveryPhase, TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand (serialized-envelope grep for every current deck card, both viewers, every step of 30 seeded games). gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R7.4
@@ -227,8 +227,8 @@ requirements:
     acceptance:
       - "unit-test: normalization and view tests assert opponent.hand uses null (not visible) vs [] (visible and empty) and this distinction survives snapshot round-trip and store updates (SPEC §2.8(b) deliberate exception, §3.2)"
     verify: [unit-test]
-    status: todo
-    evidence: "PARTIAL — bridge half done: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. Open: the store-update leg specifically (lib/stores/game.svelte.ts persistence round-trip) — stores are out of scope for Batch 3 (SPEC §5.3 is a later batch's work)."
+    status: verified
+    evidence: "bridge half: TestR7_4a_OpponentHandNullVersusEmptyOnWire, TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip (restore with viewerId 0), TestSPEC2_8_NilSlicesAreEmptyArrays. TS schema/bridge half done: vitest \"R7.4: preserves hidden null versus visible empty opponent hands\" (web/tests/unit/schema.test.ts) and \"R7.4: opponent.hand null-vs-empty distinction survives engine.restore()'s round trip\" (web/tests/unit/engine.test.ts) — both directions parse and round-trip through lib/bridge/{schema,engine}.ts unchanged. | round-02 (W5) store leg: game.test.ts \"opponent.hand stays null through a plain apply\" and \"[] (visible, empty) is preserved distinctly from null\"; game-curtain.test.ts N4 ([] survives advanceCurtain -> none); game-restore.test.ts N4 (null and [] through a serializing fake engine, plus a real-WASM snapshot->restore). Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -240,8 +240,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `nine-freeze` — after a 9 returns a card to hand, that hand index shows a FrozenBadge on the owning player's own screen, and the badge clears after one turn (PRD R8, SPEC §5.2)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): HandCard's frozen-state rendering (the existing hand-card__frozen-marker, driven by R8.2's already-verified frozenHandIndices logic) is wired into the board's field/hand rows; accept after Opus re-review (round-03.md), 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e via fixture `nine-freeze` deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R8.2
@@ -250,8 +250,8 @@ requirements:
     acceptance:
       - "unit-test: HandCard's frozen state is driven solely by view.you.frozenHandIndices membership, including the OQ-13 self-freeze-then-clear-before-next-turn case, with no additional logic layered on top (SPEC §2.8(c), §8 OQ-13)"
     verify: [unit-test]
-    status: todo
-    evidence: "PARTIAL — bridge half done: TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze (OQ-13 self-freeze appears then clears, straight from engine FrozenIDs), TestSPEC2_8_FrozenIDsSortedDropFalse. Open: HandCard component unit test (UI half)."
+    status: verified
+    evidence: "bridge half: TestR8_2a_FrozenIndicesVerbatimIncludingSelfFreeze (OQ-13 self-freeze appears then clears, straight from engine FrozenIDs), TestSPEC2_8_FrozenIDsSortedDropFalse. | round-02 (W8) UI half: web/tests/unit/hand-card.svelte.test.ts — one mounted HandCard driven by a $state props object through [] -> [3] -> [] from the owner's view (OQ-13 self-freeze then clear), a longer sequence on one instance, and a membership matrix (5 cards x onselect x selected x 5 lists); a remembered-freeze latch mutation is killed. Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -274,8 +274,8 @@ requirements:
     acceptance:
       - "e2e-test: for a sampled legal move per fixture, tapping the hand card then the highlighted target transitions staging to 'staged' with the correct engine-authored description shown in StagingBar; only the Confirm action calls engine.apply (SPEC §6.1)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): staging.svelte.ts + StagingBar built and accepted after 1 revise cycle (a real choose() bounds-check bug found and fixed), 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R9.3
@@ -284,8 +284,8 @@ requirements:
     acceptance:
       - "e2e-test: a hand card with no candidateMoveIndices renders dimmed and opens a card-detail popover on tap without entering the 'selected' staging state (PRD R9, SPEC §6.1)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R9.4
@@ -294,8 +294,8 @@ requirements:
     acceptance:
       - "e2e-test: while 'selected', tapping a non-highlighted board area returns staging to 'idle' and stages nothing, with envelope.seq unchanged (PRD R9's explicit non-goal, SPEC §6.1)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -307,8 +307,8 @@ requirements:
     acceptance:
       - "e2e-test: fixture `opening` step 0 — tapping DeckPile stages then, on confirm, applies MoveDraw; DeckPile renders visibly disabled when the deck is empty or the hand is at 8 (PRD R10, SPEC §6.3, apply.go:34)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): a `deckEnabled` prop drives DeckPile's disabled style (orchestrator ruling, round-03.md); staging/confirm/apply wiring is W11's `target:'deck'` key on the shared board↔staging contract. Accept after Opus re-review, 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R10.2
@@ -317,8 +317,8 @@ requirements:
     acceptance:
       - "e2e-test: the Pass control renders only in positions where legalMoves is exactly [MovePass] (engine-guaranteed per apply.go:131-133/160-166); it never renders alongside other affordances, across the fixture corpus (PRD R10, SPEC §6.3)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -330,8 +330,8 @@ requirements:
     acceptance:
       - "e2e-test: for every fixture and every position, window.__cuttleTestHook.affordances()'s flattened index set covers every index in envelope.legalMoves; a sampled index per position is actually reached by its tap sequence and stages correctly (SPEC §6.5, §7.4)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the reviewer's crosstalk probe found zero completeness violations over 5,113 real-engine positions and 77,244 random stagings (round-03.md), 9/9 gate, 539 unit tests. Post-integration e2e via `window.__cuttleTestHook.affordances()` across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R11.2
@@ -340,18 +340,19 @@ requirements:
     acceptance:
       - "e2e-test: exploratory taps across dimmed cards and non-highlighted areas never produce a staged move whose index falls outside envelope.legalMoves, for every fixture position (SPEC §6.5)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the reviewer's crosstalk probe found zero soundness violations over 5,113 real-engine positions and 77,244 random stagings (round-03.md), 9/9 gate, 539 unit tests. Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R11.3
     prd: R11
     title: "Ambiguity chooser resolves multi-candidate slots"
     acceptance:
-      - "e2e-test: golden fixture (seed \"42\", dealer 1) — tapping A♥ at hand index 2 opens AmbiguityChooser listing exactly the 2 candidate descriptions (\"play A♥ as one-off\", \"play A♥ as point card\"); selecting one goes to 'staged', not directly to apply (PRD R11, SPEC §6.4, §2.6)"
+      - "e2e-test: golden fixture (seed \"42\", dealer 1) — tapping A♥ at hand index 2 highlights both the One-off zone and the Points zone (moves [3] and [4]); tapping the One-off zone stages \"play A♥ as one-off\", tapping the Points zone stages \"play A♥ as point card\"; no AmbiguityChooser opens for this two-zone case — the move comes from which zone the card is dropped or tapped on, per the 8's identical two-zone handling (PRD R11, SPEC §6.4, §2.6)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the criteria-drift question flagged in round-03.md (Ace resolved by zone, matching the affordances.ts suite and the 8's handling) is settled by David's ruling in the notes field; the submitted implementation already follows SPEC as built. Accepted after 1 revise cycle, 9/9 gate, 539 unit tests. Post-integration e2e against the golden fixture deferred to round-4 (GameScreen/board integration, W13)."
+    notes: "Decision: David, 2026-09-28. The Ace, like the 8, is resolved by zone tap (One-off vs Points), not by the AmbiguityChooser modal — SPEC §6.4 reserves the chooser as backstop for the genuinely ambiguous residue that zone/target geometry can't resolve. Principle: prefer implicit actions (zone/target disambiguation) over extra prompts."
     fails: 0
 
   - id: R11.4
@@ -375,8 +376,8 @@ requirements:
     acceptance:
       - "e2e-test: across every fixture, every exploratory single tap on a hand card, target, or zone leaves envelope.seq unchanged; only the explicit Confirm action increments it (PRD R12, SPEC §6.1, §7.4)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R12.2
@@ -385,8 +386,8 @@ requirements:
     acceptance:
       - "e2e-test: while staging is 'applying', a second rapid tap on Confirm or any board element produces no second engine.apply call and no seq skip (SPEC §6.1 'applying' state)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -398,8 +399,8 @@ requirements:
     acceptance:
       - "unit-test: curtain.svelte.ts's next(pre, appliedMove, post) reproduces every row of SPEC §4.4's full transition table (all 5 phases × every reachable MoveKind), confirming curtainRequired matches post.active!==pre.active && post.phase!==PhaseGameOver exactly, including the PhaseAwaitingDiscard double-flip no-curtain case (SPEC §4.1, §4.4)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W1, loop/r01-curtain d961203): web/tests/unit/curtain.test.ts — 'R13.1: [actor P1|P2] <row>' (every SPEC §4.4 row, both actors), 'R13.1: curtainRequired matches post.active!==pre.active && post.phase!==PhaseGameOver on every phase pair', 'R13.1: PhaseAwaitingDiscard double flip', 'R13.1: every unreachable (phase, MoveKind) pair raises an INTERNAL CurtainError' (40 pairs). Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R13.2
@@ -408,8 +409,8 @@ requirements:
     acceptance:
       - "e2e-test: at every handoff across every fixture, the board is absent from the DOM (not merely CSS-hidden) during HandoffPanel, and the handoff screen's serialized content contains no score, count, scrap, or card data that varies between turns (PRD R13, SPEC §4.5)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): reason-invariance and once-only-latch mutants killed (round-03.md), 9/9 gate, 594 unit tests, ~25 mutants killed, accepted after 2 revise cycles. Post-integration e2e against every fixture handoff deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R13.3
@@ -419,8 +420,8 @@ requirements:
       - "unit-test: the hold duration constant (600ms) in lib/curtain.ts fires on pointerdown; pointerup/pointercancel/pointerleave before 600ms abort and reset the progress ring (SPEC §4.5)"
       - "e2e-test: with prefers-reduced-motion forced, and on a coarse-less pointer, the two-step tap fallback (\"I'm NAME\" → \"Show my hand\") is used and reaches the same live view as the hold path (SPEC §4.5)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "PARTIAL round-01 (W1): unit half done — web/tests/unit/curtain-hold.test.ts 'R13.3: the hold duration is the single constant 600 ms', '…pointerdown starts the hold and reaching 600 ms fires the reveal exactly once', '…pointerup|pointercancel|pointerleave before 600 ms aborts the reveal and resets the progress ring to 0', 'R13.3: pointerdown after dispose() does nothing'; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e two-step fallback (RevealGate component). | IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): ruling A1 built — one persistent handoff/reveal screen, first explicit action arms it, a continuing press becomes the hold, the two-step pill ('I'm NAME' → 'Show my hand') shares the same slot (round-03.md, design.md §8). Accepted after 2 revise cycles, 9/9 gate, 594 unit tests. Post-integration e2e for the two-step fallback path deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   - id: R13.4
@@ -429,8 +430,8 @@ requirements:
     acceptance:
       - "e2e-test: every curtain-sequence interactive element (handoff, reveal, recap, ack) has a bounding box ≥44px, centered in the lower two-thirds of a 390×844 viewport; no curtain screen advances without an explicit tap (PRD R13/R19, SPEC §4.5)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): Curtain/HandoffPanel/RevealGate/RecapPanel built to design.md §8's confirmed geometry (hold ring 132px at 62%, two-step pill 48px tall at 82%); accepted after 2 revise cycles, 9/9 gate, 594 unit tests. Post-integration e2e across all curtain screens deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -454,7 +455,7 @@ requirements:
       - "unit-test: needsSyntheticAck() fires for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff) whenever post.phase !== PhaseAwaitingCounter, with no per-rank exclusion (SPEC §4.3 detection code)"
     verify: [e2e-test, unit-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability."
     fails: 0
 
   - id: R14.3
@@ -465,7 +466,7 @@ requirements:
       - "e2e-test: fixture `counter-chain` extended to a 2-counters-2 exchange — each link curtains to the next decider in turn, matching pending.counterChain growth (SPEC §4.3)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-01 (W1): unit bullet done — curtain.test.ts 'R14.3: issues one counter curtain per counter link', even-chain (0, 2) and odd-chain cancel cases; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e 2-counters-2 scenario."
     fails: 0
 
   - id: R14.4
@@ -497,8 +498,8 @@ requirements:
     acceptance:
       - "unit-test: a 1-card discarding hand pre-selects the single {DiscardA:0, DiscardB:-1} move as confirm; an empty discarding hand never reaches PhaseAwaitingDiscard because the engine auto-resumes (apply.go:621-623), so DiscardPicker never renders for it (SPEC §6.3, §4.4)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W2, loop/r01-affordances 0821b5e): web/tests/unit/affordances.test.ts — 'R15.2: a 1-card discarding hand pre-selects the single {DiscardA:0, DiscardB:-1} move as confirm', 'R15.2: the picker never renders outside PhaseAwaitingDiscard' (deriveDiscardPicker model), and a real-WASM replay (pinned seed 2, ply 23) where a 4 against an empty hand lands in phase 0 with the victim still at handCount 0 and the turn passed. Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R15.3
@@ -520,8 +521,8 @@ requirements:
     acceptance:
       - "unit-test: viewFor() sets sevenRevealed non-null only when phase===PhaseSevenChoosing && viewer===state.active; it is null for the opponent's view of the same position (PRD R16, SPEC §3.2)"
     verify: [unit-test]
-    status: implemented
-    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green."
+    status: verified
+    evidence: "go: TestR16_1a_SevenRevealedOnlyToActorWhileChoosing (actor sees Revealed; opponent null; null for everyone outside PhaseSevenChoosing), TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex. gate 2026-09-26 (re-run after Batch 1 follow-ups: mover-view apply, index redaction, subKind, restore(snapshot, viewerId)): go build/wasm build/go vet/go test ./... green; test:smoke 4/4 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R16.2
@@ -530,8 +531,8 @@ requirements:
     acceptance:
       - "unit-test: the recap formatter's SevenPick line names only the played card, never the unchosen revealed card, audited row-by-row against SPEC §4.6's table (SPEC §4.6, §8 OQ-11)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W3, loop/r01-recap 393d623): web/tests/unit/recap.test.ts — 'R16.2: played branch names only the played card…', 'R16.2: dead-end (no legal play) names the scrapped card…', 'R16.2: fails loudly rather than silently accept a description that smuggles a second card'; SevenPick wording per SPEC §4.6 amended 2026-09-27 ('revealed the top of the deck'). Opus review accept (cycle 1). VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R16.3
@@ -576,8 +577,8 @@ requirements:
     acceptance:
       - "bridge-smoke: gzipped cuttle.wasm ≤ 1.5 MB, asserted as part of test:smoke (SPEC §7.6, §2.2 — measured baseline 806 KiB with -ldflags=\"-s -w\")"
     verify: [bridge-smoke]
-    status: implemented
-    evidence: "R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget (web/tests/smoke/bridge-smoke.mjs), asserted inside test:smoke against a freshly built wasm (npm run build:wasm now runs first). Budget read literally per the stricter decimal interpretation: 1.5 MB = 1,500,000 bytes, not 1.5 MiB (docs/assumptions.md Batch 2, revised 2026-09-26). Measured on engine v0.2.0: 988,532 bytes gzipped (Node zlib level 9), well under budget. Check proven red/green by hand before landing: a temporary 100 KiB threshold failed against the real artifact, the real 1,500,000-byte threshold passed. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green."
+    status: verified
+    evidence: "R18.1: gzipped cuttle.wasm stays within the 1.5 MB budget (web/tests/smoke/bridge-smoke.mjs), asserted inside test:smoke against a freshly built wasm (npm run build:wasm now runs first). Budget read literally per the stricter decimal interpretation: 1.5 MB = 1,500,000 bytes, not 1.5 MiB (docs/assumptions.md Batch 2, revised 2026-09-26). Measured on engine v0.2.0: 988,532 bytes gzipped (Node zlib level 9), well under budget. Check proven red/green by hand before landing: a temporary 100 KiB threshold failed against the real artifact, the real 1,500,000-byte threshold passed. gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green. | VERIFIED round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1); the listed tests ran inside it."
     fails: 0
 
   - id: R18.2
@@ -673,8 +674,8 @@ requirements:
     acceptance:
       - "unit-test: the recap formatter produces every SPEC §4.6 table row's exact phrasing per MoveKind, confirming DiscardPair names no identities and SevenPick names no unchosen card"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "round-01 (W3) + round-02 (W6): web/src/lib/recap.ts + web/tests/unit/recap.test.ts cover every SPEC §4.6 row's exact phrasing, now including the Jack steal (\"stole your 10♥ with J♣.\", from AppliedMove.targetCard) and the one-off target clause; DiscardPair names no identities; SevenPick names no unchosen card. targetCard bridge coverage: internal/wasm/target_test.go TestSPEC2_7_TargetCardPerMoveKind (20 cases), TestSPEC2_7_TargetCardNamesOnlyBoardCards, TestSPEC2_9_RestoreTargetCard, TestSPEC2_9_RestoreTargetCardKindConsistency. Opus review accept. VERIFIED round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1)."
     fails: 0
 
   - id: R20.3
@@ -683,8 +684,8 @@ requirements:
     acceptance:
       - "e2e-test: RecapPanel shows entries with seq > lastSeenSeq[viewer] oldest-first, is skipped entirely when empty, caps at 6 with a '+N earlier' expansion beyond that, and one tap dismissal stamps lastSeenSeq at the transition into curtain kind 'none' (SPEC §4.6)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-03 (W10 curtain, loop/r03-curtain, merged loop/integration @ a9c9ccb): the formatter-owned `recapCards(entry)` fix (B4) landed so mini faces come only from targetCard, and design.md §8's confirmed layout (mini CardFace + sentence, '+N earlier' text button, 'See the board' dismiss) is built; accepted after 2 revise cycles, 9/9 gate, 594 unit tests. Post-integration e2e for ordering/cap/dismissal/lastSeenSeq deferred to round-4 (GameScreen/board integration, W13)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -775,7 +776,7 @@ requirements:
       - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the 2.5:3.5 aspect ratio and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows)."
     fails: 0
 
   - id: R23.2

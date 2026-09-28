@@ -1,0 +1,85 @@
+name: Deploy Pages
+
+# W16 (GitHub Pages deploy prep, PRD §10 A-4): family-beta hosting. Manual
+# trigger for the first deploys while this is still prep, plus push-to-main
+# so the beta site tracks main once it's actually wired up. The repo is
+# public (apismellow/cuttle-web); the site is served at a subpath
+# (https://apismellow.github.io/cuttle-web/), never at the origin root.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Recommended shape for the artifact-based Pages deploy: only one deployment
+# in flight, never cancelled mid-upload so a half-published site can't stick.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+# Minimum grant for actions/deploy-pages: OIDC token to authenticate the
+# deploy, write access to Pages, read access to check out the repo. No
+# other scope.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # go-version-file reads the version straight from go.mod (currently
+      # 1.25.2) so this workflow never drifts from what the repo declares.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # web/package-lock.json engines pin ^22.22.2 || ^24.15.0 || >=26.0.0;
+      # 22 matches the developer floor (also what scripts/ci.sh runs under
+      # locally) and is cached via the lockfile below.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      # AGENTS.md "Build artifacts and gitignore gotchas": wasm_exec.js is
+      # never committed — it's copied from this job's own GOROOT, which
+      # setup-go just pinned to the go.mod version above, so it always
+      # matches the .wasm this step compiles.
+      - name: Build the WASM bridge
+        run: ./scripts/build-wasm.sh
+
+      # CUTTLE_BASE (web/vite.config.ts) is the only thing that changes
+      # between this build and a local `npm run build`, which defaults to
+      # '/'. Everything else — including scripts/ci.sh — is unaffected.
+      - name: Build the web app for the Pages subpath
+        run: npm run build
+        working-directory: web
+        env:
+          CUTTLE_BASE: /cuttle-web/
+
+      # NOTE: no PWA/service-worker step here. `vite-plugin-pwa` (SPEC
+      # §5.8, R18) is not wired up yet — "PWA/offline polish" is explicitly
+      # deferred past the family beta (docs/loop-workflow.md §4.5). When it
+      # lands, its generated sw.js needs the same CUTTLE_BASE-aware
+      # treatment as the wasm fetch (see web/src/lib/bridge/wasm.ts).
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -75,6 +75,43 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 
 Dispatch briefs are curated: they name exact requirement IDs with acceptance criteria verbatim, the SPEC sections that bind them, the files in scope, and explicit out-of-scope lines. Developers never "scan the repo for what to do."
 
+## 4.5 Testing policy for the family beta
+
+Set by David, 2026-09-28 (PRD §10 amendment A-4). Splits developer and
+reviewer rigor by risk, so the loop can spend Opus-grade scrutiny where a
+bug is a real defect and a lighter pass where it's taste.
+
+**Strict tier** — game rules, move wiring, hidden-information privacy
+(curtain, counter prompts, redaction), save/resume:
+
+- Test-first is mandatory. The developer's report must show red evidence
+  (the failing run) before the code. A test that's green on its first run
+  needs a hand-applied mutant to prove it bites.
+- Opus developers.
+- Opus reviewers with mutation probes, per §5 GATE(b) and the reviewer's
+  mutation-testing protocol.
+
+**Light tier** — pure look and layout:
+
+- One render/smoke test per component, plus a screenshot or browser fit
+  check.
+- Sonnet developers.
+- The review blocks only on real defects: broken layout, overflow,
+  unreadable cards, tap targets under 44px. No mutation hunting.
+
+**Both tiers:** reviewers keep the bar proportionate to a family beta —
+block only on real defects, and list nice-to-haves as non-blocking rather
+than folding them into a revise.
+
+**Deferred to after the beta (roadmap, not scheduled into a round):**
+
+- full per-item e2e evidence for `verified` across the ledger
+- mutation testing on light-tier items
+- the `failOnFlakyTests` gate
+- an accessibility audit
+- PWA/offline polish
+- judge-scored visual reviews (R5.1/R19.4) after David's placement feedback
+
 ## 5. One round
 
 ```

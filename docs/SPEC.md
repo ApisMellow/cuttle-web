@@ -386,6 +386,12 @@ export interface AppliedMove {
   seq: number;                      // 1-based, monotonic for the game
   subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
                                      // Public to both viewers. (amended 2026-09-26)
+  targetCard: Card | null;          // the card the move targeted, read from the PRE-state: Scuttle's
+                                     // Target, a Jack's JackTarget, a targeted OneOff's Target (2-as-scrap,
+                                     // 9), and the same for a SevenPick's SubMove. null for every untargeted
+                                     // move. Always a card on the board, so public to both viewers.
+                                     // Needed by the §4.6 recap, because Describe omits the target for Jack
+                                     // steals and one-offs. (amended 2026-09-27, David)
 }
 
 export interface Envelope {
@@ -646,13 +652,15 @@ Three facts make this total:
 |---|---|---|
 | Curtain text | "Pass the phone to `NAME`" | identical |
 | Reveal gate | tap-and-hold | identical |
-| Card shown | `pending.card`, plus `pending.target` highlighted on the board | the same card and target, from `lastMove` |
-| Counter chain | `pending.counterChain` rendered | prior chain from `history`, rendered identically |
+| Card shown | the target as a `mini` card face, read from `counterPromptEntries(history)` | identical — same `history` read, never `pending` |
+| Counter chain | the same `history` slice, rendered as mini faces | identical |
 | Controls | "Let it resolve" + one button per legal 2 | **"Let it resolve" only** |
 | On confirm | `apply(indexOf MoveDecline)` | no bridge call — advance the local curtain machine |
 | Minimum dwell | none beyond the reveal gate | **identical** — no artificial delay, no extra animation |
 
 The acting player observes exactly the same thing in both cases: the phone goes to the opponent, comes back (or doesn't, if the turn passed), and the one-off resolved. The two cases are indistinguishable because the only difference is the presence of a button the acting player cannot see.
+
+**The board never mounts at `ack`, real or synthetic** *(amended 2026-09-28, W13 GameScreen review)*. At a synthetic ack the one-off has already resolved; at a real window it hasn't. A board or `ScoreBar` would show post-resolution state on one path and pre-resolution state on the other — the exact tell R14 forbids. That is also why the card and chain above are read from `game.history` rather than `pending`: `pending` reflects the real window's in-progress state and has no synthetic equivalent, so it is the one field that could never render identically on both paths. See `docs/requirements.yaml` R5.2 and `AGENTS.md` "Redaction rules".
 
 **The `ack` screen must not be skippable, fast-forwardable, or auto-dismissed.** Any of those reintroduces a timing tell.
 
@@ -718,7 +726,7 @@ Note the double flip at `apply.go:395-399`: `Active` is set to `Pending.PlayedBy
 
 The curtain must reveal nothing and must not be dismissible by an accidental brush.
 
-- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", the reason (`Your turn` / `You may counter` / `Choose discards` / `Acknowledge`), and the reveal control. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
+- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", a label, and the reveal control. The label is **"Your turn"** for `turn` and `seven-return`, and the single neutral **"Your response"** for `counter`, `acknowledge` and `discard` *(amended 2026-09-27, David)*. The handoff is on screen while the *acting* player still holds the phone, so distinct labels ("You may counter" vs "Acknowledge" vs "Choose discards") would tell them whether the opponent held a 2 — the exact R14 leak §4.3 forbids. The machine's internal `HandoffReason` may still distinguish the three; it must not reach the DOM before the reveal gate in any form (text, attribute, class, `data-testid`, or layout). What the receiver needs to do is shown only after the reveal. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
 - **Reveal gate.** Two-step by default, matching R13's "tap and hold (or tap through a two-step reveal)":
   - **Primary — press-and-hold**, 600 ms, with a progress ring. `pointerdown` starts, `pointerup`/`pointercancel`/`pointerleave` abort and reset.
   - **Fallback — two-step tap** ("I'm `NAME`" → "Show my hand"), used when `prefers-reduced-motion: reduce` is set, when the pointer is coarse-less (desktop, R19's "functioning afterthought"), and as the accessible path. Both are always present in the DOM; the hold path is progressive enhancement.
@@ -730,14 +738,14 @@ The curtain must reveal nothing and must not be dismissible by an accidental bru
 
 **What it is.** On the incoming player's post-reveal screen, before they act: the moves applied since that player's last look, oldest first, as short lines. Skipped entirely when there are none.
 
-**How "last look" is tracked.** The game store holds `lastSeenSeq: Record<PlayerId, number>`, updated to `envelope.seq` at the moment a player's live view is rendered (not at reveal — at the transition into `kind: 'none'`). The recap is `history.filter(h => h.seq > lastSeenSeq[viewer])`. This survives reload because `lastSeenSeq` is in the R4 snapshot.
+**How "last look" is tracked.** The game store holds `lastSeenSeq: Record<PlayerId, number>`, updated to `envelope.seq` at the moment a player's live view is rendered (not at reveal — at the transition into `kind: 'none'`). The recap is `history.filter(h => h.seq > lastSeenSeq[viewer])`. This survives reload because `lastSeenSeq` is in the R4 snapshot. **The mover's own moves are seen:** a successful `apply` also stamps `lastSeenSeq[mover]` to the post-apply `envelope.seq`, so a player's recap shows only what happened while they were away, never their own previous move. **Recap dismissal also stamps:** leaving `kind: 'recap'` stamps `lastSeenSeq[viewer]` to the current `envelope.seq`, matching the Presentation line below, so an acknowledger who synthetic-acks and hands the phone back without ever reaching `'none'` doesn't see the same entries again. *(amended 2026-09-27, David delegated the call to the orchestrator)*
 
 **Per-viewer formatting — the recap must not be raw `Describe` output.** `Move.Describe` (`engine/moves.go:36-70`) is written for a terminal REPL and is neither redaction-aware nor player-aware. Two problems:
 
 - `MoveDiscardPair` yields `"discard hand[0] and hand[3]"` — hand indices, meaningless to a human and useless to an opponent.
 - Every string is second-person-less and unattributed: `"draw a card"` with no subject.
 
-The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string,string])` and emits a sentence. `entry.description` (the pre-state `Describe`, frozen at apply time per §2.7) is the source for card identities; the formatter supplies the subject and handles the redaction-sensitive kinds:
+The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string,string])` and emits a sentence. `entry.description` (the pre-state `Describe`, frozen at apply time per §2.7) is the source for card identities, and `entry.targetCard` (§2.7, amended 2026-09-27) supplies the targeted card for the Jack-steal and one-off target clauses, which `Describe` omits; the formatter supplies the subject and handles the redaction-sensitive kinds:
 
 | Kind | Recap line (viewer is the opponent of the actor) |
 |---|---|
@@ -748,8 +756,8 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `Scuttle` | "`NAME` scuttled your 7♥ with 9♠." (target card comes from the frozen pre-state description) |
 | `OneOff` | "`NAME` played 9♥ as a one-off." (+ target clause when `Target` is set) |
 | `Counter` | "`NAME` countered with 2♠." |
-| `Decline` | "`NAME` let it resolve." |
-| `SevenPick` | "`NAME` revealed two cards and played 5♥ for points." — **the unchosen card is never named** (R16) |
+| `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, David)*. A synthetic ack (§4.3) writes no history, so a "`NAME` let it resolve." line would appear only when the opponent really held a 2, and would even change whether a recap screen appears at all. |
+| `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, David: was "revealed two cards", which is false when the deck held one card.)* |
 | `DiscardPair` | "`NAME` discarded 2 cards." — **never the indices, never the identities**; the cards are in the scrap pile, which the viewer can browse (R6) |
 | `Pass` | "`NAME` passed." |
 
@@ -809,7 +817,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
-`PointRow.svelte` renders a `PointEntry` including its `JackStack`: the point card with each Jack fanned above it and an ownership badge driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan.
+`PointRow.svelte` renders a `PointEntry` including its `JackStack`: each Jack is the same size as the card it sits on, offset downward only; several Jacks cascade down, newest on top, and the per-Jack offset may shrink as the stack grows but never below the corner index height, so the stolen card's upper-left rank/suit index stays visible above the Jacks; an ownership badge is driven by `Controller` (§2.8(f)). A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above"; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
 
 ### 5.3 State design
 
@@ -829,9 +837,11 @@ class GameStore {
 
   async newGame(opts: NewGameOpts): Promise<void>
   async apply(moveIndex: number): Promise<void>   // then feeds the curtain machine
-  async setViewer(p: PlayerId): Promise<void>     // calls __cuttleView(p)
+  async refresh(): Promise<void>                  // re-fetches __cuttleView(this.viewer) only
 }
 ```
+
+*(Amended 2026-09-27, round 2.)* There is **no public viewer switch**. `setViewer(p)` was removed because it could expose the non-holder's view without a curtain (§2.4, §3.3 rule 4). The viewer changes only inside the curtain machine's transitions. `viewer` is nullable and is `null` while the curtain withholds the board. `refresh()` takes no argument and is allowed only at curtain `none` or a real counter window.
 
 - **`curtain.svelte.ts`** — the §4.2 machine. Pure: `next(pre, appliedMove, post) -> CurtainState`. Its purity is what makes the transition table of §4.4 unit-testable without WASM (§7.1).
 - **`staging.svelte.ts`** — R9/R12 selection pipeline (§6). Holds `selectedHandIndex`, `stagedMoveIndex`, `candidateMoveIndices`, `highlightedTargets`. Cleared on every `apply` and on every viewer change.
@@ -895,7 +905,7 @@ Rules that keep the seam real:
 2. **Layout is the theme's business; geometry is not.** The aspect ratio (2.5:3.5) and the three size tokens are fixed by the app in CSS custom properties. A theme paints inside a box it does not get to resize, so swapping themes never reflows the board.
 3. **State styling is the theme's responsibility to honour, not to invent.** `state` is passed in; the theme renders it. Highlight/dim/stage semantics belong to §6 and must look consistent across themes.
 4. **`vector` is always available and is the fallback.** It has zero external assets, so it works on first paint, offline, and before any art is cached. If a theme's `available()` returns false — assets not yet precached, decode failure, or the user is on a metered connection — the app falls back to `vector` silently, per card, without a layout shift.
-5. **Toggle** lives in the menu, persisted in `settings.svelte.ts`, and is a `screenshot-judge` item so the judge can compare both skins at phone viewport (R23). **The default theme at ship time is David's call** (R23) — the app reads it from a single constant in `lib/theme/index.ts`, so flipping the default is a one-line change and not a refactor.
+5. **Toggle** lives in the menu, persisted in `settings.svelte.ts`, and is a `screenshot-judge` item so the judge can compare both skins at phone viewport (R23). **The default theme at ship time is David's call** (R23) — the app reads it from a single constant, `DEFAULT_THEME_ID` in `lib/theme/default.ts`, re-exported by `lib/theme/index.ts`, so flipping the default is a one-line change and not a refactor. `settings.svelte.ts` imports `default.ts` directly, which keeps components out of the store's import graph. *(amended 2026-09-27, orchestrator, from the round-2 W8 review)*
 
 **Asset budget (R18, R22).** The WASM engine already occupies ~806 KiB of the precache (§2.2). R22 budgets the full art theme at **≤ 4 MB compressed, loaded lazily so R18's first-load/offline budget is unaffected** — which this seam implements as follows:
 
@@ -1020,7 +1030,11 @@ function slotKey(m: Move): string {
         ? `hand:${m.HandIndex}|oneoff:${m.Target.Owner}:${m.Target.Zone}:${m.Target.Index}`
         : `hand:${m.HandIndex}|zone:oneoff`;      // 3's ScrapIndex handled in pick mode
     case MoveKind.SevenPick:
-      return `seven:${cardKey(m.Card!)}|${slotKey(m.SubMove!)}`;   // single-level
+      // single-level. A dead-end SevenPick (no revealed card has a legal play) carries
+      // SubMove: null and scraps the chosen revealed card. (amended 2026-09-27)
+      return m.SubMove
+        ? `seven:${cardKey(m.Card!)}|${slotKey(m.SubMove)}`
+        : `seven:${cardKey(m.Card!)}|scrap`;
   }
 }
 ```

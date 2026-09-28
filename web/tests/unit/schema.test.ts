@@ -44,6 +44,7 @@ function appliedMove(overrides: Record<string, unknown> = {}): Record<string, un
     description: 'draw a card',
     seq: 1,
     subKind: null,
+    targetCard: null,
     ...overrides,
   };
 }
@@ -127,6 +128,38 @@ describe('parseBridgeResult', () => {
     sevenPickSubKind.seq = 1;
     const parsedSeven = parseBridgeResult(JSON.stringify(sevenPickSubKind));
     expect(parsedSeven.ok && parsedSeven.lastMove?.subKind).toBe(1);
+  });
+
+  it('SPEC §2.7 (amended 2026-09-27): AppliedMove.targetCard is always present as a key, and nullable', () => {
+    const missingKey = envelope();
+    const withoutTargetCard: Record<string, unknown> = appliedMove();
+    delete withoutTargetCard.targetCard;
+    missingKey.lastMove = withoutTargetCard as never;
+    missingKey.history = [withoutTargetCard as never];
+    missingKey.seq = 1;
+    expect(() => parseBridgeResult(JSON.stringify(missingKey))).toThrow(/targetCard/);
+
+    const nullTargetCard = envelope();
+    nullTargetCard.lastMove = appliedMove({ targetCard: null }) as never;
+    nullTargetCard.history = [appliedMove({ targetCard: null }) as never];
+    nullTargetCard.seq = 1;
+    const parsedNull = parseBridgeResult(JSON.stringify(nullTargetCard));
+    expect(parsedNull.ok && parsedNull.lastMove?.targetCard).toBeNull();
+
+    const realTargetCard = envelope();
+    const card = { Rank: 10, Suit: 2 };
+    realTargetCard.lastMove = appliedMove({ kind: 3, targetCard: card }) as never;
+    realTargetCard.history = [appliedMove({ kind: 3, targetCard: card }) as never];
+    realTargetCard.seq = 1;
+    const parsedCard = parseBridgeResult(JSON.stringify(realTargetCard));
+    expect(parsedCard.ok && parsedCard.lastMove?.targetCard).toEqual(card);
+
+    const wrongType = envelope();
+    const withWrongType: Record<string, unknown> = appliedMove({ targetCard: 'J♣' });
+    wrongType.lastMove = withWrongType as never;
+    wrongType.history = [withWrongType as never];
+    wrongType.seq = 1;
+    expect(() => parseBridgeResult(JSON.stringify(wrongType))).toThrow(/targetCard/);
   });
 
   it('SPEC §2.7: legalMoves.length must equal descriptions.length', () => {

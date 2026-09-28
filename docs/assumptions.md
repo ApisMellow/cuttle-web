@@ -364,3 +364,57 @@ per section so a later batch can see the reasoning without re-deriving it.
   exist yet — stores are explicitly out of scope here ("no … stores beyond
   what the bridge needs"). `requirements.yaml`'s evidence field says so
   directly so a later batch doesn't mistake this for closed.
+
+## P2 round 01 (launch 1)
+
+Logged by the orchestrator from developer reports and review rulings. Full verdicts in `docs/loop-log/round-01.md`.
+
+- **Curtain machine (W1, `lib/stores/curtain.svelte.ts`).** The real counter window is `{kind:'ack', synthetic:false}`; it rests until a bridge `apply` and a fresh `next()`, and `advance()` on it throws. After a synthetic ack, control hands back to `post.active` when that isn't the acknowledger, with reason `seven-return` for SevenChoosing and `turn` otherwise; this covers the 7's round trip and a Counter-with-no-2 that cancels on an odd chain (§4.3, §4.4). Game over beats the synthetic ack (no curtain on a winning move). A dead-end SevenPick (`subKind` null) is a plain `turn` curtain. `advance()` on `none`/`result` throws `INTERNAL`.
+- **The machine sees only `{active, phase}` (W1 review).** Every `pre`/`post` it takes is `CurtainView = Pick<PlayerView,'active'|'phase'>`, so the store never has to keep the mover's hand in memory across a curtain (§3.3 rule 4).
+- **Handoff label (SPEC §4.5 amended).** `handoffLabel()` maps `turn`/`seven-return` to "Your turn" and `counter`/`acknowledge`/`discard` to "Your response". The internal reason never reaches the DOM before the reveal gate.
+- **Hold gate (`lib/curtain.ts`).** Timer-injectable; `pointerdown` after `dispose()` is a no-op.
+- **Recap (W3, `lib/recap.ts`).** Own moves use second person ("You drew a card."); §4.6 only specifies the opponent's view. A one-card discard (`hand[-1]`) reads "discarded 1 card."; §4.6 has no one-card row. `formatRecapLine` throws on a Decline because callers must filter with `isRecapVisible` first (SPEC §4.6 amended). *(Superseded in round 2: `AppliedMove.targetCard` landed. A Jack steal names the stolen card, and targeted one-offs carry a target clause. See "P2 round 02".)*
+- **Affordances (W2, `lib/affordances.ts`).** The ScrapIndex collapse is detected structurally (targetless OneOff candidates on the same card with distinct ScrapIndex), never by rank, and it recurses into a SevenPick's sub-moves so a 3 revealed by a 7 routes to scrap pick. A dead-end SevenPick keys as `seven:<card>|scrap` (SPEC §6.2 amended). `deriveDiscardPicker` pre-selects whenever exactly one legal move exists, which covers 1- and 2-card hands; Confirm is still required (R12). A Scuttle with no Target throws `SlotKeyError`.
+- **Stores (W4).** Settings persist under `cuttle-web:settings`, separate from the game snapshot. Defaults: `themeId 'vector'`, `revealPreference 'hold'`, `reducedMotion false`, which means "no in-app override" of the OS `prefers-reduced-motion` query, never "force motion on". Settings have no schema version; bad fields fall back one by one. The session store exposes `nextDealer` (undefined on the first game, `1 - lastDealer` after) and `recordDealer`; the game store composes `NewGameOpts`. Stalemates are not tallied.
+- **Enum constants** are private copies in each round-1 module, pinned to §2.5; round 2 consolidates them.
+- **eslint.** `**/*.svelte.ts` rune modules go through the same `tseslint.parser` block as `**/*.svelte`.
+
+## P2 round 02 (launch 1)
+
+Logged by the orchestrator from developer reports and review rulings. Full verdicts are in `docs/loop-log/round-02.md`.
+
+- **Game store (W5, `lib/stores/game.svelte.ts`).** The store is the only holder of engine state.
+  - Every transition into `handoff`, `reveal` or `recap` goes through one path. That path persists first, then drops the envelope and viewer.
+  - The mover-only `AppliedMove.index` is stripped from anything the store keeps while a curtain is up. After the reveal, the incoming viewer's bridge-redacted history takes over.
+  - The public `setViewer(p)` from §5.3's sketch is replaced by `refresh()`. It takes no argument, re-fetches only the current viewer, and is allowed only at `none` or a real counter window. §2.4 and §3.3 rule 4 bind; §5.3 is a sketch.
+  - `apply()` refuses to run behind a curtain.
+  - At game over (`result`), the mover keeps their own final envelope, because no curtain runs at game over.
+- **Seed is chosen client-side.** `GameStore.newGame()` always passes an explicit seed: the caller's, or a full 64-bit value from `crypto.getRandomValues`. TS can then fill `Snapshot.seed` without reading `engineState`. The Batch 1 note that the bridge is "the only party that knows a crypto-random seed" no longer holds in practice. Golden and scenario behaviour is unchanged, since those pass explicit seeds, and R1.2's random first dealer is intact.
+- **Snapshot validation (W5, `lib/stores/snapshot.ts`).**
+  - `v !== 1` is checked before any structural check.
+  - A curtain must be one of the six variants with its own fields, and a curtain that names `to` must be persisted with `viewer === to`.
+  - A raised curtain needs a non-empty history.
+  - `lastSeenSeq` entries must be numbers.
+  - Anything malformed is discarded, with a notice, just like a version mismatch.
+- **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at a real or synthetic ack, and at `result`.
+- **`lastSeenSeq` stamping (SPEC §4.6, amended twice 2026-09-27; David delegated the call).** A stamp happens on the mover's successful `apply`, on recap dismissal, and at the transition into `none`. Each stamp is written in that transition's synchronous snapshot write. The stamp is symmetric across the real and synthetic counter paths, so it adds no R14 signal.
+- **`AppliedMove.targetCard` (W6).** It is always present on the wire, and it is read from the pre-state.
+  - For a rank-2 one-off aimed at a Jack-stacked point, it names the **top Jack**, because that is the card the engine scraps (engine `apply.go:700-718`).
+  - For Scuttle, a Jack steal and rank 9, it names the point card itself, even when the point is Jack-stacked.
+  - Restore checks presence, shape and kind consistency, and rejects unknown fields inside history entries. This check had zero false rejections across 7,487 sampled snapshot→restore round-trips.
+- **One-off recap target clause (W6).** The wording is "`NAME` played 9♥ as a one-off, targeting 10♦." It is owner-neutral, because `targetCard` carries no owner.
+- **No `Snapshot.v` bump for the new required `targetCard` history key.** This follows the `subKind` precedent (Batch 1): no snapshot shape has been released yet. **Open policy for first release:** either bump once at ship, or amend §5.7 to exempt pre-release shape changes.
+- **Theme seam (W8, `lib/theme/`).**
+  - The **container owns card geometry.** `lib/styles/card-geometry.css` holds the 2.5:3.5 aspect ratio and the hand, field and mini widths: 56, 72 and 32 px. Those pixel values are an assumption; the SPEC fixes only the ratio and the three sizes.
+  - HandCard sizes and clips the box. Face and Back fill it and never size themselves. `size` is only a rendering hint.
+  - The Face and Back roots are phrasing content, carry `data-size` and `data-state`, and have **no testid**. Containers own testids.
+  - Frozen outranks selected in the single `state` slot.
+  - `DEFAULT_THEME_ID` lives in `lib/theme/default.ts`. SPEC §5.6 rule 5 was amended to say so.
+- **Glyph boundary.** A static test bans rank and suit glyphs, in every encoding, and bans imports of theme internals outside `lib/theme/`. `lib/recap.ts` is exempt from the glyph rule only, because it formats engine prose. It still carries its own glyph tables, which move to `lib/theme/glyphs.ts` in round 3.
+- **Component testing.** vitest resolves Svelte's `browser` export condition, guarded by `VITEST`, so `mount()` works under jsdom. This comes from the "Component testing" section of `docs/vendor/svelte-5-llms.txt`.
+- **Gate (W7, `scripts/ci.sh`).**
+  - The wasm is built once, before the npm steps. A build failure still reports all nine rows and clears any stale wasm.
+  - `CI=1` is exported, so e2e never reuses a foreign dev server, and pin drift in the engine-walk test fails.
+  - Each run picks its own e2e port (`CUTTLE_E2E_PORT`, default 4173).
+  - A missing `web/node_modules` stops the run early with a hint.
+- **Enums (W7).** `lib/enums.ts` is pinned to §2.5. `curtain.svelte.ts` and `affordances.ts` use it. `recap.ts` migrates in round 3.

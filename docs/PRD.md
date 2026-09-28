@@ -136,3 +136,47 @@ New requirements (decomposed into ledger entries like R1–R20):
 ### A-2 — A7 module-path correction (2026-08-23, factual; resolved 2026-09-26)
 
 A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. **Resolved 2026-09-26 (SPEC §8 OQ-3):** the engine repo was renamed to `github.com/ApisMellow/cuttle` to match its module path and tagged `v0.1.0`/`v0.2.0`; `cuttle-web` requires `v0.2.0` directly with no committed `replace` directive. A temporary local `replace` is fine for engine development but must never be committed.
+
+### A-3 — Mythic theme (2026-09-28, David)
+
+A second, optional look for the cards: the **Mythic theme**, in the vein of Magic: The Gathering. Cuttle already plays a lot like Magic minus the card buying, so the art leans into that instead of inventing a new idiom.
+
+- **Point cards (A–10 played for points) are creatures.** Together they make up the score (name still open — "life" or similar). Scuttling a smaller point card with a bigger one is creature combat.
+- **Royals and face-up 8s are enchantments** (permanents that stay on the table).
+- Every other one-off echoes a well-known Magic card, evoking its mood/color/composition without copying it:
+
+| Card | Cuttle effect | Magic echo |
+|---|---|---|
+| A | Wipes every point card | Wrath of God |
+| 2 | Cancels a spell / destroys an enchantment | Counterspell / Disenchant |
+| 3 | Returns a card from the scrap pile | Regrowth / Raise Dead |
+| 4 | Opponent discards 2 | Mind Rot |
+| 5 | Draw cards | Divination |
+| 6 | Destroys every enchantment | Tranquility |
+| 7 | Plays the top card of the deck | Future Sight |
+| 8 (face-up) | Opponent's hand shown | Telepathy |
+| 9 | Returns an enchantment to its owner's hand | Boomerang / Unsummon |
+| 10 | Points only — the biggest creature | — |
+| Jack | Steals an opponent's creature | Control Magic |
+| Queen | Protects other cards from targeting | a protective aura |
+| King | Lowers the win threshold | a crown or throne |
+
+**Suits become colors** — a first proposal, not final: Spades black, Hearts red, Clubs green, Diamonds white. Open question for David: Counterspell is iconically blue, and none of the four suit colors above is blue; resolving whether Diamonds becomes blue, a card's color follows what it does rather than its suit, or blue stays an accent only is still pending.
+
+Rank and suit fade into the background of the art; the card reads by its evocative image rather than its printed corner indices.
+
+**One layout rule binds both themes:** a Jack stacked on a stolen point card is the same size as the card, offset downward only, and never covers below the corner index's height, so a card's identity (rank and suit) lives in the upper-left corner index regardless of theme *(amended 2026-09-28, David, after a build screenshot)* — see `docs/design.md` §6–§7.
+
+Delivered under **R21–R23** (amendment A-1) as a theme layer on top of the vector baseline. No R1–R20 acceptance criterion depends on it, and this amendment adds no new R numbers.
+
+### A-4 — Family beta (2026-09-28, David)
+
+Target: a playable browser build for a first family beta in about 2 days.
+
+- **Pass-and-play on one shared phone** — the v1 design already in §6, unchanged.
+- **Plain vector cards.** The Mythic theme (A-3) is included only if its style lock is approved in time; the vector baseline (§4, R19) remains the fallback either way.
+- **Hosting is a static host**, since v1 has no server for the beta build. David decided on **GitHub Pages**, with both repos made public on 2026-09-28 (Pages on a private repo needs a paid plan). This amends §8's "deploys as one Fly.io binary" for the beta specifically — A5/A6 stand as the eventual v1 architecture.
+- **Two-phone online play stays the v2 design in §7**, unbuilt for the beta. A DigitalOcean VM is the likely host for that later, superseding A6's Fly.io pick as the v2-era assumption.
+- **The testing policy in `docs/loop-workflow.md` §4.5** (strict tier for game rules/privacy/save-resume, light tier for look-and-layout) applies to all beta work.
+
+This amendment adds no new R numbers; it sets the beta's scope and hosting path without changing R1–R23's acceptance criteria.
