@@ -24,7 +24,7 @@ Where this spec says "the UI must not compute X," it means X is available from t
 | Phase | Owner | Output |
 |---|---|---|
 | **P1a** | this document | `docs/SPEC.md` — the technical contract |
-| **P1b** | Claude developer agents (Opus 5.5), own feature branch | Walking skeleton: repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, and the test harness described in §7. **Test authoring is P1b's job.** §7 defines *what* the tests are; P1b writes the code. |
+| **P1b** | Claude developer agents (Sonnet and Opus, dispatched by an Opus manager), own feature branch | Walking skeleton: repo scaffold (Vite + Svelte 5 + Go WASM build + Playwright + CI script), the WASM bridge, and the test harness described in §7. **Test authoring is P1b's job.** §7 defines *what* the tests are; P1b writes the code. |
 | **P-ART** | separate loop phase (`loop-workflow.md` §11) | Generated bitmap card art (PRD R21–R23), consumed through the theme seam defined in §5.6. **Not a dependency of R1–R20**; the game is complete and shippable with no bitmap art at all (PRD §10 amendment A-1). |
 | **P2** | loop orchestrator | Feature implementation against this spec, per `docs/loop-workflow.md` §5. |
 
@@ -1078,7 +1078,7 @@ The app exposes a test-only hook — `window.__cuttleTestHook.affordances()`, co
 
 ## 7. Test strategy
 
-**Test authoring is P1b's assignment**, given to Claude developer agents (Opus 5.5) on its own feature branch. This section specifies *what* the tests are — layers, scenarios, seeds, assertions, and the invariant design. P1b writes the code. Everything here maps to a `verify:` value in the `requirements.yaml` ledger (`loop-workflow.md` §3.1): `unit-test`, `e2e-test`, `bridge-smoke`, `screenshot-judge`.
+**Test authoring is P1b's assignment**, given to Claude developer agents on its own feature branch. This section specifies *what* the tests are — layers, scenarios, seeds, assertions, and the invariant design. P1b writes the code. Everything here maps to a `verify:` value in the `requirements.yaml` ledger (`loop-workflow.md` §3.1): `unit-test`, `e2e-test`, `bridge-smoke`, `screenshot-judge`.
 
 ### 7.1 Layer 1 — vitest unit (`verify: unit-test`)
 
@@ -1169,7 +1169,7 @@ Real browser, **390×844 portrait**, driven by scenarios.
 
 ### 7.5 Layer 4 — screenshot judge (`verify: screenshot-judge`)
 
-Per `loop-workflow.md` §4, Claude Opus 5.5, at 390×844, playing real moves. It rules on the criteria a machine cannot: board legibility at phone size, whether the curtain flow feels like a chore (PRD §9's named risk), animation quality, theme-swap consistency (§5.6), and whether a rules-aware human would find the board readable.
+Per `loop-workflow.md` §4, a Claude Opus model, at 390×844, playing real moves. It rules on the criteria a machine cannot: board legibility at phone size, whether the curtain flow feels like a chore (PRD §9's named risk), animation quality, theme-swap consistency (§5.6), and whether a rules-aware human would find the board readable.
 
 It runs on UI-visible items and on the final gate only — not on every submission (`loop-workflow.md` §8).
 
