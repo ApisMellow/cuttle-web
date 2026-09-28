@@ -11,8 +11,8 @@ describe('session store (SPEC §5.3, §8 OQ-12)', () => {
 
   it('keeps trimmed non-blank names', () => {
     const store = new SessionStore();
-    store.setNames('  Alice ', 'Bob');
-    expect(store.names).toEqual(['Alice', 'Bob']);
+    store.setNames('  Alice ', 'Blake');
+    expect(store.names).toEqual(['Alice', 'Blake']);
   });
 
   it('R1.2: the first game of a session passes no dealer (SPEC §2.6, §8 OQ-12)', () => {

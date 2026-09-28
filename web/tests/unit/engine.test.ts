@@ -47,8 +47,8 @@ describe('engine bridge boundary (SPEC §5.4)', () => {
   it('SPEC §2.4/§2.6: newGame serializes NewGameOpts as JSON, bridge owns dealing', () => {
     const fn = vi.fn(() => error);
     vi.stubGlobal('__cuttleNewGame', fn);
-    newGame({ seed: '42', dealer: 1, names: ['Alice', 'Bob'] });
-    expect(fn).toHaveBeenCalledWith('{"seed":"42","dealer":1,"names":["Alice","Bob"]}');
+    newGame({ seed: '42', dealer: 1, names: ['Alice', 'Blake'] });
+    expect(fn).toHaveBeenCalledWith('{"seed":"42","dealer":1,"names":["Alice","Blake"]}');
   });
 
   it('SPEC §2.4/A3: apply takes an index into the current legal-move list, never a Move object', () => {

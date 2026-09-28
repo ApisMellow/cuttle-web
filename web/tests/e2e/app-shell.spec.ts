@@ -26,11 +26,11 @@ test('R4.3: New game confirms abandoning an in-progress game; cancel keeps it, c
   await expect(page.getByTestId('home-screen')).toBeVisible();
 
   await page.getByTestId('name-input-0').fill('Alice');
-  await page.getByTestId('name-input-1').fill('Bob');
+  await page.getByTestId('name-input-1').fill('Blake');
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('game-screen')).toBeVisible();
   await expect(page.getByTestId('game-screen')).toContainText('Alice');
-  await expect(page.getByTestId('game-screen')).toContainText('Bob');
+  await expect(page.getByTestId('game-screen')).toContainText('Blake');
 
   // A reload resets in-memory `game.screen` to 'home', but the snapshot
   // (written synchronously by newGame(), SPEC §5.7) survives, so HomeScreen
@@ -42,7 +42,7 @@ test('R4.3: New game confirms abandoning an in-progress game; cancel keeps it, c
   // Cancel: the dialog closes, the in-progress game is untouched.
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('confirm-abandon')).toBeVisible();
-  await expect(page.getByTestId('home-screen')).toContainText('Abandon Alice vs Bob?');
+  await expect(page.getByTestId('home-screen')).toContainText('Abandon Alice vs Blake?');
   await page.getByTestId('cancel-abandon').click();
   await expect(page.getByTestId('confirm-abandon')).not.toBeVisible();
 
@@ -53,7 +53,7 @@ test('R4.3: New game confirms abandoning an in-progress game; cancel keeps it, c
   await expect(page.getByTestId('home-screen')).toBeVisible();
   await page.getByTestId('resume').click();
   await expect(page.getByTestId('game-screen')).toBeVisible();
-  await expect(page.getByTestId('game-screen')).toContainText('Alice vs Bob');
+  await expect(page.getByTestId('game-screen')).toContainText('Alice vs Blake');
 
   // Confirm: back to Home, and a fresh game replaces the abandoned one.
   await page.reload();
@@ -64,7 +64,7 @@ test('R4.3: New game confirms abandoning an in-progress game; cancel keeps it, c
 
   await expect(page.getByTestId('game-screen')).toBeVisible();
   // Blank inputs on this fresh Home mount -> defaults (R1.3), proving the
-  // abandoned game (Alice vs Bob) is really gone, not just hidden.
+  // abandoned game (Alice vs Blake) is really gone, not just hidden.
   await expect(page.getByTestId('game-screen')).toContainText('Player 1');
   await expect(page.getByTestId('game-screen')).toContainText('Player 2');
 });
@@ -74,7 +74,7 @@ test('R4: Resume restores the in-progress game after a reload', async ({ page })
   await expect(page.getByTestId('home-screen')).toBeVisible();
 
   await page.getByTestId('name-input-0').fill('Alice');
-  await page.getByTestId('name-input-1').fill('Bob');
+  await page.getByTestId('name-input-1').fill('Blake');
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('game-screen')).toBeVisible();
 
@@ -84,7 +84,7 @@ test('R4: Resume restores the in-progress game after a reload', async ({ page })
   await page.getByTestId('resume').click();
   await expect(page.getByTestId('game-screen')).toBeVisible();
   await expect(page.getByTestId('game-screen')).toContainText('Alice');
-  await expect(page.getByTestId('game-screen')).toContainText('Bob');
+  await expect(page.getByTestId('game-screen')).toContainText('Blake');
 });
 
 // docs/design.md §10 testable rule 1 / this round's brief "Visual": no
@@ -120,7 +120,7 @@ test('interactive testids clear the 44x44 tap-target floor at 390x844', async ({
   }
 
   await page.getByTestId('name-input-0').fill('Alice');
-  await page.getByTestId('name-input-1').fill('Bob');
+  await page.getByTestId('name-input-1').fill('Blake');
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('game-screen')).toBeVisible();
   await page.reload();

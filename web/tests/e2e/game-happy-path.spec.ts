@@ -5,12 +5,12 @@ import { expect, test, type Page } from '@playwright/test';
 // through the test hook to the SPEC §2.6 golden deal (seed "42", dealer P2)
 // so every hand is known, then:
 //   1. Alice plays 2♥ for points (hand -> Points zone -> Confirm),
-//   2. the curtain hands the phone to Bob (board unmounted throughout),
-//   3. Bob plays 5♥ as a one-off; Alice holds no 2, so the engine resolves
+//   2. the curtain hands the phone to Blake (board unmounted throughout),
+//   3. Blake plays 5♥ as a one-off; Alice holds no 2, so the engine resolves
 //      it and the client stages the synthetic ack (SPEC §4.3),
 //   4. Alice walks handoff -> reveal -> recap -> CounterPrompt with only
 //      "Let it resolve", then her board,
-//   5. Alice draws, and the phone goes back to Bob.
+//   5. Alice draws, and the phone goes back to Blake.
 // The reveal gate is driven through the two-step path (SPEC §4.5). The hook
 // is used only to seed the deal and to find a move's hand index; every move
 // is played by tapping the UI.
@@ -73,7 +73,7 @@ async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your r
 test('happy path: points play, one-off with synthetic ack, curtain handoffs both ways', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('name-input-0').fill('Alice');
-  await page.getByTestId('name-input-1').fill('Bob');
+  await page.getByTestId('name-input-1').fill('Blake');
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('board')).toBeVisible();
 
@@ -93,9 +93,9 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   expect(await hook(page, (h) => h.seq())).toBe(0);
   await page.getByTestId('staging-confirm').click();
 
-  // 2. The phone goes to Bob.
+  // 2. The phone goes to Blake.
   expect(await curtainKind(page)).toBe('handoff');
-  await passThePhone(page, 'Bob', 'Your turn');
+  await passThePhone(page, 'Blake', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Alice played');
   await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('board')).toBeVisible();
@@ -104,7 +104,7 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   // Alice's 2 is on the board, in her (the opponent's) points row.
   await expect(page.getByTestId('point-0-0')).toBeVisible();
 
-  // 3. Bob: 5♥ as a one-off (draw two). Alice holds no 2.
+  // 3. Blake: 5♥ as a one-off (draw two). Alice holds no 2.
   const fiveOneOff = await findMove(page, /^play 5. as one-off$/, 4);
   expect(fiveOneOff.targetKey).toBe('zone:oneoff');
   await page.getByTestId(`hand-card-${fiveOneOff.handIndex}`).click();
@@ -114,7 +114,7 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
 
   // 4. Alice acknowledges. The handoff label is the neutral "Your response".
   await passThePhone(page, 'Alice', 'Your response');
-  await expect(page.getByTestId('recap')).toContainText('Bob played');
+  await expect(page.getByTestId('recap')).toContainText('Blake played');
   await page.getByTestId('recap-dismiss').click();
 
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
@@ -132,14 +132,14 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   expect(await hook(page, (h) => h.viewer())).toBe(0);
   expect(await curtainKind(page)).toBe('none');
   await expect(page.getByTestId('player-hand').locator('[data-testid^="hand-card-"]')).toHaveCount(4);
-  // Bob's hand grew by two (6 - the 5 + 2 drawn), shown as a count only.
+  // Blake's hand grew by two (6 - the 5 + 2 drawn), shown as a count only.
   await expect(page.getByTestId('opp-hand')).toContainText('7');
 
-  // 5. Alice draws; the phone goes back to Bob.
+  // 5. Alice draws; the phone goes back to Blake.
   await page.getByTestId('deck-pile').click();
   await expect(page.getByTestId('staging-bar')).toContainText('draw a card');
   await page.getByTestId('staging-confirm').click();
-  await passThePhone(page, 'Bob', 'Your turn');
+  await passThePhone(page, 'Blake', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Alice drew a card');
   await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('board')).toBeVisible();

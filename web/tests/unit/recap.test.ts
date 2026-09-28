@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { formatRecapLine, isRecapVisible } from '../../src/lib/recap';
 import type { AppliedMove, PlayerId } from '../../src/lib/bridge/schema';
 
-const NAMES: [string, string] = ['Alice', 'Bob'];
+const NAMES: [string, string] = ['Alice', 'Blake'];
 
 function move(partial: {
   by: PlayerId;
@@ -38,12 +38,12 @@ const SUIT_GLYPH = /[♣♦♥♠]/;
 describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', () => {
   it('R20.2: Draw — "NAME drew a card."', () => {
     const entry = move({ by: 1, kind: 0, description: 'draw a card' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob drew a card.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake drew a card.');
   });
 
   it('R20.2: PlayPoint — "NAME played CARD for points."', () => {
     const entry = move({ by: 1, kind: 1, description: 'play 7♥ as point card' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played 7♥ for points.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake played 7♥ for points.');
   });
 
   it('R20.2: PlayPoint covers the full rank alphabet — 10 and non-numeric A/J/K (card/card.go:36-38)', () => {
@@ -51,22 +51,22 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     // letters (A, J, Q, K) versus single digits (2-9) — the CARD regex's
     // `(?:10|[2-9]|[AJQK])` alternation must match all of them.
     expect(formatRecapLine(move({ by: 1, kind: 1, description: 'play 10♠ as point card' }), 0, NAMES)).toBe(
-      'Bob played 10♠ for points.',
+      'Blake played 10♠ for points.',
     );
     expect(formatRecapLine(move({ by: 1, kind: 1, description: 'play A♣ as point card' }), 0, NAMES)).toBe(
-      'Bob played A♣ for points.',
+      'Blake played A♣ for points.',
     );
     expect(formatRecapLine(move({ by: 1, kind: 1, description: 'play J♦ as point card' }), 0, NAMES)).toBe(
-      'Bob played J♦ for points.',
+      'Blake played J♦ for points.',
     );
     expect(formatRecapLine(move({ by: 1, kind: 1, description: 'play K♥ as point card' }), 0, NAMES)).toBe(
-      'Bob played K♥ for points.',
+      'Blake played K♥ for points.',
     );
   });
 
   it('R20.2: PlayPermanent non-Jack — "NAME played CARD as a permanent."', () => {
     const entry = move({ by: 1, kind: 2, description: 'play Q♦ as permanent' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played Q♦ as a permanent.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake played Q♦ as a permanent.');
   });
 
   it('R20.2: PlayPermanent Jack — names the actual stolen card, per SPEC §4.6\'s literal example', () => {
@@ -82,7 +82,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
       targetCard: { Rank: 10, Suit: 2 },
     });
     const line = formatRecapLine(entry, 0, NAMES);
-    expect(line).toBe('Bob stole your 10♥ with J♣.');
+    expect(line).toBe('Blake stole your 10♥ with J♣.');
     // Exactly two card glyphs: the stolen card and the Jack — no third.
     expect(line.match(/[♣♦♥♠]/g)).toHaveLength(2);
   });
@@ -94,12 +94,12 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
 
   it('R20.2: Scuttle — "NAME scuttled your CARD with CARD."', () => {
     const entry = move({ by: 1, kind: 3, description: "scuttle opponent's 7♥ with 9♠" });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob scuttled your 7♥ with 9♠.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake scuttled your 7♥ with 9♠.');
   });
 
   it('R20.2: OneOff without a target — "NAME played CARD as a one-off."', () => {
     const entry = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: null });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played 9♥ as a one-off.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake played 9♥ as a one-off.');
   });
 
   it('R20.2 (amended 2026-09-27): OneOff with a target — appends a target clause naming no owner', () => {
@@ -111,8 +111,8 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     // ownership, since a rank-2 can target either side.
     const withTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: { Rank: 10, Suit: 1 } });
     const withoutTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: null });
-    expect(formatRecapLine(withTarget, 0, NAMES)).toBe('Bob played 9♥ as a one-off, targeting 10♦.');
-    expect(formatRecapLine(withoutTarget, 0, NAMES)).toBe('Bob played 9♥ as a one-off.');
+    expect(formatRecapLine(withTarget, 0, NAMES)).toBe('Blake played 9♥ as a one-off, targeting 10♦.');
+    expect(formatRecapLine(withoutTarget, 0, NAMES)).toBe('Blake played 9♥ as a one-off.');
     expect(formatRecapLine(withTarget, 0, NAMES)).not.toBe(formatRecapLine(withoutTarget, 0, NAMES));
   });
 
@@ -157,7 +157,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     // Wording amended by David, 2026-09-27: "revealed two cards" →
     // "revealed the top of the deck" (SPEC §4.6).
     const entry = move({ by: 1, kind: 7, subKind: 1, description: '7: play 5♥ as point card' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob revealed the top of the deck and played 5♥ for points.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake revealed the top of the deck and played 5♥ for points.');
   });
 
   it('R20.2: SevenPick wrapping a PlayPermanent Jack — "revealed the top of the deck and stole your CARD with CARD."', () => {
@@ -169,18 +169,18 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
       targetCard: { Rank: 10, Suit: 2 },
     });
     expect(formatRecapLine(entry, 0, NAMES)).toBe(
-      'Bob revealed the top of the deck and stole your 10♥ with J♣.',
+      'Blake revealed the top of the deck and stole your 10♥ with J♣.',
     );
   });
 
   it('R20.2: SevenPick wrapping a Scuttle — "revealed the top of the deck and scuttled your CARD with CARD."', () => {
     const entry = move({ by: 1, kind: 7, subKind: 3, description: "7: scuttle opponent's 7♥ with 9♠" });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob revealed the top of the deck and scuttled your 7♥ with 9♠.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake revealed the top of the deck and scuttled your 7♥ with 9♠.');
   });
 
   it('R20.2: SevenPick wrapping a OneOff — "revealed the top of the deck and played CARD as a one-off."', () => {
     const entry = move({ by: 1, kind: 7, subKind: 4, description: '7: play 9♥ as one-off', targetCard: null });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob revealed the top of the deck and played 9♥ as a one-off.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake revealed the top of the deck and played 9♥ as a one-off.');
   });
 
   it('R20.2 (amended 2026-09-27): SevenPick wrapping a targeted OneOff — appends the target clause', () => {
@@ -192,7 +192,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
       targetCard: { Rank: 10, Suit: 1 },
     });
     expect(formatRecapLine(entry, 0, NAMES)).toBe(
-      'Bob revealed the top of the deck and played 9♥ as a one-off, targeting 10♦.',
+      'Blake revealed the top of the deck and played 9♥ as a one-off, targeting 10♦.',
     );
   });
 
@@ -207,13 +207,13 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
 
   it('R20.2: Pass — "NAME passed."', () => {
     const entry = move({ by: 1, kind: 9, description: 'pass' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob passed.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake passed.');
   });
 
   it('R20.2: DiscardPair names no identities — never the hand indices, never a card', () => {
     const entryA = move({ by: 1, kind: 8, description: 'discard hand[0] and hand[3]' });
     const lineA = formatRecapLine(entryA, 0, NAMES);
-    expect(lineA).toBe('Bob discarded 2 cards.');
+    expect(lineA).toBe('Blake discarded 2 cards.');
     expect(lineA).not.toMatch(SUIT_GLYPH);
     // The fixed word "2" (the count) is expected; the actual DiscardA/B
     // index values (0 and 3) must never surface. Vary the indices and
@@ -236,7 +236,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     // (always 0 for this shape per apply.go:510) must never surface.
     const entry = move({ by: 1, kind: 8, description: 'discard hand[0] and hand[-1]' });
     const line = formatRecapLine(entry, 0, NAMES);
-    expect(line).toBe('Bob discarded 1 card.');
+    expect(line).toBe('Blake discarded 1 card.');
     expect(line).not.toMatch(SUIT_GLYPH);
     expect(line).not.toContain('-1');
     expect(line).not.toContain('0');
@@ -260,12 +260,12 @@ describe('formatRecapLine — SPEC §4.6, viewer-is-the-actor (own moves)', () =
 
   it('SPEC §4.6 (assumption): PlayPermanent Jack, own move — names the opponent, not "your"', () => {
     const entry = move({ by: 0, kind: 2, description: 'play J♣ (steal opponent point)', targetCard: { Rank: 10, Suit: 2 } });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe("You stole Bob's 10♥ with J♣.");
+    expect(formatRecapLine(entry, 0, NAMES)).toBe("You stole Blake's 10♥ with J♣.");
   });
 
   it('SPEC §4.6 (assumption): Scuttle, own move — names the opponent, not "your"', () => {
     const entry = move({ by: 0, kind: 3, description: "scuttle opponent's 7♥ with 9♠" });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe("You scuttled Bob's 7♥ with 9♠.");
+    expect(formatRecapLine(entry, 0, NAMES)).toBe("You scuttled Blake's 7♥ with 9♠.");
   });
 
   it('SPEC §4.6 (assumption): SevenPick, own move', () => {
@@ -293,7 +293,7 @@ describe('formatRecapLine — R16.2: SevenPick never names the unchosen revealed
   it('R16.2: played branch names only the played card, audited against SPEC §4.6\'s SevenPick row', () => {
     const entry = move({ by: 1, kind: 7, subKind: 1, description: '7: play 5♥ as point card' });
     const line = formatRecapLine(entry, 0, NAMES);
-    expect(line).toBe('Bob revealed the top of the deck and played 5♥ for points.');
+    expect(line).toBe('Blake revealed the top of the deck and played 5♥ for points.');
     // In this hypothetical deal the OTHER revealed-but-unchosen card was
     // K♠ — per engine/apply.go:445-456 it returns face-down to the top of
     // the deck and never appears anywhere in `AppliedMove` at all. Assert
@@ -304,7 +304,7 @@ describe('formatRecapLine — R16.2: SevenPick never names the unchosen revealed
   it('R16.2: dead-end (no legal play) names the scrapped card — that one is public (R6) — never the hidden one', () => {
     const entry = move({ by: 1, kind: 7, subKind: null, description: '7: no legal play — scrap 5♥' });
     const line = formatRecapLine(entry, 0, NAMES);
-    expect(line).toBe('Bob revealed the top of the deck and scrapped 5♥ (no legal play).');
+    expect(line).toBe('Blake revealed the top of the deck and scrapped 5♥ (no legal play).');
     // Per engine/apply.go:419-437, the OTHER revealed card returns hidden
     // to the deck top in this branch too — same non-leak guarantee.
     expect(line).not.toContain('K♠');
@@ -332,7 +332,7 @@ describe('formatRecapLine — robustness', () => {
       description: 'play 7♥ as point card',
       card: { Rank: 2, Suit: 0 }, // deliberately mismatched — must be ignored
     });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played 7♥ for points.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake played 7♥ for points.');
   });
 
   it('throws on an unrecognized MoveKind rather than guessing at phrasing', () => {
