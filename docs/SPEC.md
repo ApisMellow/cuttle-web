@@ -291,7 +291,7 @@ seed = "42", dealer = P2 (so P1 is non-dealer and goes first)
     [6] play Q♣ as permanent
 ```
 
-P1b must include this as the bridge smoke test's first assertion. Note what it already demonstrates for §6: the `A♥` at hand index 2 produces two moves in two different slots — that is the R11 ambiguity chooser's trigger case. The `2♥` produces only a point play, because 2-as-scrap requires a target and the board is empty.
+P1b must include this as the bridge smoke test's first assertion. Note what it already demonstrates for §6: the `A♥` at hand index 2 produces two moves in two different slots — the R11 case that zone geometry resolves with no chooser (§6.4; amended 2026-09-28, David). The `2♥` produces only a point play, because 2-as-scrap requires a target and the board is empty.
 
 **Dealer alternation (R1, R3)** is bridge-side but *driven by the client*: the bridge does not remember prior games. The session store (§5.3) holds `lastDealer` and passes `dealer: 1 - lastDealer` on rematch. First game of a session passes no `dealer`, getting a random one.
 
@@ -763,7 +763,9 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 
 **No recap line may name a card the viewer is not entitled to see.** Audited against the table: every card named above is one that became public by being played or scrapped. The 7's unchosen card returns to the top of the deck (`engine/apply.go:431-433`) and is never named — it is known to the player who revealed it, which is inherent to the rules and not a UI leak (**OQ-11**).
 
-**Presentation.** At most the last 6 entries, oldest first; if more, a "+N earlier" affordance expands the rest. Each line pairs with a small card glyph where a card is named. Dismissed by one tap; the dismissal is also what stamps `lastSeenSeq`.
+**Presentation.** At most the last 6 entries, oldest first; if more, a "+N earlier" affordance expands the rest. Each line pairs with a theme `mini` card face where a card is named. Dismissed by one tap; the dismissal is also what stamps `lastSeenSeq`.
+
+**The idle last-move line** on the board's center strip (R20, `docs/design.md` §6) is the **last `isRecapVisible` entry in `history`**, never raw `lastMove` *(amended 2026-09-28, W13 GameScreen review)*. `lastMove` can be a filtered-out kind such as `Decline`, and showing it told the acting player whether the opponent had held a 2.
 
 ---
 
@@ -817,7 +819,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
-`PointRow.svelte` renders a `PointEntry` including its `JackStack`: only the top (newest) Jack is drawn, full card size, offset downward only, so the point card's upper-left corner index stays visible above it; extra Jacks are not drawn separately, and at 2 or more a thin "deck thickness" edge (two card-back slivers past the Jack's bottom-right corner) shows there's more than one. No count number and no player colour render on the stack; the count is exposed only via the aria-label ("stolen, N Jacks"), and only the top Jack is a legal tap target. An ownership badge is driven by `Controller` (§2.8(f)) when the controller differs from the owner. A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above" and the multi-Jack cascade; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
+`PointRow.svelte` renders a `PointEntry` including its `JackStack`: only the top (newest) Jack is drawn, full card size, offset downward only, so the point card's upper-left corner index stays visible above it; extra Jacks are not drawn separately, and at 2 or more a thin "deck thickness" edge (two card-back slivers past the Jack's bottom-right corner) shows there's more than one. No count number and no player colour render on the stack; the count is exposed only via the aria-label ("stolen, N Jacks"), and only the top Jack is a legal tap target — including as the target of a 2 or a 9. Buried Jacks are never targetable and never answer a tap (the engine only ever offers the top Jack). An ownership badge is driven by `Controller` (§2.8(f)) when the controller differs from the owner. A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, David — supersedes "fanned above" and the multi-Jack cascade; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
 
 **`SevenRevealPanel` mounting vs. rendering.** GameScreen mounts `SevenRevealPanel`, gated on `viewer === active` — that gate is where R16's privacy boundary lives and it stays in GameScreen, not in Board. The panel itself renders through Board's `handTray` slot, the same slot `PlayerHand` occupies, so while the 7's choice is open the reveal panel takes the hand's place in the layout instead of appearing as a separate overlay; the slot reverts to `PlayerHand` once the sub-move resolves.
 
@@ -904,7 +906,7 @@ export interface CardFaceProps {
 Rules that keep the seam real:
 
 1. **Nothing outside `lib/theme/` renders a rank or suit glyph.** Every card pixel in the app comes from `<CardFace>` or `<CardBack>`. A component that draws its own "7♥" has broken the seam; code review rejects it.
-2. **Layout is the theme's business; geometry is not.** The aspect ratio (2.5:3.5) and the three size tokens are fixed by the app in CSS custom properties. A theme paints inside a box it does not get to resize, so swapping themes never reflows the board.
+2. **Layout is the theme's business; geometry is not.** The aspect ratio (one token, `--cuttle-card-aspect`, about 1.3 height to width — amended 2026-09-28, David, from 2.5:3.5; `docs/design.md` §5) and the three size tokens are fixed by the app in CSS custom properties. Every card at every size shows its rank and suit as an upper-left corner index (`docs/design.md` §7). A theme paints inside a box it does not get to resize, so swapping themes never reflows the board.
 3. **State styling is the theme's responsibility to honour, not to invent.** `state` is passed in; the theme renders it. Highlight/dim/stage semantics belong to §6 and must look consistent across themes.
 4. **`vector` is always available and is the fallback.** It has zero external assets, so it works on first paint, offline, and before any art is cached. If a theme's `available()` returns false — assets not yet precached, decode failure, or the user is on a metered connection — the app falls back to `vector` silently, per card, without a layout shift.
 5. **Toggle** lives in the menu, persisted in `settings.svelte.ts`, and is a `screenshot-judge` item so the judge can compare both skins at phone viewport (R23). **The default theme at ship time is David's call** (R23) — the app reads it from a single constant, `DEFAULT_THEME_ID` in `lib/theme/default.ts`, re-exported by `lib/theme/index.ts`, so flipping the default is a one-line change and not a refactor. `settings.svelte.ts` imports `default.ts` directly, which keeps components out of the store's import graph. *(amended 2026-09-27, orchestrator, from the round-2 W8 review)*
@@ -971,7 +973,9 @@ Acceptance for R18 is an **evidenced offline run**, not a config review: install
 
 ### 5.9 Mobile quality bar (R19)
 
-- Primary viewport **390×844** (Playwright default for the judge, `loop-workflow.md` §4); layout must hold 360–430 px CSS width.
+- **Target devices: iPhone 15 or larger** *(amended 2026-09-28, David, PRD §10 A-5)*. Primary viewport **393×852**, also **430×932**. The 360–430 range and the 360×740 compact target are dropped. Playwright's 390×844 default (`loop-workflow.md` §4) stays as a slightly smaller stand-in until the iPhone design pass retargets it.
+- **Safe areas:** `viewport-fit=cover`, with the column padded by `env(safe-area-inset-*)` — about 59 pt for the Dynamic Island at the top and 34 pt for the home indicator at the bottom.
+- **Short visible area:** Mobile Safari with toolbars can leave about 393×660. The hand and the action bar stay fully visible; only the board region above them may scroll. Token values for these targets are tuned in the iPhone design pass (`docs/design.md` §5–§6, §10).
 - **No horizontal scroll at any width in range.** An e2e assertion on `document.documentElement.scrollWidth <= clientWidth` runs on every screen and every phase; it is the cheapest regression catch in the suite.
 - All tap targets **≥ 44 px**, verified by an e2e sweep of every `[data-testid]` element's bounding box.
 - Animations (draw, play, scuttle-to-scrap, Jack steal) are **CSS transforms only** — `transform` and `opacity`, no layout-affecting properties, no JS animation loop.
@@ -1004,7 +1008,7 @@ R12 is absolute: **no single tap ever applies a move.** Every commit is `select 
 
 - **Cancel** is always available while staged and returns to `idle`.
 - Tapping a different hand card while `selected` re-selects. Tapping a **non-highlighted** area while `selected` clears to `idle` and never stages anything (R9's explicit non-goal).
-- Cards with no legal play render **dimmed but still inspectable** (R9) — tapping one opens a card-detail popover and does not enter `selected`.
+- Cards with no legal play render **dimmed but still inspectable** (R9) — tapping one opens a card-detail popover and does not enter `selected`. The popover shows only the tapped card from the viewer's own hand, never hidden information (no opponent card, no deck card, nothing from another viewer's history) *(2026-09-28: privacy bound restated while the popover is built)*.
 - While `applying`, the whole board is inert. A second Confirm tap must be impossible.
 
 ### 6.2 Deriving affordances from the legal-move list
@@ -1056,8 +1060,8 @@ Totality table. Random-playout frequencies from the §2.10 survey are included s
 | `Scuttle` (3) | 9,527 | Tap hand card → opponent point cards it beats highlight. Beat rule is engine-side (`card/card.go:51-56`); the UI highlights what it is given. | tap a point | "Scuttle 7♥ with 9♠" |
 | `OneOff` (4), no target (A, 3, 4, 5, 6, 7) | 25,026 (all one-offs) | Tap hand card → the **One-off** zone highlights. | tap zone | "Play A♥ as a one-off" |
 | `OneOff` (4), **rank 3** | — | Same zone tap, then the **ScrapBrowser opens in pick mode** listing exactly the scrap cards the engine offered (one move per `ScrapIndex`, `apply.go:98-111`). With exactly one card in the scrap, only one `ScrapIndex` candidate exists, so per §6.4's single-candidate rule the move stages directly — the browser never opens. | tap a scrap card (skipped when there's only one) | "Play 3♣ — take 5♠ from the scrap" |
-| `OneOff` (4), **rank 2 as scrap** | — | Tap the 2 → every legal target highlights: opponent/own permanents, and Jack-topped point stacks (`apply.go:44-69`). Queen protection is already applied by the engine. | tap a target | "Play 2♥ — scrap K♠" |
-| `OneOff` (4), **rank 9** | — | Tap the 9 → opponent points and permanents highlight (`apply.go:70-87`). | tap a target | "Play 9♥ — return 10♦ to their hand" |
+| `OneOff` (4), **rank 2 as scrap** | — | Tap the 2 → every legal target highlights: opponent/own permanents, and Jack-topped point stacks (`apply.go:44-69`) — the **top Jack only**; buried Jacks are never targetable (2026-09-28, David). Queen protection is already applied by the engine. | tap a target | "Play 2♥ — scrap K♠" |
+| `OneOff` (4), **rank 9** | — | Tap the 9 → opponent points and permanents highlight (`apply.go:70-87`); on a Jack-topped stack only the **top Jack** is a target, never a buried one (2026-09-28, David). | tap a target | "Play 9♥ — return 10♦ to their hand" |
 | `Counter` (5) | 2,008 | **CounterPrompt** (§4.3): one button per unfrozen 2. Not a board interaction. | none | "Counter with 2♠" |
 | `Decline` (6) | 1,868 | **CounterPrompt**: the "Let it resolve" button. Always present in a real window. | none | confirm inline — this *is* the confirm step |
 | `SevenPick` (7) | 2,680 | **SevenRevealPanel**: the revealed cards (1 or 2). Tap one → its inner affordances replay **on the real board** exactly as a hand card would (the sub-move is a normal move). | per the sub-move | "7: play 5♥ as a point card" |
@@ -1075,7 +1079,7 @@ Triggered when, after target selection (or immediately, for affordances with no 
 Canonical cases, all present in the golden scenario of §2.6:
 
 - **An 8** — point card or glasses permanent. Two different zones, so actually resolved by the zone tap; a chooser appears only if a design later merges the zones. Listed because R11 names it explicitly.
-- **An Ace** — one-off (wipe all points) or point card. In the golden scenario, `A♥` at hand index 2 yields moves `[3]` and `[4]`. Two different zones again.
+- **An Ace** — one-off (wipe all points) or point card. In the golden scenario, `A♥` at hand index 2 yields moves `[3]` and `[4]`. Two different zones again: the zone the Ace is dropped or tapped on resolves the move, and **no chooser opens** *(ruled 2026-09-28, David: prefer implicit actions to extra prompts; ledger R11.3)*.
 - **A 2** — point card, or one-off against any of several targets. Mixed: the zone tap separates point from one-off, and the target tap separates the one-off variants.
 - **A 7 sub-pick** where one revealed card affords several plays — resolved on the board by the sub-move's own target step.
 
