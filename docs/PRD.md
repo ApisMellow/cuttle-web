@@ -1,6 +1,6 @@
 # Cuttle Web — Product Requirements Document
 
-**Status:** Draft for David's review
+**Status:** Draft for ApisMellow's review
 **Date:** 2026-08-23
 **Parent project:** [Cuttle engine](https://github.com/ApisMellow/cuttle) (`github.com/ApisMellow/cuttle`)
 **This repo:** `ApisMellow/cuttle-web` — a graphical, mobile-first web version of Cuttle for two human players.
@@ -75,7 +75,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R9 — Tap-to-play with legal-target highlighting.** Tapping a card in hand highlights every legal play for it (derived from the engine's legal-move list): play-as-points zone, scuttle targets, permanent zone, one-off action, Jack steal targets, 2-scrap targets. Tapping a highlighted target stages the move; a confirm control commits it. Cards with no legal play render dimmed but still inspectable.
 - **R10 — Draw and pass.** Drawing (when legal) is a tap on the deck; when the only legal action is pass, a Pass control appears.
-- **R11 — Every legal move reachable, only legal moves reachable.** The UI's reachable actions correspond 1:1 with `LegalMoves` output — verified by an invariant test that walks scripted games comparing UI-offered actions to engine output. Ambiguous taps (e.g., an 8 that could be points or glasses) resolve with an explicit chooser. *(Clarified 2026-09-28, David: when the candidates land on different zones or targets — the 8, the Ace — the zone or target the card is dropped or tapped on resolves the move, with no chooser. David prefers implicit actions to extra prompts; the chooser is only the backstop for residue geometry can't separate. See SPEC §6.4 and ledger R11.3.)*
+- **R11 — Every legal move reachable, only legal moves reachable.** The UI's reachable actions correspond 1:1 with `LegalMoves` output — verified by an invariant test that walks scripted games comparing UI-offered actions to engine output. Ambiguous taps (e.g., an 8 that could be points or glasses) resolve with an explicit chooser. *(Clarified 2026-09-28, ApisMellow: when the candidates land on different zones or targets — the 8, the Ace — the zone or target the card is dropped or tapped on resolves the move, with no chooser. ApisMellow prefers implicit actions to extra prompts; the chooser is only the backstop for residue geometry can't separate. See SPEC §6.4 and ledger R11.3.)*
 - **R12 — Misclick protection.** Committing a move always requires the stage-then-confirm step of R9. No accidental single-tap ever applies a move.
 
 ### 6.4 Curtain handoff (privacy model)
@@ -116,11 +116,11 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 ## 10. Amendments
 
-Amendments record post-P0 decisions by David. Requirement IDs stay stable; amendments only add or supersede.
+Amendments record post-P0 decisions by ApisMellow. Requirement IDs stay stable; amendments only add or supersede.
 
-### A-1 — Generated card art in scope, as its own loop phase (2026-08-23, David)
+### A-1 — Generated card art in scope, as its own loop phase (2026-08-23, ApisMellow)
 
-The §4 non-goal "no bitmap/generated card art" is superseded. Generated art for the cards is part of the project, built by a **dedicated loop phase (P-ART, defined in `docs/loop-workflow.md` §11)** because the work is massively parallel once a reference style is locked: a small reference set is generated first, approved by the agent coordinator **and a supervisory human (David)**, and only then does the full-deck generation fan out.
+The §4 non-goal "no bitmap/generated card art" is superseded. Generated art for the cards is part of the project, built by a **dedicated loop phase (P-ART, defined in `docs/loop-workflow.md` §11)** because the work is massively parallel once a reference style is locked: a small reference set is generated first, approved by the agent coordinator **and a supervisory human (ApisMellow)**, and only then does the full-deck generation fan out.
 
 Constraints preserved from the original decision:
 
@@ -129,15 +129,15 @@ Constraints preserved from the original decision:
 
 New requirements (decomposed into ledger entries like R1–R20):
 
-- **R21 — Art direction & style lock.** An art-direction brief and reference set exist: card-face template (layout, rank/suit indices, legibility at in-game size), one court-card sample, card back, table background, and mascot candidate. The reference set is approved by the agent coordinator and by David (explicit human gate). The approved set plus a written style-lock document become the conditioning inputs for all subsequent generation.
+- **R21 — Art direction & style lock.** An art-direction brief and reference set exist: card-face template (layout, rank/suit indices, legibility at in-game size), one court-card sample, card back, table background, and mascot candidate. The reference set is approved by the agent coordinator and by ApisMellow (explicit human gate). The approved set plus a written style-lock document become the conditioning inputs for all subsequent generation.
 - **R22 — Full-deck generation.** All 52 card faces plus card back (and approved auxiliary assets) are generated against the style lock in parallel batches; every asset passes a consistency judge scoring against the lock; regeneration on failure. The complete theme meets an asset budget of ≤ 4 MB compressed, loaded lazily so R18's first-load/offline budget is unaffected.
-- **R23 — Theme-layer integration.** The art theme is wired behind the theme seam defined in `docs/SPEC.md`: user-facing toggle, automatic fallback to the SVG baseline if assets are missing or fail to load, and full playability with the theme off. Default theme state is David's call at ship time.
+- **R23 — Theme-layer integration.** The art theme is wired behind the theme seam defined in `docs/SPEC.md`: user-facing toggle, automatic fallback to the SVG baseline if assets are missing or fail to load, and full playability with the theme off. Default theme state is ApisMellow's call at ship time.
 
 ### A-2 — A7 module-path correction (2026-08-23, factual; resolved 2026-09-26)
 
 A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. **Resolved 2026-09-26 (SPEC §8 OQ-3):** the engine repo was renamed to `github.com/ApisMellow/cuttle` to match its module path and tagged `v0.1.0`/`v0.2.0`; `cuttle-web` requires `v0.2.0` directly with no committed `replace` directive. A temporary local `replace` is fine for engine development but must never be committed.
 
-### A-3 — Mythic theme (2026-09-28, David)
+### A-3 — Mythic theme (2026-09-28, ApisMellow)
 
 A second, optional look for the cards: the **Mythic theme**, in the vein of Magic: The Gathering. Cuttle already plays a lot like Magic minus the card buying, so the art leans into that instead of inventing a new idiom.
 
@@ -161,21 +161,21 @@ A second, optional look for the cards: the **Mythic theme**, in the vein of Magi
 | Queen | Protects other cards from targeting | a protective aura |
 | King | Lowers the win threshold | a crown or throne |
 
-**Suits become colors** — a first proposal, not final: Spades black, Hearts red, Clubs green, Diamonds white. Open question for David: Counterspell is iconically blue, and none of the four suit colors above is blue; resolving whether Diamonds becomes blue, a card's color follows what it does rather than its suit, or blue stays an accent only is still pending.
+**Suits become colors** — a first proposal, not final: Spades black, Hearts red, Clubs green, Diamonds white. Open question for ApisMellow: Counterspell is iconically blue, and none of the four suit colors above is blue; resolving whether Diamonds becomes blue, a card's color follows what it does rather than its suit, or blue stays an accent only is still pending.
 
 Rank and suit fade into the background of the art; the card reads by its evocative image rather than its printed corner indices.
 
-**One layout rule binds both themes:** a Jack stacked on a stolen point card is the same size as the card, offset downward only, and never covers below the corner index's height, so a card's identity (rank and suit) lives in the upper-left corner index regardless of theme *(amended 2026-09-28, David, after a build screenshot)* — see `docs/design.md` §6–§7.
+**One layout rule binds both themes:** a Jack stacked on a stolen point card is the same size as the card, offset downward only, and never covers below the corner index's height, so a card's identity (rank and suit) lives in the upper-left corner index regardless of theme *(amended 2026-09-28, ApisMellow, after a build screenshot)* — see `docs/design.md` §6–§7.
 
 Delivered under **R21–R23** (amendment A-1) as a theme layer on top of the vector baseline. No R1–R20 acceptance criterion depends on it, and this amendment adds no new R numbers.
 
-### A-4 — Family beta (2026-09-28, David)
+### A-4 — Family beta (2026-09-28, ApisMellow)
 
 Target: a playable browser build for a first family beta in about 2 days.
 
 - **Pass-and-play on one shared phone** — the v1 design already in §6, unchanged.
 - **Plain vector cards.** The Mythic theme (A-3) is included only if its style lock is approved in time; the vector baseline (§4, R19) remains the fallback either way.
-- **Hosting is a static host**, since v1 has no server for the beta build. David decided on **GitHub Pages**, with both repos made public on 2026-09-28 (Pages on a private repo needs a paid plan). This amends §8's "deploys as one Fly.io binary" for the beta specifically — A5/A6 stand as the eventual v1 architecture.
+- **Hosting is a static host**, since v1 has no server for the beta build. ApisMellow decided on **GitHub Pages**, with both repos made public on 2026-09-28 (Pages on a private repo needs a paid plan). This amends §8's "deploys as one Fly.io binary" for the beta specifically — A5/A6 stand as the eventual v1 architecture.
 - **Two-phone online play stays the v2 design in §7**, unbuilt for the beta. A DigitalOcean VM is the likely host for that later, superseding A6's Fly.io pick as the v2-era assumption.
 - **The testing policy in `docs/loop-workflow.md` §4.5** (strict tier for game rules/privacy/save-resume, light tier for look-and-layout) applies to all beta work.
 - **Sample player names are Alice and Blake** in every fixture, test, scenario and doc example (the repos are public).
@@ -184,7 +184,7 @@ Target: a playable browser build for a first family beta in about 2 days.
 
 This amendment adds no new R numbers; it sets the beta's scope and hosting path without changing R1–R23's acceptance criteria.
 
-### A-5 — Target devices (2026-09-28, David)
+### A-5 — Target devices (2026-09-28, ApisMellow)
 
 Every player's phone is an **iPhone 15 or larger**. This replaces R19's "360–430 px CSS width" and drops the 360×740 compact target entirely.
 
@@ -196,13 +196,13 @@ Every player's phone is an **iPhone 15 or larger**. This replaces R19's "360–4
 
 This amendment adds no new R numbers; it retargets R19 (and the viewport named in R5/R19 judge criteria) and adds ledger item R19.5.
 
-### A-6 — Several themes, player's choice (2026-09-28, David)
+### A-6 — Several themes, player's choice (2026-09-28, ApisMellow)
 
-A-1 and A-3 described one art theme. David wants **several themes**, and players pick one. The theme seam from R23 already supports this. Every theme is a skin over the same rules and the same vector baseline. Every theme keeps the upper-left rank and suit index readable at 60–80 px. If a theme's assets are missing, the game falls back to the vector baseline. Candidates under exploration (art lives outside the repo until a style is locked):
+A-1 and A-3 described one art theme. ApisMellow wants **several themes**, and players pick one. The theme seam from R23 already supports this. Every theme is a skin over the same rules and the same vector baseline. Every theme keeps the upper-left rank and suit index readable at 60–80 px. If a theme's assets are missing, the game falls back to the vector baseline. Candidates under exploration (art lives outside the repo until a style is locked):
 
 - **Mythic:** painted, Magic-flavoured art. Colour comes from what the rank does, and the suit shows only in the index.
 - **Stained-glass vector:** a hand-written SVG set. It could replace the plain vector faces as the standard deck, since it's small and crisp at any size.
-- **Cathedral:** palette-knife impasto in gold and violet, from a photograph David took. It might become a whole theme, or one suit style set against stained glass inside a single deck.
+- **Cathedral:** palette-knife impasto in gold and violet, from a photograph ApisMellow took. It might become a whole theme, or one suit style set against stained glass inside a single deck.
 - **Webb playmat and card backs:** photographic deep-space art that could pair with any theme.
 
 R23 is extended from a theme toggle to a theme picker. No new R numbers until the first theme ships.

@@ -10,14 +10,14 @@
 - W14 (board polish) merged at `71bda8a`.
 - W15 (pickers — DiscardPicker, SevenRevealPanel, ScrapBrowser) merged. Review verdict: accept, backed by a 240-seed real-engine corpus and no privacy leak.
 - W16 (Pages deploy) merged at `4a1cc4c`. GitHub Pages is enabled at https://apismellow.github.io/cuttle-web/.
-- W17 (card-face redo) merged at `40efddc` — David, after a build screenshot: the upper-left corner index rule at every size and a shorter card ratio (`--cuttle-card-aspect`, about 1.3, tunable). See `docs/design.md` §4–§7, `docs/PRD.md` A-3, and `docs/SPEC.md` §5.2, all amended 2026-09-28.
+- W17 (card-face redo) merged at `40efddc` — ApisMellow, after a build screenshot: the upper-left corner index rule at every size and a shorter card ratio (`--cuttle-card-aspect`, about 1.3, tunable). See `docs/design.md` §4–§7, `docs/PRD.md` A-3, and `docs/SPEC.md` §5.2, all amended 2026-09-28.
 - W18 (single-Jack display) — supersedes W17's cascade treatment: only the top Jack is drawn, offset downward, with a deck-thickness edge once 2 or more are stacked; count moves to the aria-label only. See `docs/design.md` §6–§7 and `docs/SPEC.md` §5.2, all amended 2026-09-28.
 - **The family beta went live 2026-09-28** at https://apismellow.github.io/cuttle-web/ via PR #5 (merge `1caba19`), with the W18 update following in PR #6 (`46d1024`).
 
 - W19 (cleanup) landed: its tests (`web/tests/unit/staging-corpus.test.ts`, the body-margin check in `app-shell.spec.ts`) are on `loop/integration`.
 - W20 (the rename) merged at `786fa9b`.
 - W21 (the dimmed-card popover, R9.3) merged at `6dcf7df`. The staging store already recorded the inspect tap; this landed the popover UI. Privacy bound restated: own hand only, never hidden info (SPEC §6.1).
-- W22 (the iPhone design pass) merged at `16d2507`. Retunes tokens for David's target devices (PRD §10 A-5, 2026-09-28): iPhone 15 or larger, 393×852 primary, 430×932, safe areas, and the 393×660 toolbar-shortened view where the hand and action bar stay visible and only the board scrolls. The 360×740 compact target is dropped, so the 360×740 cases in `board-fit.spec.ts`, `pickers.spec.ts` and `point-row-stacking.spec.ts` are now off-target and due to be retargeted there. `docs/design.md` §4–§7, §10 and §11 updated to match (2026-09-28).
+- W22 (the iPhone design pass) merged at `16d2507`. Retunes tokens for ApisMellow's target devices (PRD §10 A-5, 2026-09-28): iPhone 15 or larger, 393×852 primary, 430×932, safe areas, and the 393×660 toolbar-shortened view where the hand and action bar stay visible and only the board scrolls. The 360×740 compact target is dropped, so the 360×740 cases in `board-fit.spec.ts`, `pickers.spec.ts` and `point-row-stacking.spec.ts` are now off-target and due to be retargeted there. `docs/design.md` §4–§7, §10 and §11 updated to match (2026-09-28).
 
 ## Docs sync (2026-09-28)
 

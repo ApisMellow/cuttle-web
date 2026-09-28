@@ -210,12 +210,12 @@ that makes your list complete.
   `flex: none`. Face and Back fill 100% of it and never size themselves.
 - **Card identity lives in the upper-left corner index** (rank above suit)
   at every size, `mini` included; `--cuttle-card-aspect` is about 1.3 and is
-  the only place the ratio is set (`docs/design.md` §4–§7, David,
+  the only place the ratio is set (`docs/design.md` §4–§7, ApisMellow,
   2026-09-28).
 - **Jack stacks draw only the top Jack**, full size and offset downward;
   extra Jacks show as a thin edge with no number and no player colour. Only
   the top Jack is ever a target (of a tap, a 2 or a 9); buried Jacks are
-  never targetable (`docs/design.md` §6, SPEC §5.2, David, 2026-09-28).
+  never targetable (`docs/design.md` §6, SPEC §5.2, ApisMellow, 2026-09-28).
 - **No rank or suit rendering outside `lib/theme/`.** Outside the theme,
   import only `lib/theme` (index), `lib/theme/types` and `lib/theme/default`.
   `theme-glyph-boundary.test.ts` enforces the suit-glyph ban (every
@@ -223,7 +223,7 @@ that makes your list complete.
 - Theme files use no `:global`, `zoom` or `!important`. The boundary test
   doesn't yet scan `lib/theme/**/*.{svelte,css}` or comments inside markup,
   so review greps for these by hand.
-- **Recap and staging text (ruled 2026-09-27, confirmed by David 2026-09-28, `docs/design.md`):**
+- **Recap and staging text (ruled 2026-09-27, confirmed by ApisMellow 2026-09-28, `docs/design.md`):**
   cards named in a recap line render as theme `mini` faces. The sentence
   beside a card is runtime text, either from `lib/recap.ts` or from the engine's
   `descriptions[i]`, and it may contain suit glyphs. §5.6 rule 1 governs glyphs

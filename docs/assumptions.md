@@ -5,7 +5,7 @@ per section so a later batch can see the reasoning without re-deriving it.
 
 ## Batch 0 (scaffold)
 
-- **go.mod dependency mode (David's call, resolving OQ-3).** Dropped the
+- **go.mod dependency mode (ApisMellow's call, resolving OQ-3).** Dropped the
   `replace github.com/ApisMellow/cuttle => ../Cuttle` directive and
   `require`d the published module `github.com/ApisMellow/cuttle` v0.2.0
   directly. `go mod tidy` resolves it from the public module proxy; no
@@ -90,7 +90,7 @@ per section so a later batch can see the reasoning without re-deriving it.
   arguments (string → string, number → float64, undefined/null/missing → nil,
   anything else → an "unsupported" marker) and returns the Bridge's string.
 
-- **Which viewer each call returns (§2.4, §2.7; David-approved change,
+- **Which viewer each call returns (§2.4, §2.7; ApisMellow-approved change,
   Batch 1 follow-up).**
   - `apply` returns the **mover's** view (viewer = pre-apply `Active`). The UI
     fetches the incoming actor's envelope with `__cuttleView(newActor)` after
@@ -98,10 +98,10 @@ per section so a later batch can see the reasoning without re-deriving it.
     the hand of a player who isn't holding the phone into the JS heap.
   - `legalMoves` and `describe` return `state.Active`'s envelope. They are the
     actor's own queries.
-  - **Decided by David, 2026-09-26:** `newGame` returns the first actor's
+  - **Decided by ApisMellow, 2026-09-26:** `newGame` returns the first actor's
     view (`state.Active` after the deal). Whoever starts the game is the
     first player, so there is no opening curtain.
-  - **Decided by David, 2026-09-26:** the signature is now
+  - **Decided by ApisMellow, 2026-09-26:** the signature is now
     `__cuttleRestore(snapshotJson, viewerId)`, and it returns `viewerId`'s
     envelope. TS passes its persisted `Snapshot.viewer` (§5.7), and the UI
     puts the persisted curtain back up before rendering anything (R4.2).
@@ -114,13 +114,13 @@ per section so a later batch can see the reasoning without re-deriving it.
     asserts that `apply`'s viewer is the mover.
 
 - **`history[].index` / `lastMove.index` are omitted for non-movers (§3.2;
-  David-approved).** The bridge holds every index. Each envelope drops
+  ApisMellow-approved).** The bridge holds every index. Each envelope drops
   `index` (the key is absent, not null) from entries whose `by` is not the
   viewer, because the index encodes a pending 3's ScrapIndex and the size of
   the mover's option list. The snapshot keeps the full history, and `restore`
   requires every entry to carry an index.
 
-- **`AppliedMove.subKind` (§2.7, §4.3; David-approved).** It holds the
+- **`AppliedMove.subKind` (§2.7, §4.3; ApisMellow-approved).** It holds the
   SubMove's `MoveKind` as a bare number, or `null` when there is no SubMove
   (§2.8(d) pointer style). It is always present and visible to both viewers.
   The SubMove's kind is public once it is played, and the synthetic-ack side
@@ -397,7 +397,7 @@ Logged by the orchestrator from developer reports and review rulings. Full verdi
   - `lastSeenSeq` entries must be numbers.
   - Anything malformed is discarded, with a notice, just like a version mismatch.
 - **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at a real or synthetic ack, and at `result`.
-- **`lastSeenSeq` stamping (SPEC §4.6, amended twice 2026-09-27; David delegated the call).** A stamp happens on the mover's successful `apply`, on recap dismissal, and at the transition into `none`. Each stamp is written in that transition's synchronous snapshot write. The stamp is symmetric across the real and synthetic counter paths, so it adds no R14 signal.
+- **`lastSeenSeq` stamping (SPEC §4.6, amended twice 2026-09-27; ApisMellow delegated the call).** A stamp happens on the mover's successful `apply`, on recap dismissal, and at the transition into `none`. Each stamp is written in that transition's synchronous snapshot write. The stamp is symmetric across the real and synthetic counter paths, so it adds no R14 signal.
 - **`AppliedMove.targetCard` (W6).** It is always present on the wire, and it is read from the pre-state.
   - For a rank-2 one-off aimed at a Jack-stacked point, it names the **top Jack**, because that is the card the engine scraps (engine `apply.go:700-718`).
   - For Scuttle, a Jack steal and rank 9, it names the point card itself, even when the point is Jack-stacked.

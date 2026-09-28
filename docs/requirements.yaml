@@ -263,7 +263,7 @@ requirements:
     acceptance:
       - "e2e-test: R11 invariant walk (SPEC §7.4) run across fixtures `opening`, `jack-steal-queen`, `scuttle-suit-tiebreak` — for each hand-card tap, highlighted targets equal exactly the Target/JackTarget set implied by legalMoves for that slotKey"
       - "e2e-test: fixture `jack-steal-queen` — a Jack targeting a Queen-protected point shows zero highlighted targets, matching the engine's omission (apply.go:88-97) with no UI-side Queen rule (SPEC §6.3)"
-      - "e2e-test: with a 2- or more-Jack stack on a point card, a 2 or a 9 in hand highlights only the top Jack's target; no buried Jack is ever highlighted, and a tap on the stack never stages a buried Jack (David, 2026-09-28; docs/design.md §6, SPEC §5.2, §6.3)"
+      - "e2e-test: with a 2- or more-Jack stack on a point card, a 2 or a 9 in hand highlights only the top Jack's target; no buried Jack is ever highlighted, and a tap on the stack never stages a buried Jack (ApisMellow, 2026-09-28; docs/design.md §6, SPEC §5.2, §6.3)"
     verify: [e2e-test]
     status: implemented
     evidence: "IMPLEMENTED round-04 (W13 GameScreen integration derives highlights from legalMoves through staging). Partial e2e 2026-09-28: web/tests/e2e/game-happy-path.spec.ts and pickers.spec.ts tap engine-highlighted zones (pickers asserts zone-points data-state 'highlighted' after the 7 pick). Open: the R11 invariant walk over `opening`, `jack-steal-queen` and `scuttle-suit-tiebreak`, the Queen zero-highlight case, and the buried-Jack bullet."
@@ -353,8 +353,8 @@ requirements:
       - "e2e-test: golden fixture (seed \"42\", dealer 1) — tapping A♥ at hand index 2 highlights both the One-off zone and the Points zone (moves [3] and [4]); tapping the One-off zone stages \"play A♥ as one-off\", tapping the Points zone stages \"play A♥ as point card\"; no AmbiguityChooser opens for this two-zone case — the move comes from which zone the card is dropped or tapped on, per the 8's identical two-zone handling (PRD R11, SPEC §6.4, §2.6)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the criteria-drift question flagged in round-03.md (Ace resolved by zone, matching the affordances.ts suite and the 8's handling) is settled by David's ruling in the notes field; the submitted implementation already follows SPEC as built. Accepted after 1 revise cycle, 9/9 gate, 539 unit tests. Post-integration e2e against the golden fixture deferred to round-4 (GameScreen/board integration, W13)."
-    notes: "Decision: David, 2026-09-28. The Ace, like the 8, is resolved by zone tap (One-off vs Points), not by the AmbiguityChooser modal — SPEC §6.4 reserves the chooser as backstop for the genuinely ambiguous residue that zone/target geometry can't resolve. Principle: prefer implicit actions (zone/target disambiguation) over extra prompts."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): the criteria-drift question flagged in round-03.md (Ace resolved by zone, matching the affordances.ts suite and the 8's handling) is settled by ApisMellow's ruling in the notes field; the submitted implementation already follows SPEC as built. Accepted after 1 revise cycle, 9/9 gate, 539 unit tests. Post-integration e2e against the golden fixture deferred to round-4 (GameScreen/board integration, W13)."
+    notes: "Decision: ApisMellow, 2026-09-28. The Ace, like the 8, is resolved by zone tap (One-off vs Points), not by the AmbiguityChooser modal — SPEC §6.4 reserves the chooser as backstop for the genuinely ambiguous residue that zone/target geometry can't resolve. Principle: prefer implicit actions (zone/target disambiguation) over extra prompts."
     fails: 0
 
   - id: R11.4
@@ -367,7 +367,7 @@ requirements:
     status: todo
     evidence: "PARTIAL — bridge-smoke half done: R11.4: full committed seed corpus reaches terminal state via offered indices with zero legal-move-contract breaks (web/tests/smoke/bridge-smoke.mjs), 240/240 seeds, 0 defects, wins and stalemates both occur. Engine v0.2.0 fixes E-1 and handles E-2 with a dead-end scrap fallback; exclusions.json removed 2026-09-26 after confirming the full unfiltered corpus is clean twice (docs/loop-log/engine-issues.md). gate 2026-09-26: go build/wasm build/go vet/go test ./... green; test:smoke 6/6 green (now builds a fresh wasm first). Open: e2e-test half (StuckState.svelte) — Batch 3+, web/src/** out of scope this batch."
     fails: 0
-    notes: "E-1/E-2 resolved upstream in engine v0.2.0 (docs/loop-log/engine-issues.md, 2026-09-26 entry) — SPEC §2.10's E-1/E-2 text is historical; the committed corpus runs unfiltered. Acceptance text de-exclusioned by David 2026-09-27. StuckState.svelte (the e2e half) is still the required mitigation for the general NO_LEGAL_MOVES/ILLEGAL_MOVE contract and remains scheduled for Batch 3+ regardless of E-1/E-2's status, per SPEC §2.10 'Required UI behavior' items 1-3."
+    notes: "E-1/E-2 resolved upstream in engine v0.2.0 (docs/loop-log/engine-issues.md, 2026-09-26 entry) — SPEC §2.10's E-1/E-2 text is historical; the committed corpus runs unfiltered. Acceptance text de-exclusioned by ApisMellow 2026-09-27. StuckState.svelte (the e2e half) is still the required mitigation for the general NO_LEGAL_MOVES/ILLEGAL_MOVE contract and remains scheduled for Batch 3+ regardless of E-1/E-2's status, per SPEC §2.10 'Required UI behavior' items 1-3."
 
   # ---------------------------------------------------------------------
   # R12 — Misclick protection
@@ -620,7 +620,7 @@ requirements:
     prd: R19
     title: "No horizontal scroll at the iPhone target widths"
     acceptance:
-      - "e2e-test: document.documentElement.scrollWidth <= clientWidth asserted on every screen and every CurtainState kind, at 393px and 430px CSS width (SPEC §5.9, §7.4; retargeted 2026-09-28 by David, PRD §10 A-5 — 360px dropped)"
+      - "e2e-test: document.documentElement.scrollWidth <= clientWidth asserted on every screen and every CurtainState kind, at 393px and 430px CSS width (SPEC §5.9, §7.4; retargeted 2026-09-28 by ApisMellow, PRD §10 A-5 — 360px dropped)"
     verify: [e2e-test]
     status: todo
     evidence: "Partial e2e 2026-09-28: web/tests/e2e/app-shell.spec.ts checks HomeScreen and GameScreen at 360/390/430 wide; game-happy-path.spec.ts and pickers.spec.ts check each curtain and picker screen at 390. Open: 393 and 430 on every screen and curtain kind."
@@ -668,7 +668,7 @@ requirements:
     status: todo
     evidence: ""
     fails: 0
-    notes: "Added 2026-09-28 from David's target-device decision (PRD §10 A-5): every player's phone is an iPhone 15 or larger. The 360x740 compact target is dropped. Token values are tuned in the iPhone design pass (round-4 item W22, in progress)."
+    notes: "Added 2026-09-28 from ApisMellow's target-device decision (PRD §10 A-5): every player's phone is an iPhone 15 or larger. The 360x740 compact target is dropped. Token values are tuned in the iPhone design pass (round-4 item W22, in progress)."
 
   # ---------------------------------------------------------------------
   # R20 — Game event feedback
@@ -728,14 +728,14 @@ requirements:
 
   - id: R21.3
     prd: R21
-    title: "David approves the reference set"
+    title: "ApisMellow approves the reference set"
     acceptance:
-      - "human-approval: David reviews the agent coordinator's culled recommended set and explicitly approves or redirects; R21 flips to verified only on his approval (PRD R21, loop-workflow.md §11 ART-GATE); rejection sends ART-1 back to relaunch with his notes"
+      - "human-approval: ApisMellow reviews the agent coordinator's culled recommended set and explicitly approves or redirects; R21 flips to verified only on his approval (PRD R21, loop-workflow.md §11 ART-GATE); rejection sends ART-1 back to relaunch with his notes"
     verify: [human-approval]
     status: todo
     evidence: ""
     fails: 0
-    notes: "Human gate item — David's recorded pick/approval (loop-workflow.md §11 ART-GATE) is the evidence, not an automated check."
+    notes: "Human gate item — ApisMellow's recorded pick/approval (loop-workflow.md §11 ART-GATE) is the evidence, not an automated check."
 
   # ---------------------------------------------------------------------
   # R22 — Full-deck generation (P-ART ART-2 / ART-3)
@@ -788,7 +788,7 @@ requirements:
     title: "Theme seam contract wiring"
     acceptance:
       - "unit-test: CardTheme registry entries conform to the Face/Back component contract (CardFaceProps: card, size, state); no component outside lib/theme/ renders a rank or suit glyph directly (SPEC §5.6 rule 1)"
-      - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the --cuttle-card-aspect ratio token (about 1.3; amended 2026-09-28 by David, was 2.5:3.5) and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
+      - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the --cuttle-card-aspect ratio token (about 1.3; amended 2026-09-28 by ApisMellow, was 2.5:3.5) and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
     verify: [unit-test, e2e-test]
     status: todo
     evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows)."
