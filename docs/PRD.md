@@ -2,7 +2,7 @@
 
 **Status:** Draft for David's review
 **Date:** 2026-08-23
-**Parent project:** [Cuttle engine](https://github.com/ApisMellow/Cuttle-card-game) (local: `~/dev/Cuttle`)
+**Parent project:** [Cuttle engine](https://github.com/ApisMellow/cuttle) (`github.com/ApisMellow/cuttle`)
 **This repo:** `ApisMellow/cuttle-web` — a graphical, mobile-first web version of Cuttle for two human players.
 
 ---
@@ -13,7 +13,7 @@ Two people share one phone and play a full game of Cuttle with a clean, touch-fi
 
 ## 2. Context: what already exists
 
-The Go engine in `Cuttle-card-game` is a pure, well-tested state machine:
+The Go engine in `cuttle` is a pure, well-tested state machine:
 
 - `engine.LegalMoves(GameState) []Move` — every legal move in the current state
 - `engine.Apply(GameState, Move) (GameState, error)` — immutable state transition
@@ -51,7 +51,7 @@ The Go engine in `Cuttle-card-game` is a pure, well-tested state machine:
 | A4 | **Frontend: Svelte 5 + TypeScript + Vite + vite-plugin-pwa. DOM/CSS/SVG rendering — no canvas.** | ~25 board elements; CSS transforms give 60fps card animation free; SVG faces are crisp at any DPI; Playwright gets real selectors (the autonomous playtest judge depends on this). Pin the official Svelte 5 LLM docs file in the repo for dev-agent reliability. |
 | A5 | **Packaging: single Go binary serving the built frontend via `embed.FS`.** Local dev and production are the same binary. | One deployment unit for the project's whole life; v2 adds WebSocket handlers to the same binary. |
 | A6 | **Hosting: Fly.io**, shared-cpu-1x with auto-stop/auto-start machines (≪ $2/mo; ~300 ms–2 s wake). Deploy-on-push via GitHub Action. | Replit needs a $15/mo VM for WebSockets; Render free tier's 30–60 s cold start ruins the join flow. |
-| A7 | **Engine imported as a Go module dependency** from the Cuttle-card-game repo — actual module path `github.com/ApisMellow/cuttle` *(corrected — §10 A-2)*. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
+| A7 | **Engine imported as a published Go module dependency**, `github.com/ApisMellow/cuttle` (repo renamed to match the module path — §10 A-2), pinned at `v0.2.0` with no committed `replace` directive. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
 
 ## 6. V1 functional requirements
 
@@ -133,6 +133,6 @@ New requirements (decomposed into ledger entries like R1–R20):
 - **R22 — Full-deck generation.** All 52 card faces plus card back (and approved auxiliary assets) are generated against the style lock in parallel batches; every asset passes a consistency judge scoring against the lock; regeneration on failure. The complete theme meets an asset budget of ≤ 4 MB compressed, loaded lazily so R18's first-load/offline budget is unaffected.
 - **R23 — Theme-layer integration.** The art theme is wired behind the theme seam defined in `docs/SPEC.md`: user-facing toggle, automatic fallback to the SVG baseline if assets are missing or fail to load, and full playability with the theme off. Default theme state is David's call at ship time.
 
-### A-2 — A7 module-path correction (2026-08-23, factual)
+### A-2 — A7 module-path correction (2026-08-23, factual; resolved 2026-09-26)
 
-A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. Local development uses a `replace` directive pointing at `~/dev/Cuttle`; whether to publish the module at its declared path or vendor-pin is an open decision (SPEC §8 OQ-3, David's call).
+A7 originally named the engine module as `github.com/ApisMellow/Cuttle-card-game` (the repo name). The actual module path per the engine's `go.mod` is **`github.com/ApisMellow/cuttle`**. **Resolved 2026-09-26 (SPEC §8 OQ-3):** the engine repo was renamed to `github.com/ApisMellow/cuttle` to match its module path and tagged `v0.1.0`/`v0.2.0`; `cuttle-web` requires `v0.2.0` directly with no committed `replace` directive. A temporary local `replace` is fine for engine development but must never be committed.

@@ -8,20 +8,19 @@ attached evidence.
 
 ## Environment
 
-- The Go engine is a **sibling checkout**, not a published module:
-  `go.mod` contains `replace github.com/ApisMellow/cuttle => ../Cuttle`.
-  Builds fail if `~/dev/Cuttle` is missing or moved. Engine module path is
-  `github.com/ApisMellow/cuttle` (NOT the repo name `Cuttle-card-game`).
+- The Go engine is a **published module**: `github.com/ApisMellow/cuttle`,
+  pinned at `v0.2.0`, no `replace` directive committed. A temporary local
+  `replace` for engine development is fine — never commit it.
 - The engine is canon. The UI implements zero game rules; every rule
   question is answered by `engine.LegalMoves` / `engine.Apply` output.
 
 ## Commands
 
 - `go test ./...` — the Go gate. The repo is **test-first**: test files
-  exist before implementations; golden fixtures (e.g. seed-42 deal in
+  exist before implementations; golden scenarios (e.g. seed-42 deal in
   `internal/wasm/deal_test.go`) are authoritative, not judgment calls.
 - `./scripts/build-wasm.sh` — builds the WASM bridge and reports raw/gzip
-  size. Budget: ≤ 1.5 MB compressed (R18). Current: ~590 KB gzipped.
+  size. Budget: ≤ 1.5 MB gzipped, enforced by `test:smoke` (R18).
 - `verify:` enums in `requirements.yaml` map to test layers (SPEC §7);
   `unit-test` → vitest, `bridge-smoke` → `web/tests/smoke/`, `e2e-test` →
   Playwright, `screenshot-judge` → judged playtest.
@@ -40,7 +39,7 @@ attached evidence.
 - `pending.ScrapIndex` must be omitted from the view entirely — it leaks
   the acting player's intent (SPEC §3.2).
 - `dealStream = 0x9E3779B97F4A7C15` in `internal/wasm/deal.go` must NEVER
-  vary; fixture reproducibility depends on the exact PCG stream.
+  vary; scenario reproducibility depends on the exact PCG stream.
 
 ## Build artifacts and gitignore gotchas
 
@@ -57,5 +56,5 @@ attached evidence.
 ## Git conventions
 
 - All writes happen on a feature branch, never directly on docs branches.
-- Open questions OQ-3 (module publish vs replace) and OQ-9 (snapshot
-  redaction) are David's calls — surface them, do not resolve them.
+- OQ-3 (module publish vs replace) and OQ-9 (snapshot redaction) are both
+  resolved — see SPEC §8.
