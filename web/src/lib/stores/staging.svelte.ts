@@ -25,6 +25,7 @@
 import { boardTargetKey, isAmbiguousSlot } from '../affordances';
 import type { Move } from '../bridge/schema';
 import { MoveKind } from '../enums';
+import type { TargetKey } from '../targetKey';
 
 export type StagingState = 'idle' | 'selected' | 'staged' | 'applying';
 
@@ -41,6 +42,12 @@ export interface ChooserModel {
 export interface StagingEnv {
   legalMoves: Move[];
   descriptions: string[];
+  /**
+   * P2 W13: the viewer's hand length. With it, `dimmedHand` dims every hand
+   * index no stageable move names (R9.3), not only the indices the engine
+   * mentioned in some other move. Omitted, the W11 behaviour stands.
+   */
+  handSize?: number;
 }
 
 // SPEC §6.3 — the MoveKinds this round's pipeline can carry all the way to
@@ -65,7 +72,7 @@ const IN_SCOPE_HAND_KINDS: ReadonlySet<Move['Kind']> = new Set([
 // mean "a specific hand card", so they're deliberately excluded here too.
 const HAND_ROOTED_KINDS: ReadonlySet<Move['Kind']> = new Set([...IN_SCOPE_HAND_KINDS, MoveKind.Counter]);
 
-const EMPTY_STRINGS: ReadonlySet<string> = new Set();
+const EMPTY_KEYS: ReadonlySet<TargetKey> = new Set();
 const EMPTY_NUMBERS: ReadonlySet<number> = new Set();
 
 function indicesOfKind(legalMoves: Move[], kind: Move['Kind']): number[] {
@@ -86,9 +93,9 @@ function indicesOfKind(legalMoves: Move[], kind: Move['Kind']): number[] {
  * key (a genuine ambiguity, or a rank-3's ScrapIndex collapse) produces one
  * multi-index bucket, disambiguated in `#handleTargetTap`.
  */
-function candidatesByTargetKey(handIndex: number, legalMoves: Move[]): Map<string, number[]> {
+function candidatesByTargetKey(handIndex: number, legalMoves: Move[]): Map<TargetKey, number[]> {
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a plain, function-local scratch map, never held as $state; the store only ever reads its finished keys/values (see call sites below).
-  const byKey = new Map<string, number[]>();
+  const byKey = new Map<TargetKey, number[]>();
   legalMoves.forEach((m, i) => {
     if (!IN_SCOPE_HAND_KINDS.has(m.Kind) || m.HandIndex !== handIndex) return;
     const key = boardTargetKey(m);
@@ -116,6 +123,11 @@ function computeDimmedHand(env: StagingEnv | null): ReadonlySet<number> {
     seen.add(m.HandIndex);
     if (IN_SCOPE_HAND_KINDS.has(m.Kind)) inScope.add(m.HandIndex);
   }
+  // P2 W13: with the hand size known, every index no stageable move names
+  // dims — including a card the engine offered nothing for at all.
+  if (env.handSize !== undefined) {
+    for (let i = 0; i < env.handSize; i++) seen.add(i);
+  }
   if (inScope.size === seen.size) return EMPTY_NUMBERS; // common case, avoid allocating
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built once here, then handed straight back to `dimmedHand`'s `$derived.by` as a finished, never-mutated-again value; the next call builds an entirely new set rather than mutating this one.
   const dimmed = new Set<number>();
@@ -124,7 +136,7 @@ function computeDimmedHand(env: StagingEnv | null): ReadonlySet<number> {
 }
 
 /** The board keys that get the `staged` (ochre) treatment for a move about to stage: the card's own source key plus its target key, or just the root key for Draw/Pass (no separate target step, SPEC §6.3). */
-function stagedKeysFor(move: Move): ReadonlySet<string> {
+function stagedKeysFor(move: Move): ReadonlySet<TargetKey> {
   switch (move.Kind) {
     case MoveKind.Draw:
       return new Set(['deck']);
@@ -132,7 +144,7 @@ function stagedKeysFor(move: Move): ReadonlySet<string> {
       return new Set(['pass']);
     default: {
       const target = boardTargetKey(move);
-      const keys = [`hand:${move.HandIndex}`];
+      const keys: TargetKey[] = [`hand:${move.HandIndex}`];
       if (target !== null) keys.push(target);
       return new Set(keys);
     }
@@ -153,8 +165,8 @@ export class StagingStore {
 
   state = $state<StagingState>('idle');
   selectedHand = $state<number | null>(null);
-  highlighted = $state<ReadonlySet<string>>(EMPTY_STRINGS);
-  staged = $state<ReadonlySet<string>>(EMPTY_STRINGS);
+  highlighted = $state<ReadonlySet<TargetKey>>(EMPTY_KEYS);
+  staged = $state<ReadonlySet<TargetKey>>(EMPTY_KEYS);
   stagedIndex = $state<number | null>(null);
   stagedDescription = $state<string | null>(null);
   chooser = $state<ChooserModel | null>(null);
@@ -170,7 +182,7 @@ export class StagingStore {
   }
 
   /** SPEC §6.1 — the single entry point for every board/deck/pass tap. */
-  tap(key: string): void {
+  tap(key: TargetKey): void {
     if (this.state === 'applying') return; // inert: the board is locked while applying (§6.1)
     const env = this.#getEnv();
     if (!env) return;
@@ -237,7 +249,7 @@ export class StagingStore {
     this.#clearToIdle();
   }
 
-  #handleRootTap(key: string, env: StagingEnv): void {
+  #handleRootTap(key: TargetKey, env: StagingEnv): void {
     if (key.startsWith('hand:')) {
       this.#selectHand(Number(key.slice('hand:'.length)), env);
       return;
@@ -264,14 +276,14 @@ export class StagingStore {
     this.selectedHand = handIndex;
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- `highlighted` is always REPLACED wholesale (never `.add()`/`.delete()`'d in place) on every transition; a plain Set's reference-equality reactivity through $state is exactly what's needed, and SvelteSet's element-level reactivity is never used.
     this.highlighted = new Set(byKey.keys());
-    this.staged = EMPTY_STRINGS;
+    this.staged = EMPTY_KEYS;
     this.stagedIndex = null;
     this.stagedDescription = null;
     this.chooser = null;
     this.state = 'selected';
   }
 
-  #handleTargetTap(key: string, env: StagingEnv): void {
+  #handleTargetTap(key: TargetKey, env: StagingEnv): void {
     // Tapping a different (or the same) hand card while selected re-selects
     // (SPEC §6.1), even though `key` isn't a "target" in the §6.4 sense.
     if (key.startsWith('hand:')) {
@@ -322,8 +334,8 @@ export class StagingStore {
     }
     if (isAmbiguousSlot(indices, env.legalMoves)) {
       this.selectedHand = null;
-      this.highlighted = EMPTY_STRINGS;
-      this.staged = EMPTY_STRINGS;
+      this.highlighted = EMPTY_KEYS;
+      this.staged = EMPTY_KEYS;
       this.stagedIndex = null;
       this.stagedDescription = null;
       this.chooser = { candidates: indices.map((i) => ({ index: i, description: env.descriptions[i] })) };
@@ -340,7 +352,7 @@ export class StagingStore {
     this.stagedIndex = index;
     this.stagedDescription = env.descriptions[index];
     this.staged = stagedKeysFor(move);
-    this.highlighted = EMPTY_STRINGS;
+    this.highlighted = EMPTY_KEYS;
     this.chooser = null;
     this.state = 'staged';
   }
@@ -348,8 +360,8 @@ export class StagingStore {
   #clearToIdle(): void {
     this.state = 'idle';
     this.selectedHand = null;
-    this.highlighted = EMPTY_STRINGS;
-    this.staged = EMPTY_STRINGS;
+    this.highlighted = EMPTY_KEYS;
+    this.staged = EMPTY_KEYS;
     this.stagedIndex = null;
     this.stagedDescription = null;
     this.chooser = null;

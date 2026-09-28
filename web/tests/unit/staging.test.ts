@@ -17,6 +17,7 @@ import {
 import { boardTargetKey, stagingAffordances } from '../../src/lib/affordances';
 import { MoveKind } from '../../src/lib/enums';
 import { StagingStore, type StagingEnv } from '../../src/lib/stores/staging.svelte';
+import type { TargetKey } from '../../src/lib/targetKey';
 import { createWasmEngine } from '../scenario/wasm-engine';
 
 // ---------------------------------------------------------------------------
@@ -569,7 +570,7 @@ describe('StagingStore — R11.3, golden seed 42 dealer 1: A♥ at hand index 2 
 });
 
 /** The tap sequence that resolves `move`: `['deck']`/`['pass']`, or `['hand:H', targetKey]`. */
-function tapSequenceFor(move: Move): string[] {
+function tapSequenceFor(move: Move): TargetKey[] {
   switch (move.Kind) {
     case 0:
       return ['deck'];
@@ -670,7 +671,7 @@ const IN_SCOPE_HAND_KINDS = new Set<Move['Kind']>([
 function probeCrossTalk(envelope: Envelope): void {
   const env: StagingEnv = { legalMoves: envelope.legalMoves, descriptions: envelope.descriptions };
   const handIndices = new Set<number>();
-  const allKeys = new Set<string>();
+  const allKeys = new Set<TargetKey>();
   for (const m of envelope.legalMoves) {
     if (IN_SCOPE_HAND_KINDS.has(m.Kind)) handIndices.add(m.HandIndex);
     const key = boardTargetKey(m);

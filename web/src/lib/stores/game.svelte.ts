@@ -139,10 +139,12 @@ export class GameStore {
    * reading inside the bridge's snapshot, because this store is the one
    * party that chose it.
    */
-  async newGame(opts: { seed?: string } = {}): Promise<void> {
+  async newGame(opts: { seed?: string; dealer?: PlayerId } = {}): Promise<void> {
     const seed = opts.seed ?? randomSeed();
     const composed: NewGameOpts = { seed };
-    const dealer = this.#session.nextDealer;
+    // P2 W13: an explicit dealer (the e2e hook's reproducible deal, SPEC
+    // §7.4) wins over the session's alternation; omitted, nothing changes.
+    const dealer = opts.dealer ?? this.#session.nextDealer;
     if (dealer !== undefined) composed.dealer = dealer;
 
     const result = this.#engine.newGame(composed);
