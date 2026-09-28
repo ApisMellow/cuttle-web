@@ -108,7 +108,7 @@ func (b *Bridge) NewGame(arg any) string {
 		}
 		next := &session{state: dealNewGame(seed, dealer), history: []AppliedMove{}, seed: seed, dealer: dealer}
 		// The first actor's view: whoever starts the game is the first
-		// player, so there is no opening curtain (David, 2026-09-26).
+		// player, so there is no opening curtain (ApisMellow, 2026-09-26).
 		return b.commit(next, next.state.Active)
 	})
 }
@@ -255,7 +255,7 @@ func (b *Bridge) Snapshot() string {
 }
 
 // Restore replaces the held game and returns the envelope for viewerId,
-// which TS supplies from its persisted Snapshot.viewer (David, 2026-09-26).
+// which TS supplies from its persisted Snapshot.viewer (ApisMellow, 2026-09-26).
 // The UI re-raises any persisted curtain before rendering it (R4.2).
 func (b *Bridge) Restore(arg, viewerArg any) string {
 	return guard(func() string {

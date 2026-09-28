@@ -75,7 +75,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R20.3 | Recap presentation and lastSeenSeq stamping | — | — | e2e-test | implemented |
 | R21.1 | Reference candidate set generated | — | — | image-judge | todo |
 | R21.2 | Style-lock document authored | — | — | image-judge | todo |
-| R21.3 | David approves the reference set | — | — | human-approval | todo |
+| R21.3 | ApisMellow approves the reference set | — | — | human-approval | todo |
 | R22.1 | Full 52-face + back fan-out generation | — | — | image-judge | todo |
 | R22.2 | Consistency judge scoring with regeneration | — | — | image-judge | todo |
 | R22.3 | Complete theme asset budget ≤4MB | — | — | unit-test | todo |

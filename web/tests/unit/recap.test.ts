@@ -122,7 +122,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: Decline is never shown in the recap (R14)', () => {
-    // David, 2026-09-27: a real decline writes a `Decline` history entry;
+    // ApisMellow, 2026-09-27: a real decline writes a `Decline` history entry;
     // the synthetic R14 acknowledgment writes none. Recapping a `Decline`
     // would tell the acting player the opponent actually held a
     // counter-2, and would change whether a recap screen appears at all.
@@ -154,7 +154,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: SevenPick — "NAME revealed the top of the deck and played CARD for points."', () => {
-    // Wording amended by David, 2026-09-27: "revealed two cards" →
+    // Wording amended by ApisMellow, 2026-09-27: "revealed two cards" →
     // "revealed the top of the deck" (SPEC §4.6).
     const entry = move({ by: 1, kind: 7, subKind: 1, description: '7: play 5♥ as point card' });
     expect(formatRecapLine(entry, 0, NAMES)).toBe('Blake revealed the top of the deck and played 5♥ for points.');

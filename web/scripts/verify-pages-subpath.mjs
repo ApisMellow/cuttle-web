@@ -20,6 +20,9 @@
 //     equivalent of the golden-deal walking-skeleton check)
 //   - every request the page makes resolves (no 404s under the subpath)
 //   - no console errors or uncaught page errors
+//   - the manifest link and its icons, and the apple-touch-icon link, both
+//     read from the served DOM, fetch 200 under the subpath (W23,
+//     add-to-home-screen)
 //
 // No service-worker check: `vite-plugin-pwa` (SPEC §5.8, R18) isn't wired
 // up yet. "PWA/offline polish" is explicitly deferred past the family beta
@@ -149,6 +152,54 @@ async function main() {
         `timed out waiting for [data-testid="home-screen"]` +
           (status ? ' (app is stuck on the loading/boot-failed screen)' : ' (app-shell never mounted)'),
       );
+    }
+
+    // W23 (add-to-home-screen): the manifest link, its icons, and the
+    // apple-touch-icon are read straight from the served DOM rather than
+    // hardcoded here, so this proves what the *page* actually references
+    // resolves under the subpath — not just that files with the expected
+    // names happen to exist. Fetched explicitly with page.request.get
+    // rather than relied on as passive page.on('response') traffic,
+    // because a headless Chromium isn't guaranteed to fetch an
+    // apple-touch-icon (a Safari/iOS affordance) on its own.
+    const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+    if (!manifestHref) {
+      failures.push('no <link rel="manifest"> in the served index.html');
+    } else {
+      const manifestUrl = new URL(manifestHref, page.url()).toString();
+      const manifestRes = await page.request.get(manifestUrl);
+      if (!manifestRes.ok()) {
+        failures.push(`manifest fetch failed: HTTP ${manifestRes.status()} at ${manifestUrl}`);
+      } else {
+        log(`manifest OK at ${manifestUrl}`);
+        const manifest = await manifestRes.json();
+        const icons = Array.isArray(manifest.icons) ? manifest.icons : [];
+        if (icons.length === 0) {
+          failures.push(`manifest at ${manifestUrl} has no icons`);
+        }
+        for (const icon of icons) {
+          const iconUrl = new URL(icon.src, manifestUrl).toString();
+          const iconRes = await page.request.get(iconUrl);
+          if (!iconRes.ok()) {
+            failures.push(`manifest icon fetch failed: HTTP ${iconRes.status()} at ${iconUrl}`);
+          } else {
+            log(`manifest icon OK (${icon.sizes ?? '?'}) at ${iconUrl}`);
+          }
+        }
+      }
+    }
+
+    const appleTouchIconHref = await page.locator('link[rel="apple-touch-icon"]').getAttribute('href');
+    if (!appleTouchIconHref) {
+      failures.push('no <link rel="apple-touch-icon"> in the served index.html');
+    } else {
+      const appleTouchIconUrl = new URL(appleTouchIconHref, page.url()).toString();
+      const appleTouchIconRes = await page.request.get(appleTouchIconUrl);
+      if (!appleTouchIconRes.ok()) {
+        failures.push(`apple-touch-icon fetch failed: HTTP ${appleTouchIconRes.status()} at ${appleTouchIconUrl}`);
+      } else {
+        log(`apple-touch-icon OK at ${appleTouchIconUrl}`);
+      }
     }
   } finally {
     await browser.close();

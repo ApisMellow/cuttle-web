@@ -25,7 +25,7 @@ Review: an Opus code reviewer on every submission. No playtest judge this round,
 
 ## Decisions mid-round
 
-- **§4.6 amended (2026-09-27; David delegated the call to the orchestrator).** A successful `apply` also stamps `lastSeenSeq[mover]`, so a player's recap never repeats their own previous move. Handed to W5's revise developer.
+- **§4.6 amended (2026-09-27; ApisMellow delegated the call to the orchestrator).** A successful `apply` also stamps `lastSeenSeq[mover]`, so a player's recap never repeats their own previous move. Handed to W5's revise developer.
 
 ## Verdicts
 
@@ -82,7 +82,7 @@ Review: an Opus code reviewer on every submission. No playtest judge this round,
   - **B5:** persist-before-update is tested only on `apply`; 2 mutations survived.
   - **Rulings:** client-side seed sound; `v` checked first sound; restore `pre.active = lastMove.by` sound; the `result` screen keeping the mover's envelope sound; public `setViewer` unsound.
   - **Routed:** per the plan's "Opus on revise", to a fresh Opus developer in the same worktree, with the full evidence.
-  - **Open for David:** the mover's own `lastSeenSeq` is never stamped after their move, so each recap repeats their previous move. This is literal §4.6.
+  - **Open for ApisMellow:** the mover's own `lastSeenSeq` is never stamped after their move, so each recap repeats their previous move. This is literal §4.6.
   - **Carry-overs for the component rounds:** the board renders only when `curtain.kind` is `'none'` or a real ack, never merely because `view` is non-null. ResultScreen renders neither hand. `session.recordResult` is wired by the ResultScreen/rematch item.
 - **W8 (theme/hand):** stopped correctly at 8/9. Every component `mount()` in vitest resolved Svelte's server build, because vitest wasn't requesting the `browser` condition; `docs/vendor/svelte-5-llms.txt` has the fix under "Component testing". Orchestrator ruling: W8 owns `web/vite.config.ts` for that one change this round. The developer is applying it, confirming no regressions in the wasm-under-Node tests, and checking that the production build still succeeds.
   - **Revise, cycle 1** (Opus review; mutation-driven). Routed to a fresh Opus developer per the plan.
@@ -110,7 +110,7 @@ Review: an Opus code reviewer on every submission. No playtest judge this round,
 - **W6 (targetCard), first submission:** 9/9. It touched `curtain.test.ts` out of scope, but only to add `targetCard: null` to the fixture, because `AppliedMove` gained a required field. In Opus review.
   - **Integration hazard:** W5's `appliedMove()` factory in `game-test-support.ts` has no `targetCard`, so `svelte-check` will fail once both merge. Plan: merge W6 before W5, then W5's developer adds the field in its revise or integration pass.
   - **Glyph duplication:** `recap.ts` now carries its own Rank/Suit glyph tables alongside `lib/theme/glyphs.ts`. Asked the reviewer for a ruling.
-  - **Round-3 flag, not blocking:** §5.6 rule 1 says nothing outside `lib/theme/` renders a suit glyph. §4.6 recap lines are text such as "played 7♥", and they will render in a non-theme component (RecapPanel). W8's boundary test carves out `lib/recap.ts` as a parser. Decide how RecapPanel shows card identities (a theme `mini` CardFace per §4.6 "pairs with a small card glyph", or allowed text) before the recap UI item. That may be a David decision.
+  - **Round-3 flag, not blocking:** §5.6 rule 1 says nothing outside `lib/theme/` renders a suit glyph. §4.6 recap lines are text such as "played 7♥", and they will render in a non-theme component (RecapPanel). W8's boundary test carves out `lib/recap.ts` as a parser. Decide how RecapPanel shows card identities (a theme `mini` CardFace per §4.6 "pairs with a small card glyph", or allowed text) before the recap UI item. That may be a ApisMellow decision.
 
 ## Merges
 
@@ -148,7 +148,7 @@ All local, nothing pushed. Integration branch `loop/integration`:
 
 ## Next-round intent
 
-**Before round 3 (David, 2026-09-27):**
+**Before round 3 (ApisMellow, 2026-09-27):**
 1. **Cuttle developer playbook and role agents, in this repo.**
    - The playbook becomes a section of `AGENTS.md`: running the gate (wasm, `CI=1`, e2e port), Svelte 5 component testing (`mount`, the browser condition), reading the engine from the module cache, wire-true fixtures, and the redaction rules.
    - Role agents live in `.claude/agents/`: a bridge developer, a Svelte developer, and a reviewer carrying the mutation and object-graph probe protocol.
@@ -164,7 +164,7 @@ All local, nothing pushed. Integration branch `loop/integration`:
 **Carry-overs into round-3 briefs:**
 - **Gate:** add `failOnFlakyTests: !!process.env.CI`, or set retries to 0, before the R11 e2e test lands. Note the F4 preflight exit in the `ci.sh` header.
 - **`recap.ts`:** migrate its glyph tables to `lib/theme/glyphs.ts` and its MoveKind constants to `lib/enums.ts`. Fix the S1 wording.
-- **Recap panel (may be a David decision):** how it shows cards, as text glyphs or theme `mini` faces.
+- **Recap panel (may be a ApisMellow decision):** how it shows cards, as text glyphs or theme `mini` faces.
 - **Card containers:** every container imports `lib/styles/card-geometry.css` and owns its box. Containers own testids; faces carry none. Testid presence never varies with legality.
 - **Theme scans:** harden them before any second theme is registered. Cover `lib/theme/**/*.css`, ban `:global`/`zoom`/`!important`, and strip JS comments only inside `<script>`/`<style>`.
 - **Go tests:** give `TestSPEC2_9_BadRequest` per-case isolation, and make the `JackOwners` in fixtures (d)/(e) something the engine can produce.
