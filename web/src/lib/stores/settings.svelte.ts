@@ -8,6 +8,8 @@
 // malformed value) falls back to defaults without crashing — settings are
 // a convenience, never a hard dependency of the app booting.
 
+import { DEFAULT_THEME_ID } from '../theme/default';
+
 export const SETTINGS_KEY = 'cuttle-web:settings';
 
 export type RevealPreference = 'hold' | 'two-step';
@@ -22,7 +24,7 @@ interface StoredSettings {
 // No SPEC-mandated default for the other two; assumption recorded in the
 // developer report (motion on / hold-reveal as the primary interaction).
 const DEFAULTS: StoredSettings = {
-  themeId: 'vector',
+  themeId: DEFAULT_THEME_ID,
   reducedMotion: false,
   revealPreference: 'hold',
 };
