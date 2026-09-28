@@ -72,6 +72,11 @@ function move(kind: MoveKind, opts: { by?: PlayerId; rank?: Rank; subKind?: Move
     description: 'fixture',
     seq: 7,
     subKind: opts.subKind ?? null,
+    // The curtain machine reads only kind/subKind (§4.3's synthetic-ack
+    // detection); targetCard is irrelevant to it, so this fixture pins it
+    // to null (SPEC §2.7, amended 2026-09-27 — fixture update only, not a
+    // curtain.svelte.ts change, which is out of scope for this round).
+    targetCard: null,
   };
 }
 

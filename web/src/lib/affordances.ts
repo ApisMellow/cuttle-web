@@ -6,24 +6,24 @@
 // sign it has drifted into rule logic and does not belong in this file
 // (P2 W2 brief, "Zero rule logic").
 //
-// MoveKind/Phase values are pinned from SPEC §2.5 as private constants. A
-// shared enums module is out of scope for this round (see AGENTS.md); it
-// ships in round 2.
+// MoveKind/Phase values are pinned from SPEC §2.5 via the shared enums
+// module (round 2 W7 consolidation; see `lib/enums.ts`).
 
 import type { Card, Move, Phase } from './bridge/schema';
+import { MoveKind, Phase as Ph } from './enums';
 
-const MOVE_DRAW = 0;
-const MOVE_PLAY_POINT = 1;
-const MOVE_PLAY_PERMANENT = 2;
-const MOVE_SCUTTLE = 3;
-const MOVE_ONE_OFF = 4;
-const MOVE_COUNTER = 5;
-const MOVE_DECLINE = 6;
-const MOVE_SEVEN_PICK = 7;
-const MOVE_DISCARD_PAIR = 8;
-const MOVE_PASS = 9;
+const MOVE_DRAW = MoveKind.Draw;
+const MOVE_PLAY_POINT = MoveKind.PlayPoint;
+const MOVE_PLAY_PERMANENT = MoveKind.PlayPermanent;
+const MOVE_SCUTTLE = MoveKind.Scuttle;
+const MOVE_ONE_OFF = MoveKind.OneOff;
+const MOVE_COUNTER = MoveKind.Counter;
+const MOVE_DECLINE = MoveKind.Decline;
+const MOVE_SEVEN_PICK = MoveKind.SevenPick;
+const MOVE_DISCARD_PAIR = MoveKind.DiscardPair;
+const MOVE_PASS = MoveKind.Pass;
 
-const PHASE_AWAITING_DISCARD = 3;
+const PHASE_AWAITING_DISCARD = Ph.AwaitingDiscard;
 
 /** Identifies a card for the SevenPick slot key's nested `cardKey` term (SPEC §6.2). */
 function cardKey(c: Card): string {

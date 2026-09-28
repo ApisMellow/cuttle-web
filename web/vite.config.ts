@@ -19,4 +19,8 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts'],
     globals: false,
   },
+  // docs/vendor/svelte-5-llms.txt, "Component testing": Vitest runs under
+  // Node, so without the `browser` export condition `svelte`'s package
+  // exports resolve to the SSR stub (no real `mount`/`unmount`).
+  resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
 });

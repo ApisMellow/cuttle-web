@@ -7,24 +7,25 @@
 // AppliedMove.index is never read: it is absent for non-movers (§2.7).
 
 import type { AppliedMove, MoveKind, Phase, PlayerId, PlayerView } from '../bridge/schema';
+import { MoveKind as MK, Phase as Ph } from '../enums';
 
-// SPEC §2.5, pinned from source. Private until the shared enums module lands.
-const PhaseNormal: Phase = 0;
-const PhaseAwaitingCounter: Phase = 1;
-const PhaseSevenChoosing: Phase = 2;
-const PhaseAwaitingDiscard: Phase = 3;
-const PhaseGameOver: Phase = 4;
+// SPEC §2.5, pinned from source, via the shared enums module (round 2 W7).
+const PhaseNormal = Ph.Normal;
+const PhaseAwaitingCounter = Ph.AwaitingCounter;
+const PhaseSevenChoosing = Ph.SevenChoosing;
+const PhaseAwaitingDiscard = Ph.AwaitingDiscard;
+const PhaseGameOver = Ph.GameOver;
 
-const MoveDraw: MoveKind = 0;
-const MovePlayPoint: MoveKind = 1;
-const MovePlayPermanent: MoveKind = 2;
-const MoveScuttle: MoveKind = 3;
-const MoveOneOff: MoveKind = 4;
-const MoveCounter: MoveKind = 5;
-const MoveDecline: MoveKind = 6;
-const MoveSevenPick: MoveKind = 7;
-const MoveDiscardPair: MoveKind = 8;
-const MovePass: MoveKind = 9;
+const MoveDraw = MK.Draw;
+const MovePlayPoint = MK.PlayPoint;
+const MovePlayPermanent = MK.PlayPermanent;
+const MoveScuttle = MK.Scuttle;
+const MoveOneOff = MK.OneOff;
+const MoveCounter = MK.Counter;
+const MoveDecline = MK.Decline;
+const MoveSevenPick = MK.SevenPick;
+const MoveDiscardPair = MK.DiscardPair;
+const MovePass = MK.Pass;
 
 /** A history entry the incoming player has not yet seen (§4.6). Formatting is the recap formatter's job. */
 export type RecapEntry = AppliedMove;

@@ -19,6 +19,7 @@ function move(partial: {
   description: string;
   subKind?: AppliedMove['subKind'];
   card?: AppliedMove['card'];
+  targetCard?: AppliedMove['targetCard'];
   seq?: number;
 }): AppliedMove {
   return {
@@ -28,6 +29,7 @@ function move(partial: {
     description: partial.description,
     seq: partial.seq ?? 1,
     subKind: partial.subKind ?? null,
+    targetCard: partial.targetCard ?? null,
   };
 }
 
@@ -67,19 +69,27 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played Q♦ as a permanent.');
   });
 
-  it('R20.2: PlayPermanent Jack — names the Jack, never a fabricated stolen-card identity', () => {
-    // Assumption (report §5): engine/moves.go's Describe for a Jack steal —
+  it('R20.2: PlayPermanent Jack — names the actual stolen card, per SPEC §4.6\'s literal example', () => {
+    // engine/moves.go's Describe for a Jack steal —
     // `"play %s (steal opponent point)"` — never embeds the stolen card's
-    // identity, unlike Scuttle's Describe. The SPEC §4.6 table's literal
-    // "stole your 10♥ with J♣" therefore cannot be produced from
-    // `entry.description` alone; this is a table row the formatter cannot
-    // implement as written (see report). We degrade to naming only the
-    // Jack, never inventing or guessing the stolen card.
-    const entry = move({ by: 1, kind: 2, description: 'play J♣ (steal opponent point)' });
+    // identity, unlike Scuttle's Describe. `entry.targetCard` (§2.7,
+    // amended 2026-09-27) supplies it instead: the JackTarget read from the
+    // pre-state.
+    const entry = move({
+      by: 1,
+      kind: 2,
+      description: 'play J♣ (steal opponent point)',
+      targetCard: { Rank: 10, Suit: 2 },
+    });
     const line = formatRecapLine(entry, 0, NAMES);
-    expect(line).toBe('Bob stole your point card with J♣.');
-    // Exactly one card glyph in the whole line — no smuggled second identity.
-    expect(line.match(/[♣♦♥♠]/g)).toHaveLength(1);
+    expect(line).toBe('Bob stole your 10♥ with J♣.');
+    // Exactly two card glyphs: the stolen card and the Jack — no third.
+    expect(line.match(/[♣♦♥♠]/g)).toHaveLength(2);
+  });
+
+  it('R20.2: PlayPermanent Jack fails loudly if targetCard is missing — SPEC §2.7 guarantees it is always set', () => {
+    const entry = move({ by: 1, kind: 2, description: 'play J♣ (steal opponent point)', targetCard: null });
+    expect(() => formatRecapLine(entry, 0, NAMES)).toThrow();
   });
 
   it('R20.2: Scuttle — "NAME scuttled your CARD with CARD."', () => {
@@ -88,23 +98,22 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: OneOff without a target — "NAME played CARD as a one-off."', () => {
-    const entry = move({ by: 1, kind: 4, description: 'play 9♥ as one-off' });
+    const entry = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: null });
     expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob played 9♥ as a one-off.');
   });
 
-  it('R20.2: OneOff with a target — identical line, because Describe never encodes the target', () => {
-    // SPEC problem found beyond the known gap (report §6): engine/moves.go's
-    // Describe for MoveOneOff — `"play %s as one-off"` — is IDENTICAL
-    // whether or not `Move.Target` was set, and `AppliedMove` carries no
-    // `Target` field at all. The formatter therefore cannot implement the
-    // table's "+ target clause when Target is set" from `entry.description`
-    // — there is no signal to key off. This test proves the formatter does
-    // NOT fabricate a target clause: a one-off actually played with a
-    // target produces byte-identical output to one played without.
-    const withTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', seq: 2 });
-    const withoutTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', seq: 3 });
-    expect(formatRecapLine(withTarget, 0, NAMES)).toBe('Bob played 9♥ as a one-off.');
-    expect(formatRecapLine(withTarget, 0, NAMES)).toBe(formatRecapLine(withoutTarget, 0, NAMES));
+  it('R20.2 (amended 2026-09-27): OneOff with a target — appends a target clause naming no owner', () => {
+    // engine/moves.go's Describe for MoveOneOff — `"play %s as one-off"` —
+    // is identical whether or not `Move.Target` was set. `entry.targetCard`
+    // (§2.7, amended 2026-09-27) now supplies the §4.6 "+ target clause
+    // when Target is set". Wording assumption (docs/assumptions.md): the clause names
+    // only the targeted card, never whose it is — true regardless of
+    // ownership, since a rank-2 can target either side.
+    const withTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: { Rank: 10, Suit: 1 } });
+    const withoutTarget = move({ by: 1, kind: 4, description: 'play 9♥ as one-off', targetCard: null });
+    expect(formatRecapLine(withTarget, 0, NAMES)).toBe('Bob played 9♥ as a one-off, targeting 10♦.');
+    expect(formatRecapLine(withoutTarget, 0, NAMES)).toBe('Bob played 9♥ as a one-off.');
+    expect(formatRecapLine(withTarget, 0, NAMES)).not.toBe(formatRecapLine(withoutTarget, 0, NAMES));
   });
 
   it('R20.2: Counter — "NAME countered with CARD."', () => {
@@ -151,10 +160,16 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob revealed the top of the deck and played 5♥ for points.');
   });
 
-  it('R20.2: SevenPick wrapping a PlayPermanent Jack — "revealed the top of the deck and stole your point card with CARD."', () => {
-    const entry = move({ by: 1, kind: 7, subKind: 2, description: '7: play J♣ (steal opponent point)' });
+  it('R20.2: SevenPick wrapping a PlayPermanent Jack — "revealed the top of the deck and stole your CARD with CARD."', () => {
+    const entry = move({
+      by: 1,
+      kind: 7,
+      subKind: 2,
+      description: '7: play J♣ (steal opponent point)',
+      targetCard: { Rank: 10, Suit: 2 },
+    });
     expect(formatRecapLine(entry, 0, NAMES)).toBe(
-      'Bob revealed the top of the deck and stole your point card with J♣.',
+      'Bob revealed the top of the deck and stole your 10♥ with J♣.',
     );
   });
 
@@ -164,8 +179,21 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: SevenPick wrapping a OneOff — "revealed the top of the deck and played CARD as a one-off."', () => {
-    const entry = move({ by: 1, kind: 7, subKind: 4, description: '7: play 9♥ as one-off' });
+    const entry = move({ by: 1, kind: 7, subKind: 4, description: '7: play 9♥ as one-off', targetCard: null });
     expect(formatRecapLine(entry, 0, NAMES)).toBe('Bob revealed the top of the deck and played 9♥ as a one-off.');
+  });
+
+  it('R20.2 (amended 2026-09-27): SevenPick wrapping a targeted OneOff — appends the target clause', () => {
+    const entry = move({
+      by: 1,
+      kind: 7,
+      subKind: 4,
+      description: '7: play 9♥ as one-off',
+      targetCard: { Rank: 10, Suit: 1 },
+    });
+    expect(formatRecapLine(entry, 0, NAMES)).toBe(
+      'Bob revealed the top of the deck and played 9♥ as a one-off, targeting 10♦.',
+    );
   });
 
   it('R20.2: SevenPick whitelists subKind — fails loudly on a subKind that can never be a Seven sub-move', () => {
@@ -205,8 +233,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     // or echoes the index values themselves — only whether the second one
     // is literally -1. The fixed word "1" (the count) is expected — same
     // as "2" in the two-card case above — but DiscardA's actual value
-    // (which is always 0 for this shape per apply.go:510, but is varied
-    // here anyway) must never surface.
+    // (always 0 for this shape per apply.go:510) must never surface.
     const entry = move({ by: 1, kind: 8, description: 'discard hand[0] and hand[-1]' });
     const line = formatRecapLine(entry, 0, NAMES);
     expect(line).toBe('Bob discarded 1 card.');
@@ -223,7 +250,7 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
 
 describe('formatRecapLine — SPEC §4.6, viewer-is-the-actor (own moves)', () => {
   // No table row covers this (SPEC §4.6 is written entirely from "viewer is
-  // the opponent of the actor"). Assumption (report §5): second-person
+  // the opponent of the actor"). Assumption (docs/assumptions.md): second-person
   // "You ..." phrasing, symmetric with the opponent-viewpoint table.
 
   it('SPEC §4.6 (assumption): Draw, own move — "You drew a card."', () => {
@@ -232,8 +259,8 @@ describe('formatRecapLine — SPEC §4.6, viewer-is-the-actor (own moves)', () =
   });
 
   it('SPEC §4.6 (assumption): PlayPermanent Jack, own move — names the opponent, not "your"', () => {
-    const entry = move({ by: 0, kind: 2, description: 'play J♣ (steal opponent point)' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe("You stole Bob's point card with J♣.");
+    const entry = move({ by: 0, kind: 2, description: 'play J♣ (steal opponent point)', targetCard: { Rank: 10, Suit: 2 } });
+    expect(formatRecapLine(entry, 0, NAMES)).toBe("You stole Bob's 10♥ with J♣.");
   });
 
   it('SPEC §4.6 (assumption): Scuttle, own move — names the opponent, not "your"', () => {

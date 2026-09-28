@@ -163,6 +163,7 @@ func (b *Bridge) Apply(arg any) string {
 		index := int(f)
 		move := moves[index]
 		description := move.Describe(pre)
+		targetCard := targetCardFor(pre, move)
 		post, err := engine.Apply(pre, move)
 		if err != nil {
 			if errors.Is(err, engine.ErrIllegalMove) {
@@ -178,6 +179,7 @@ func (b *Bridge) Apply(arg any) string {
 			Kind:        move.Kind,
 			SubKind:     subKindOf(move),
 			Card:        cardOrNil(move.Card),
+			TargetCard:  targetCard,
 			Description: description,
 			Seq:         len(b.game.history) + 1,
 		})
@@ -457,6 +459,43 @@ func validateHistory(history []AppliedMove) error {
 		if h.Card != nil {
 			if err := validCards(fmt.Sprintf("history[%d].card", i), []card.Card{*h.Card}); err != nil {
 				return err
+			}
+		}
+		// TargetCard's key-presence is enforced by AppliedMove.UnmarshalJSON
+		// (envelope.go); here only its shape, when non-nil, is checked —
+		// same as Card above.
+		if h.TargetCard != nil {
+			if err := validCards(fmt.Sprintf("history[%d].targetCard", i), []card.Card{*h.TargetCard}); err != nil {
+				return err
+			}
+		}
+		// Cheap kind/targetCard consistency (shape only — not a pre-state
+		// board replay, which would need the engine state this snapshot is
+		// restoring, not yet held). targetCard may be non-null only for the
+		// four kinds targetCardFor ever sets it for, and MUST be non-null
+		// for Scuttle and for a Jack steal (§2.7: "Always a card on the
+		// board" — never null for those two shapes). OneOff and SevenPick
+		// legitimately go either way (untargeted ranks, and a dead-end
+		// SevenPick, are null).
+		switch h.Kind {
+		case engine.MoveScuttle:
+			if h.TargetCard == nil {
+				return fmt.Errorf("history[%d].targetCard must be set for a Scuttle", i)
+			}
+		case engine.MovePlayPermanent:
+			isJackSteal := h.Card != nil && h.Card.Rank == card.Jack
+			if isJackSteal && h.TargetCard == nil {
+				return fmt.Errorf("history[%d].targetCard must be set for a Jack steal", i)
+			}
+			if !isJackSteal && h.TargetCard != nil {
+				return fmt.Errorf("history[%d].targetCard must be null for a non-Jack PlayPermanent", i)
+			}
+		case engine.MoveOneOff, engine.MoveSevenPick:
+			// Either null (untargeted rank, or a dead-end SevenPick) or
+			// non-null (a targeted rank, or a targeted SubMove) is valid.
+		default:
+			if h.TargetCard != nil {
+				return fmt.Errorf("history[%d].targetCard must be null for kind %d", i, h.Kind)
 			}
 		}
 	}

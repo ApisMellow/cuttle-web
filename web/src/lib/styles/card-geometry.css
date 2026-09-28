@@ -1,0 +1,21 @@
+/*
+ * SPEC §5.6 rule 2 — card geometry is fixed by the APP, not by a theme.
+ * These tokens are the single source of the 2.5:3.5 aspect ratio and the
+ * three size widths. Card CONTAINERS (HandCard today; PointRow,
+ * PermanentRow, OpponentHand and the pile/scrap views later) import this
+ * file and size their own box with it. Theme components never read these
+ * tokens: a theme's Face/Back fills 100% x 100% of whatever box it is given,
+ * so swapping themes (or falling back to `vector` for one card) cannot
+ * reflow the board.
+ *
+ * `--cuttle-card-width-hand` clears the SPEC §5.9 44px tap-target floor on
+ * both axes (56px wide -> 78.4px tall at 2.5:3.5). The pixel values are an
+ * assumption; the SPEC fixes the ratio and the three sizes, not the numbers.
+ */
+:root {
+  --cuttle-card-aspect: 2.5 / 3.5;
+
+  --cuttle-card-width-hand: 56px;
+  --cuttle-card-width-field: 72px;
+  --cuttle-card-width-mini: 32px;
+}
