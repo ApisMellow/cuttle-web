@@ -22,8 +22,11 @@ export default tseslint.config(
     },
   },
   {
-    // Rune modules (*.svelte.ts) go through the Svelte parser too; they need
-    // the TS sub-parser or type-only syntax fails to parse.
+    // eslint-plugin-svelte's recommended config parses `.svelte.js`/`.svelte.ts`
+    // rune modules (SPEC §5.1, §5.3) with `svelte-eslint-parser` but does not
+    // itself delegate the embedded script to a TS-aware parser, so any
+    // TypeScript-only syntax (`import type`, generics) fails with a bare
+    // "Unexpected token" parse error. Same fix as the `.svelte` block above.
     files: ['**/*.svelte', '**/*.svelte.ts'],
     languageOptions: {
       parserOptions: {
