@@ -3,13 +3,16 @@
 // Turns one `AppliedMove` (SPEC §2.7) into a single per-viewer, redaction-
 // safe sentence. `entry.description` — the pre-state `Move.Describe`
 // string, frozen at apply time (§2.7's note on `lastMove.description`) —
-// is the ONLY source of card identities. `entry.card` and `entry.index`
-// are never read: `index` is redacted for everyone but the mover (§3.2)
-// and reading it here would be exactly the kind of "history for card
-// identities beyond what the recap formatter allows" that §3.3 rule 5
-// forbids; `entry.card` is skipped too, so the formatter's only channel
-// for an identity is the one SPEC §4.6 names, with no fallback that could
-// silently diverge from it.
+// is the source of the PLAYED card's identity for every kind.
+// `entry.targetCard` (§2.7, amended 2026-09-27) supplies the TARGETED
+// card's identity for the two kinds Describe is silent on: a Jack steal's
+// stolen point card, and a targeted one-off's target clause. `entry.card`
+// and `entry.index` are never read: `index` is redacted for everyone but
+// the mover (§3.2) and reading it here would be exactly the kind of
+// "history for card identities beyond what the recap formatter allows"
+// that §3.3 rule 5 forbids; `entry.card` is skipped too, so the played
+// card's identity always comes from `entry.description`, with no fallback
+// that could silently diverge from it.
 //
 // The phrasing parsed below is pinned to the exact strings the published
 // engine emits: github.com/ApisMellow/cuttle@v0.2.0
@@ -18,13 +21,28 @@
 // A description that doesn't match the expected shape fails loudly
 // (`fail`, below) rather than being guessed at — if the engine's Describe
 // format ever drifts, this must break the build, not silently mis-render
-// or leak something SPEC §3 says it shouldn't.
-//
-// Two SPEC §4.6 table rows cannot be produced from `entry.description`
-// alone; see the PlayPermanent-Jack and OneOff branches for where and why
-// (also reported to the dispatcher separately).
+// or leak something SPEC §3 says it shouldn't. The same applies to a Jack
+// steal missing `targetCard`: SPEC §2.7 guarantees it is always set for
+// that shape, so a null there fails loudly too rather than silently
+// degrading to a vaguer line. A one-off's `targetCard` is NOT checked the
+// same way: the formatter has no way to distinguish a targeted one-off
+// (ranks 2, 9) from an untargeted one (Ace, 3, 4, 5, 6, 7) — `entry.kind`
+// is the same `OneOff` either way and `entry.description` doesn't carry
+// the rank distinction — so a null `targetCard` on a `OneOff` is read as
+// "this one had no target" and the base line is returned unchanged, with
+// no rank-2/rank-9 knowledge encoded here (docs/assumptions.md).
 
-import type { AppliedMove, PlayerId } from './bridge/schema';
+import type { AppliedMove, Card, PlayerId } from './bridge/schema';
+
+// A card token exactly as `card.Card.String()` renders it (card/card.go:14-
+// 47), used to render `entry.targetCard` into the same glyph form the
+// engine's own Describe strings use.
+const RANK_GLYPHS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const SUIT_GLYPHS = ['♣', '♦', '♥', '♠'];
+
+function cardGlyph(cd: Card): string {
+  return `${RANK_GLYPHS[cd.Rank - 1]}${SUIT_GLYPHS[cd.Suit]}`;
+}
 
 // MoveKind values, private and non-exported, pinned to SPEC §2.5.
 const KIND = {
@@ -94,14 +112,17 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       return `played ${m[1]} for points`;
     }
     case KIND.PlayPermanent: {
-      // SPEC problem (report): Describe's Jack-steal branch —
-      // `"play %s (steal opponent point)"` — never embeds the stolen
-      // card's identity, unlike Scuttle's. The §4.6 table's literal
-      // "stole your 10♥ with J♣" cannot be produced from `description`
-      // alone. We name only the Jack and generalize the stolen card to
-      // "point card" rather than inventing or guessing an identity.
+      // Jack steal: Describe's branch — `"play %s (steal opponent point)"`
+      // — never embeds the stolen card's identity, unlike Scuttle's.
+      // `entry.targetCard` (§2.7, amended 2026-09-27) supplies it: the
+      // JackTarget read from the pre-state, always the stolen point card.
       const jack = text.match(new RegExp(`^play (${CARD}) \\(steal opponent point\\)$`));
-      if (jack) return `stole ${ctx.targetPossessive} point card with ${jack[1]}`;
+      if (jack) {
+        if (entry.targetCard === null) {
+          fail(entry, 'a Jack steal must always carry a non-null targetCard (SPEC §2.7)');
+        }
+        return `stole ${ctx.targetPossessive} ${cardGlyph(entry.targetCard)} with ${jack[1]}`;
+      }
       const plain = text.match(new RegExp(`^play (${CARD}) as permanent$`));
       if (!plain) fail(entry, 'PlayPermanent description did not match the engine format');
       return `played ${plain[1]} as a permanent`;
@@ -119,15 +140,19 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       return `scuttled with ${untargeted[1]}`;
     }
     case KIND.OneOff: {
-      // SPEC problem (report): Describe's one-off branch —
-      // `"play %s as one-off"` — is identical whether or not `Move.Target`
-      // was set, and `AppliedMove` carries no `Target` field at all. The
-      // §4.6 table's "+ target clause when Target is set" cannot be
-      // implemented from `description` — there is no signal to key off —
-      // so no target clause is ever added.
+      // Describe's one-off branch — `"play %s as one-off"` — is identical
+      // whether or not `Move.Target` was set. `entry.targetCard` (§2.7,
+      // amended 2026-09-27) supplies the §4.6 "+ target clause when Target
+      // is set". Wording assumption (docs/assumptions.md): `targetCard` carries no
+      // owner (a rank-2 can target either side; a rank-9 always targets the
+      // opponent, but the wording below doesn't lean on that), so the
+      // clause names only the targeted card, never whose it is — true
+      // regardless of ownership.
       const m = text.match(new RegExp(`^play (${CARD}) as one-off$`));
       if (!m) fail(entry, 'OneOff description did not match the engine format');
-      return `played ${m[1]} as a one-off`;
+      const base = `played ${m[1]} as a one-off`;
+      if (entry.targetCard === null) return base;
+      return `${base}, targeting ${cardGlyph(entry.targetCard)}`;
     }
     case KIND.Counter: {
       const m = text.match(new RegExp(`^counter with (${CARD})$`));
@@ -158,10 +183,7 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
         // The scrapped card is public (it lands in scrap, R6); the OTHER
         // revealed card returns face-down to the deck top
         // (engine/apply.go:419-437) and is never named — it isn't even
-        // reachable from this entry. Wording note (David, 2026-09-27): this
-        // dead-end line also said "two cards" and is updated alongside the
-        // played branch below; it can be inaccurate when the deck holds
-        // only 1 card — a SPEC wording question, not this formatter's call.
+        // reachable from this entry.
         return `revealed the top of the deck and scrapped ${deadEnd[1]} (no legal play)`;
       }
       if (subKind === null) fail(entry, 'a non-dead-end SevenPick must have a non-null subKind');
@@ -215,7 +237,7 @@ export function isRecapVisible(entry: AppliedMove): boolean {
  * Throws if `entry` is a `Decline` — callers must check `isRecapVisible`
  * first; see its doc comment for why a Decline can never be rendered.
  *
- * Assumption (report §5): §4.6's table is written entirely for "viewer is
+ * Assumption (docs/assumptions.md): §4.6's table is written entirely for "viewer is
  * the opponent of the actor." For the viewer's own moves — not covered by
  * the table — this uses second-person "You ..." phrasing, symmetric with
  * the table's third-person form.

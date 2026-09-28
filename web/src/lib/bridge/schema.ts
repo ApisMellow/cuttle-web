@@ -100,6 +100,13 @@ export interface AppliedMove {
   /** SubMove.Kind for MoveSevenPick; null otherwise, and null for a
    * dead-end SevenPick. Always present as a key. (amended 2026-09-26) */
   subKind: MoveKind | null;
+  /** The card the move targeted, read from the PRE-state: Scuttle's
+   * Target, a Jack's JackTarget, a targeted OneOff's Target (2-as-scrap,
+   * 9), and the same for a SevenPick's SubMove. null for every untargeted
+   * move, including a dead-end SevenPick. Always a card that was on the
+   * board, so public to both viewers. Always present as a key — never
+   * omitted, even when null. (amended 2026-09-27) */
+  targetCard: Card | null;
 }
 
 export interface Envelope {
@@ -360,6 +367,12 @@ function validateAppliedMove(value: unknown, path: string): AppliedMove {
         fail(`${path}.subKind`, 'must be present (a MoveKind or null) — it is never omitted (SPEC §2.7, amended 2026-09-26)');
       }
       return obj.subKind === null ? null : (expectNumber(obj.subKind, `${path}.subKind`) as MoveKind);
+    })(),
+    targetCard: (() => {
+      if (!Object.prototype.hasOwnProperty.call(obj, 'targetCard')) {
+        fail(`${path}.targetCard`, 'must be present (a Card or null) — it is never omitted (SPEC §2.7, amended 2026-09-27)');
+      }
+      return validateCardOrNull(obj.targetCard, `${path}.targetCard`);
     })(),
   };
   if (Object.prototype.hasOwnProperty.call(obj, 'index')) {

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/ApisMellow/cuttle/card"
@@ -36,14 +38,52 @@ type MoveView struct {
 //
 // SubKind is the SubMove's kind (MoveSevenPick only), or null (§4.3's
 // needsSyntheticAck reads it).
+//
+// TargetCard is the card the move targeted, read from the PRE-state
+// (§2.7, amended 2026-09-27): Scuttle's Target, a Jack's JackTarget, a
+// targeted OneOff's Target (2-as-scrap, 9), and the same for a SevenPick's
+// SubMove, recursively. Nil for every untargeted move, including a
+// dead-end SevenPick. Always a card that was on the board, so public to
+// both viewers — never redacted, unlike Index. The key is always emitted
+// (never omitted), which UnmarshalJSON below enforces on the restore path.
 type AppliedMove struct {
 	Index       *int             `json:"index,omitempty"`
 	By          engine.PlayerID  `json:"by"`
 	Kind        engine.MoveKind  `json:"kind"`
 	SubKind     *engine.MoveKind `json:"subKind"`
 	Card        *card.Card       `json:"card"`
+	TargetCard  *card.Card       `json:"targetCard"`
 	Description string           `json:"description"`
 	Seq         int              `json:"seq"`
+}
+
+// UnmarshalJSON enforces that "targetCard" is always present as a JSON key
+// — a Card object or null, never an omitted key. A restored snapshot that
+// lacks the key (stale format, hand-edited, or truncated) is rejected
+// rather than silently treated as an untargeted move, which would let a
+// tampered or pre-this-change snapshot masquerade as a well-formed one
+// (§2.7's "always emit the key" contract, enforced on the way back in).
+// The default `*card.Card` unmarshal already rejects a wrong-typed value
+// (e.g. a string) as a type error; only "missing entirely" needs the extra
+// probe below, since a missing key and an explicit `null` both decode to a
+// nil pointer otherwise and must not be conflated.
+func (m *AppliedMove) UnmarshalJSON(data []byte) error {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return err
+	}
+	if _, ok := probe["targetCard"]; !ok {
+		return errors.New(`missing required key "targetCard"`)
+	}
+	type alias AppliedMove
+	var a alias
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&a); err != nil {
+		return err
+	}
+	*m = AppliedMove(a)
+	return nil
 }
 
 // redactHistory copies history for one viewer, dropping Index from every
