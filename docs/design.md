@@ -1,6 +1,6 @@
 # Cuttle Web: design system
 
-> **Status: provisional (2026-09-27).** Three calls await the product owner's confirmation: a single dark table, the field card width going from 72 to 60 px, and recap cards shown as theme `mini` faces. The recap and staging sentence text is runtime output from `lib/recap.ts` or engine `descriptions[i]`, and it may carry suit glyphs. §5.6 rule 1 governs glyphs written into component source. That is the orchestrator's provisional ruling on the question marked open below. Build to these tokens; any change will be a token edit. The judge-scored visual items (R5.1, R19.4) wait for confirmation.
+> **Status: binding (2026-09-28).** The three calls that were provisional as of 2026-09-27 are now confirmed by the product owner (David, 2026-09-28): a single dark table (§2), the field card width at 60 px (§5), and recap cards shown as theme `mini` faces (§8). The recap and staging sentence text is runtime output from `lib/recap.ts` or engine `descriptions[i]`, and it may carry suit glyphs. §5.6 rule 1 governs glyphs written into component source. Build to these tokens; any change will be a token edit. David will give placement feedback after he has played a build, so expect layout adjustments then. The judge-scored visual items (R5.1, R19.4) can now proceed against a confirmed board.
 
 Binding for every presentational component from round 3 on. Tokens live in `web/src/lib/styles/tokens.css` (imported once by `App.svelte`); card geometry stays in `web/src/lib/styles/card-geometry.css`. Section numbers in the form §x.y refer to `docs/SPEC.md`.
 
@@ -10,7 +10,7 @@ Binding for every presentational component from round 3 on. Tokens live in `web/
 
 ## 2. Single theme, dark table
 
-There is no light mode and no `prefers-color-scheme` branch. Reasons:
+**Confirmed 2026-09-28 (David).** There is no light mode and no `prefers-color-scheme` branch. Reasons:
 
 - The table is a place, like felt. Card faces are light in either case, so a light table would only lower card-edge contrast.
 - The phone is passed across a table, often in dim rooms; a dark field reduces glare at the moment of handoff.
@@ -65,9 +65,9 @@ Space: 4, 8, 12, 16, 24, 32, 48 (`--cu-space-1..7`). Board gutter 12 (`--cu-gutt
 
 Radius has three levels, by hierarchy: cards `6%`, zone wells `10px`, controls are pills, bottom sheets `18px` on the top corners only.
 
-**Proposed geometry change** (in `tokens.css`, to be moved into `card-geometry.css` on acceptance):
+**Geometry, confirmed 2026-09-28 (David):** field cards are 60 px wide on phone, 52 px compact. Currently in `tokens.css`; move into `card-geometry.css` now that it's accepted.
 
-| Token | Current | Proposed phone | Compact (≤780 tall or <375 wide) | Tablet (≥600 wide and ≥900 tall) |
+| Token | Prior | Confirmed phone | Compact (≤780 tall or <375 wide) | Tablet (≥600 wide and ≥900 tall) |
 |---|---|---|---|---|
 | `--cuttle-card-width-hand` | 56 | 56 | 56 | 64 |
 | `--cuttle-card-width-field` | 72 | **60** | **52** | 72 |
@@ -98,7 +98,7 @@ Safe-area insets (`env(safe-area-inset-top/bottom)`) are padding outside the col
 
 **Opponent hand.** Mini backs overlapped at a 14 px offset, count as a numeral beside them ("5 cards"). Under glasses-8 (R7) the backs become mini faces, same slot, same offsets.
 
-**Field rows.** A `--cu-ink-raised` well with `--cu-radius-well`. Cards left-aligned with 6 px gaps; five fit at 390. Beyond that they cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. Jacks fan 12 px above the point card they sit on, with a small ownership mark when the controller differs from the owner (§5.2).
+**Field rows.** A `--cu-ink-raised` well with `--cu-radius-well`. Cards left-aligned with 6 px gaps; five fit at 390. Beyond that they cascade; the visible slice of any card that is a legal target never drops below 44 px, and if a row still overflows, the row (not the page) scrolls horizontally. A tally chip at the row's right end shows the row's point sum (points rows only). An empty row shows its name ("Points", "Permanents") in `--cu-muted`. **Jack stacking, confirmed 2026-09-28 (David):** Jacks stolen onto a point card are laid on top of it, each shifted slightly down, so the stolen card's top strip stays visible above the Jacks — that strip is where the card's identity lives (§7). A small ownership mark shows when the controller differs from the owner. This supersedes the earlier fan-above treatment (§5.2).
 
 **Center strip.** Three slots: Deck (hand-size box, count numeral centred beneath), the One-off target (flex, middle), Scrap (hand-size box, top card face up, count beneath). When idle, the middle slot shows the last move as one line of `--cu-text-sm` muted text (R20). When a card that can be played as a one-off is selected, the middle slot becomes the One-off drop zone.
 
@@ -126,6 +126,8 @@ Drop zones (Points row, Permanents row, One-off slot) use the same `highlighted`
 
 Because the ring sits outside the card box and the container clips, containers reserve `--cu-ring-width + --cu-ring-gap` of padding around a card that can be highlighted, or draw the ring on a wrapper. The face never grows.
 
+**Identity lives in the top strip, confirmed 2026-09-28 (David).** A Jack stacked on a stolen point card covers all but that card's top edge (§6), so every card face renders its identity — rank and suit — along the top strip rather than centred or on the lower body. This is a face-layout rule, binding on both the vector theme and any future theme, including the PRD §10 amendment A-3 mythic theme.
+
 ## 8. Curtain screens
 
 All curtain screens are full-viewport `--cu-curtain` with a static chromatophore dot field (two layered `radial-gradient`s, fixed size, no animation). The board is unmounted behind them (§4.5).
@@ -140,7 +142,7 @@ All curtain screens are full-viewport `--cu-curtain` with a static chromatophore
 
 **Reveal.** Same screen, armed. During a hold the ring's stroke fills in `--cu-iris` over `--cu-dur-hold`; release before 600 ms resets it with no animation. On the two-step path, "I'm NAME" becomes "Show my hand" in the same place, with an iris ring on the pill. Both controls are always in the DOM.
 
-**Recap.** Post-reveal, so it may carry game state. Background switches to `--cu-ink`: this is the first screen that belongs to the viewer. Heading "While you were away" (`--cu-text-xl`), then up to 6 lines oldest first, each a `mini` CardFace (when a card is named) plus the sentence from `lib/recap.ts` at `--cu-text-md`. "+N earlier" is a text button above the list. The dismiss pill "See the board" sits in the two-step pill's position, so the thumb doesn't travel between screens. The ack and counter prompts reuse this frame; "Let it resolve" occupies the same slot on both the real and synthetic paths (§6.3).
+**Recap.** Post-reveal, so it may carry game state. Background switches to `--cu-ink`: this is the first screen that belongs to the viewer. Heading "While you were away" (`--cu-text-xl`), then up to 6 lines oldest first, each a `mini` CardFace (when a card is named; confirmed 2026-09-28, David) plus the sentence from `lib/recap.ts` at `--cu-text-md`. "+N earlier" is a text button above the list. The dismiss pill "See the board" sits in the two-step pill's position, so the thumb doesn't travel between screens. The ack and counter prompts reuse this frame; "Let it resolve" occupies the same slot on both the real and synthetic paths (§6.3).
 
 ## 9. Motion
 
@@ -190,6 +192,5 @@ The vector theme reads colour and index tokens but never the `--cuttle-card-*` g
 ## 12. Not decided here
 
 - Bitmap art, the table skin (`CardTheme.Table`), the card-back illustration, the court-card treatment and any mascot: R21–R23. Nothing above depends on them; an art theme must honour §7's state recipes over its own pixels.
-- Whether recap and staging-bar text show cards as `mini` faces or as text glyphs (round-2 carry-over; §5.6 rule 1 tension).
 - App icon and splash.
 - Result-screen celebration beyond a static layout.
