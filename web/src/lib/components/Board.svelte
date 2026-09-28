@@ -13,6 +13,7 @@
   // `lastMoveText` string. There is no code path here that can reach a card
   // identity this view does not already contain.
   import type { PlayerId, PlayerView } from '../bridge/schema';
+  import { parseTargetKey, type TargetKey } from '../targetKey';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
   import CenterZone from './CenterZone.svelte';
@@ -30,7 +31,8 @@
     inert: boolean;
     /** Whether Draw is legal now (the integrator reads the move list). Drives the deck's disabled styling only. */
     deckEnabled: boolean;
-    ontap: (key: string) => void;
+    /** Every tap, as the shared `TargetKey` (P2 W13). */
+    ontap: (key: TargetKey) => void;
     /** The caller-formatted last-move line (e.g. via `lib/recap.ts`); the centre strip's middle slot renders it (design §6). */
     lastMoveText?: string;
     theme?: CardTheme;
@@ -55,8 +57,14 @@
   // The single place `inert` is honoured (Board brief: "inert makes every
   // tap a no-op"). Every descendant receives THIS function as its ontap, so
   // none of them needs to know about `inert` at all.
+  //
+  // P2 W13: children report plain strings; this is also the one place they
+  // are narrowed to the shared `TargetKey` vocabulary. A string outside it
+  // is dropped rather than forwarded.
   function tap(key: string): void {
-    if (!inert) ontap(key);
+    if (inert) return;
+    const parsed = parseTargetKey(key);
+    if (parsed !== null) ontap(parsed);
   }
 </script>
 

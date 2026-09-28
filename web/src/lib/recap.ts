@@ -305,3 +305,27 @@ export function recapCards(entry: AppliedMove): Card[] {
   }
   return named.filter((cd): cd is Card => cd !== null).map((cd) => ({ Rank: cd.Rank, Suit: cd.Suit }));
 }
+
+/**
+ * P2 W13, SPEC §4.3 Presentation table — the entries the CounterPrompt
+ * shows: the counterable one-off that opened the chain (a `OneOff`, or a
+ * `SevenPick` whose `subKind` is `OneOff`), then every `Counter` played on
+ * it, oldest first. `[]` when the history does not end in such a chain.
+ *
+ * ONE derivation for both paths. The real window could read
+ * `pending.card`/`pending.counterChain` instead, but the synthetic ack has
+ * no pending (the engine already resolved the one-off), so SPEC §4.3 takes
+ * its card and chain "from `lastMove`" and "from `history`". Reading history
+ * for both means the two prompts cannot render differently, which is the
+ * R14 property. Every entry returned is one a §4.6 recap line already names
+ * (played face-up, public), and the kind check reads no identity.
+ */
+export function counterPromptEntries(history: readonly AppliedMove[]): AppliedMove[] {
+  let i = history.length - 1;
+  while (i >= 0 && history[i].kind === KIND.Counter) i--;
+  if (i < 0) return [];
+  const origin = history[i];
+  const counterable =
+    origin.kind === KIND.OneOff || (origin.kind === KIND.SevenPick && origin.subKind === KIND.OneOff);
+  return counterable ? history.slice(i) : [];
+}

@@ -11,6 +11,7 @@
 
 import type { Card, Move, Phase, Target } from './bridge/schema';
 import { MoveKind, Phase as Ph, TargetZone } from './enums';
+import type { TargetKey } from './targetKey';
 
 const MOVE_DRAW = MoveKind.Draw;
 const MOVE_PLAY_POINT = MoveKind.PlayPoint;
@@ -219,8 +220,8 @@ export function deriveDiscardPicker(phase: Phase, legalMoves: Move[]): DiscardPi
 // Additive only: nothing above this line changes behaviour.
 // ---------------------------------------------------------------------------
 
-function ownerZoneKey(t: Target): string {
-  return t.Zone === TargetZone.Points ? `point:${t.Owner}:${t.Index}` : `perm:${t.Owner}:${t.Index}`;
+function ownerZoneKey(t: Target): TargetKey {
+  return t.Zone === TargetZone.Points ? (`point:${t.Owner}:${t.Index}` as const) : (`perm:${t.Owner}:${t.Index}` as const);
 }
 
 /**
@@ -245,7 +246,7 @@ function ownerZoneKey(t: Target): string {
  *   has no sub-move to recurse into and scraps the revealed card instead —
  *   `'scrap'`, the only kind that produces that key.
  */
-export function boardTargetKey(m: Move): string | null {
+export function boardTargetKey(m: Move): TargetKey | null {
   switch (m.Kind) {
     case MOVE_PASS:
     case MOVE_DECLINE:
