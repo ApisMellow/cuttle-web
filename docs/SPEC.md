@@ -736,7 +736,7 @@ The curtain must reveal nothing and must not be dismissible by an accidental bru
 
 **What it is.** On the incoming player's post-reveal screen, before they act: the moves applied since that player's last look, oldest first, as short lines. Skipped entirely when there are none.
 
-**How "last look" is tracked.** The game store holds `lastSeenSeq: Record<PlayerId, number>`, updated to `envelope.seq` at the moment a player's live view is rendered (not at reveal — at the transition into `kind: 'none'`). The recap is `history.filter(h => h.seq > lastSeenSeq[viewer])`. This survives reload because `lastSeenSeq` is in the R4 snapshot.
+**How "last look" is tracked.** The game store holds `lastSeenSeq: Record<PlayerId, number>`, updated to `envelope.seq` at the moment a player's live view is rendered (not at reveal — at the transition into `kind: 'none'`). The recap is `history.filter(h => h.seq > lastSeenSeq[viewer])`. This survives reload because `lastSeenSeq` is in the R4 snapshot. **The mover's own moves are seen:** a successful `apply` also stamps `lastSeenSeq[mover]` to the post-apply `envelope.seq`, so a player's recap shows only what happened while they were away, never their own previous move. *(amended 2026-09-27, David delegated the call to the orchestrator)*
 
 **Per-viewer formatting — the recap must not be raw `Describe` output.** `Move.Describe` (`engine/moves.go:36-70`) is written for a terminal REPL and is neither redaction-aware nor player-aware. Two problems:
 
