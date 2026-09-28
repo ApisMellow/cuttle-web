@@ -34,3 +34,8 @@ playwright-report/
 test-results/
 coverage/
 *.tsbuildinfo
+web/.vitest/
+
+# Workflow plans stay local
+docs/plans/
+docs/superpowers/
