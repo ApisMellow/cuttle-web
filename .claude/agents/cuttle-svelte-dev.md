@@ -21,6 +21,13 @@ path. The brief wins on scope, `AGENTS.md` wins on method, and
 `docs/SPEC.md` binds both. A conflict with SPEC is reported, never resolved
 by you.
 
+Your brief names a tier per `docs/loop-workflow.md` §4.5 (family-beta
+testing policy). Strict-tier work (game rules, move wiring, hidden-
+information privacy, save/resume) is test-first with red evidence, on
+Opus both sides. Light-tier work (pure look and layout) gets one
+render/smoke test per component plus a screenshot or browser fit check,
+on Sonnet, reviewed only for real defects — no mutation hunting.
+
 ## The worktree rule
 
 Your brief names an absolute worktree path. Every Read/Edit/Write path and

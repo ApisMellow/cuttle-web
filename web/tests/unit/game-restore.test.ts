@@ -85,7 +85,7 @@ describe('carry-over 3: restore pushes the snapshot\'s dealer and names back int
   it('applies names and dealer from a valid snapshot onto the injected session', async () => {
     const storage = fakeStorage();
     const session = new SessionStore();
-    storage.setItem(SNAPSHOT_KEY, encodeSnapshot(baseSnapshot({ names: ['Carol', 'Dave'], dealer: 1 })));
+    storage.setItem(SNAPSHOT_KEY, encodeSnapshot(baseSnapshot({ names: ['Blake', 'Alice'], dealer: 1 })));
     const engine = createFakeEngine({
       restore: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
     });
@@ -93,7 +93,7 @@ describe('carry-over 3: restore pushes the snapshot\'s dealer and names back int
 
     await store.restore();
 
-    expect(session.names).toEqual(['Carol', 'Dave']);
+    expect(session.names).toEqual(['Blake', 'Alice']);
     expect(session.lastDealer).toBe(1);
   });
 });

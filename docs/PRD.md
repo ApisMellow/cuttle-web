@@ -168,3 +168,15 @@ Rank and suit fade into the background of the art; the card reads by its evocati
 **One layout rule binds both themes:** a Jack stacked on a stolen point card covers all but that card's top strip, so a card's identity (rank and suit) has to live in that strip regardless of theme — see `docs/design.md` §6–§7.
 
 Delivered under **R21–R23** (amendment A-1) as a theme layer on top of the vector baseline. No R1–R20 acceptance criterion depends on it, and this amendment adds no new R numbers.
+
+### A-4 — Family beta (2026-09-28, David)
+
+Target: a playable browser build for a first family beta in about 2 days.
+
+- **Pass-and-play on one shared phone** — the v1 design already in §6, unchanged.
+- **Plain vector cards.** The Mythic theme (A-3) is included only if its style lock is approved in time; the vector baseline (§4, R19) remains the fallback either way.
+- **Hosting is a static host**, since v1 has no server for the beta build. David decided on **GitHub Pages**, with both repos made public on 2026-09-28 (Pages on a private repo needs a paid plan). This amends §8's "deploys as one Fly.io binary" for the beta specifically — A5/A6 stand as the eventual v1 architecture.
+- **Two-phone online play stays the v2 design in §7**, unbuilt for the beta. A DigitalOcean VM is the likely host for that later, superseding A6's Fly.io pick as the v2-era assumption.
+- **The testing policy in `docs/loop-workflow.md` §4.5** (strict tier for game rules/privacy/save-resume, light tier for look-and-layout) applies to all beta work.
+
+This amendment adds no new R numbers; it sets the beta's scope and hosting path without changing R1–R23's acceptance criteria.

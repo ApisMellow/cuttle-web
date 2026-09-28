@@ -62,7 +62,7 @@ Review: an Opus code reviewer on every submission. No playtest judge this round,
   - **Mutations:** all 3 required mutations are caught, and the object-graph probe with the new stamp is clean.
   - **R14 A/B probe:** the acting player sees identical screens and an identical recap on the real-Decline path and the synthetic-ack path. The stamp is symmetric.
   - **Persisted `lastSeenSeq`:** it differs only because the real path has an extra Decline entry. That difference already exists in `history`/`seq`, and it's out of the threat model (OQ-9).
-  - **Integration plan:** Ghost commits W5 on its branch, then brings `loop/integration` into it. The same developer adds `targetCard: null` to the `appliedMove()` factory (W6 made the field required) and fixes the stale `advanceCurtain` doc comment. Gate, then merge.
+  - **Integration plan:** The git agent commits W5 on its branch, then brings `loop/integration` into it. The same developer adds `targetCard: null` to the `appliedMove()` factory (W6 made the field required) and fixes the stale `advanceCurtain` doc comment. Gate, then merge.
 - **W5 — revise, cycle 2** (Opus re-review).
   - **Code correct on every probe:** the object-graph walk over Draw, the 7 round trip, the odd-chain cancel and restores into all 7 curtain kinds is clean. `refresh()` can't expose a non-holder. `recapFor(other)` ruled acceptable. `curtain.to === viewer` never rejects a store-written snapshot.
   - **Blocking (test only):** the index strip in `#enterWithheldCurtain` has no test; it's reachable only on the synthetic-ack handback. Also required: a failed-fetch-then-retry test (the pending-context mutation survived).

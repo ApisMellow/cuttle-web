@@ -55,7 +55,7 @@ describe('session store (SPEC §5.3, §8 OQ-12)', () => {
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
     const store = new SessionStore();
-    store.setNames('Carol', 'Dave');
+    store.setNames('Blake', 'Alice');
     store.recordDealer(0);
     store.recordSeed('7');
     store.recordResult(0);
