@@ -20,9 +20,9 @@ function block(pattern: RegExp): string {
 }
 
 describe('card geometry tokens (docs/design.md §5)', () => {
-  it('phone defaults: hand 56, field 60, mini 32, aspect unchanged', () => {
+  it('phone defaults: hand 56, field 60, mini 32, aspect ~1.3 (W17, round-4)', () => {
     const root = block(/:root\s*\{([^}]*)\}/);
-    expect(root).toMatch(/--cuttle-card-aspect:\s*2\.5\s*\/\s*3\.5\s*;/);
+    expect(root).toMatch(/--cuttle-card-aspect:\s*1\s*\/\s*1\.3\s*;/);
     expect(root).toMatch(/--cuttle-card-width-hand:\s*56px\s*;/);
     expect(root).toMatch(/--cuttle-card-width-field:\s*60px\s*;/);
     expect(root).toMatch(/--cuttle-card-width-mini:\s*32px\s*;/);

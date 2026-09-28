@@ -210,7 +210,8 @@ describe('rule 2 sizing detector self-check', () => {
 describe('rule 2: the app sizes the card box, the theme never does (SPEC §5.6)', () => {
   it('the geometry tokens live in the app-owned stylesheet outside lib/theme/', () => {
     const css = readFileSync(GEOMETRY_CSS, 'utf8');
-    expect(css).toMatch(/--cuttle-card-aspect:\s*2\.5\s*\/\s*3\.5\s*;/);
+    // W17 (round-4): the aspect ratio moved from 2.5/3.5 to ~1.3.
+    expect(css).toMatch(/--cuttle-card-aspect:\s*1\s*\/\s*1\.3\s*;/);
     for (const size of SIZES) {
       expect(css).toMatch(new RegExp(`--cuttle-card-width-${size}:\\s*[^;]+;`));
     }

@@ -84,8 +84,11 @@
           {#if entry.JackStack.length > 0}
             <span class="point-row__jacks" data-jack-count={entry.JackStack.length}>
               {#each entry.JackStack as jackCard, jackIndex (jackIndex)}
+                <!-- W17 (round-4, product owner direction 2026-09-28): a Jack
+                     is the same size as the card it sits on — `size="field"`,
+                     matching the point card's own Face, not `mini`. -->
                 <span class="point-row__jack" style={`--jack-i: ${jackIndex}`}
-                  ><theme.Face card={jackCard} size="mini" /></span
+                  ><theme.Face card={jackCard} size="field" /></span
                 >
               {/each}
             </span>
@@ -197,28 +200,49 @@
     inset: 0;
     z-index: 1;
     display: block;
+    /* W17: the per-Jack downward increment shrinks as the stack grows, so
+       three or four Jacks still cascade inside the row's fixed height
+       budget (--cu-zone-points, 96/84) instead of stacking so far down that
+       only the row's `overflow-y: hidden` is left to save the layout. It
+       never needs to drop below the corner index height — `--jack-strip`
+       (below) is the floor for every Jack's position, not something this
+       shrinks. */
+    --jack-strip: 40px;
+    --jack-shift: 18px;
   }
 
-  /* Jack stacking ruling (docs/design.md §6/§7, confirmed 2026-09-28): each
-     Jack sits ON the point card, shifted down from the one before it, so
-     the card's top strip (its rank/suit, drawn by the theme — see
-     VectorCardFace's `data-size='field'` rules) stays visible above the
-     stack. `--jack-strip` clears the theme's field identity block with
-     margin; `--jack-shift` is the small per-Jack drop. Later Jacks paint
-     over earlier ones by DOM order alone (no z-index needed): the newest
-     Jack is last in `JackStack`, so it renders last and sits on top. */
+  .point-row__jacks[data-jack-count='3'] {
+    --jack-shift: 12px;
+  }
+
+  .point-row__jacks[data-jack-count='4'] {
+    --jack-shift: 8px;
+  }
+
+  /* Jack stacking ruling, W17 revision (round-4, product owner direction
+     2026-09-28 — supersedes the W14 centred-top-strip / narrowed-mini
+     treatment): a Jack is the SAME SIZE as the card it sits on (100% x 100%
+     of the slot — no narrowing to `mini`), offset DOWNWARD ONLY (`left: 0`,
+     no `transform`, no sideways shift) from the one before it, so the
+     card's upper-left corner index (drawn by the theme — see
+     VectorCardFace's base rule) stays visible above the stack. `--jack-strip`
+     is the floor: it clears the theme's corner index block with margin, and
+     is never shrunk by the count-based `--jack-shift` rules above. Later
+     Jacks paint over earlier ones by DOM order alone (no z-index needed):
+     the newest Jack is last in `JackStack`, so it renders last and sits on
+     top. Jacks may extend past the slot's own bottom edge — the row
+     (`.point-row__cards`)'s fixed height and `overflow-y: hidden` are what
+     actually cap the row at its budget (criterion 6), not this offset. */
   .point-row__jack {
     position: absolute;
-    top: calc(var(--jack-strip, 40px) + var(--jack-i, 0) * var(--jack-shift, 6px));
-    left: 50%;
+    top: calc(var(--jack-strip, 40px) + var(--jack-i, 0) * var(--jack-shift, 18px));
+    left: 0;
     display: block;
-    flex: none;
-    width: var(--cuttle-card-width-mini);
-    aspect-ratio: var(--cuttle-card-aspect);
+    width: 100%;
+    height: 100%;
     overflow: hidden;
     border-radius: 6%;
     box-shadow: 0 1px 2px rgb(0 0 0 / 45%);
-    transform: translateX(-50%);
   }
 
   /* Owner badge (SPEC §5.2, design §6 "a small ownership mark"): an ink
