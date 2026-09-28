@@ -386,6 +386,12 @@ export interface AppliedMove {
   seq: number;                      // 1-based, monotonic for the game
   subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
                                      // Public to both viewers. (amended 2026-09-26)
+  targetCard: Card | null;          // the card the move targeted, read from the PRE-state: Scuttle's
+                                     // Target, a Jack's JackTarget, a targeted OneOff's Target (2-as-scrap,
+                                     // 9), and the same for a SevenPick's SubMove. null for every untargeted
+                                     // move. Always a card on the board, so public to both viewers.
+                                     // Needed by the §4.6 recap, because Describe omits the target for Jack
+                                     // steals and one-offs. (amended 2026-09-27, David)
 }
 
 export interface Envelope {
@@ -718,7 +724,7 @@ Note the double flip at `apply.go:395-399`: `Active` is set to `Pending.PlayedBy
 
 The curtain must reveal nothing and must not be dismissible by an accidental brush.
 
-- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", the reason (`Your turn` / `You may counter` / `Choose discards` / `Acknowledge`), and the reveal control. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
+- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", a label, and the reveal control. The label is **"Your turn"** for `turn` and `seven-return`, and the single neutral **"Your response"** for `counter`, `acknowledge` and `discard` *(amended 2026-09-27, David)*. The handoff is on screen while the *acting* player still holds the phone, so distinct labels ("You may counter" vs "Acknowledge" vs "Choose discards") would tell them whether the opponent held a 2 — the exact R14 leak §4.3 forbids. The machine's internal `HandoffReason` may still distinguish the three; it must not reach the DOM before the reveal gate in any form (text, attribute, class, `data-testid`, or layout). What the receiver needs to do is shown only after the reveal. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
 - **Reveal gate.** Two-step by default, matching R13's "tap and hold (or tap through a two-step reveal)":
   - **Primary — press-and-hold**, 600 ms, with a progress ring. `pointerdown` starts, `pointerup`/`pointercancel`/`pointerleave` abort and reset.
   - **Fallback — two-step tap** ("I'm `NAME`" → "Show my hand"), used when `prefers-reduced-motion: reduce` is set, when the pointer is coarse-less (desktop, R19's "functioning afterthought"), and as the accessible path. Both are always present in the DOM; the hold path is progressive enhancement.
@@ -737,7 +743,7 @@ The curtain must reveal nothing and must not be dismissible by an accidental bru
 - `MoveDiscardPair` yields `"discard hand[0] and hand[3]"` — hand indices, meaningless to a human and useless to an opponent.
 - Every string is second-person-less and unattributed: `"draw a card"` with no subject.
 
-The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string,string])` and emits a sentence. `entry.description` (the pre-state `Describe`, frozen at apply time per §2.7) is the source for card identities; the formatter supplies the subject and handles the redaction-sensitive kinds:
+The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string,string])` and emits a sentence. `entry.description` (the pre-state `Describe`, frozen at apply time per §2.7) is the source for card identities, and `entry.targetCard` (§2.7, amended 2026-09-27) supplies the targeted card for the Jack-steal and one-off target clauses, which `Describe` omits; the formatter supplies the subject and handles the redaction-sensitive kinds:
 
 | Kind | Recap line (viewer is the opponent of the actor) |
 |---|---|
@@ -748,8 +754,8 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `Scuttle` | "`NAME` scuttled your 7♥ with 9♠." (target card comes from the frozen pre-state description) |
 | `OneOff` | "`NAME` played 9♥ as a one-off." (+ target clause when `Target` is set) |
 | `Counter` | "`NAME` countered with 2♠." |
-| `Decline` | "`NAME` let it resolve." |
-| `SevenPick` | "`NAME` revealed two cards and played 5♥ for points." — **the unchosen card is never named** (R16) |
+| `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, David)*. A synthetic ack (§4.3) writes no history, so a "`NAME` let it resolve." line would appear only when the opponent really held a 2, and would even change whether a recap screen appears at all. |
+| `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, David: was "revealed two cards", which is false when the deck held one card.)* |
 | `DiscardPair` | "`NAME` discarded 2 cards." — **never the indices, never the identities**; the cards are in the scrap pile, which the viewer can browse (R6) |
 | `Pass` | "`NAME` passed." |
 
@@ -1020,7 +1026,11 @@ function slotKey(m: Move): string {
         ? `hand:${m.HandIndex}|oneoff:${m.Target.Owner}:${m.Target.Zone}:${m.Target.Index}`
         : `hand:${m.HandIndex}|zone:oneoff`;      // 3's ScrapIndex handled in pick mode
     case MoveKind.SevenPick:
-      return `seven:${cardKey(m.Card!)}|${slotKey(m.SubMove!)}`;   // single-level
+      // single-level. A dead-end SevenPick (no revealed card has a legal play) carries
+      // SubMove: null and scraps the chosen revealed card. (amended 2026-09-27)
+      return m.SubMove
+        ? `seven:${cardKey(m.Card!)}|${slotKey(m.SubMove)}`
+        : `seven:${cardKey(m.Card!)}|scrap`;
   }
 }
 ```
