@@ -321,6 +321,33 @@ describe('isAmbiguousSlot', () => {
     expect(isAmbiguousSlot(grouped[key], moves)).toBe(false);
   });
 
+  it('R11 (round 2 repair, task 4): a SevenPick group with the same outer card AND the same inner card but a duplicate ScrapIndex stays ambiguous, not collapsed', () => {
+    // Real-shape fixture: both candidates reveal the same 3 and both wrap an
+    // inner OneOff for that same revealed card (as legalForCard produces),
+    // but the engine never actually emits two SevenPicks with an identical
+    // ScrapIndex for the same revealed card — si ranges over distinct scrap
+    // positions (engine/apply.go:98-111). This guards the structural check
+    // itself: it must not collapse on card-identity alone and must still
+    // notice when the ScrapIndex sets aren't actually distinct.
+    const revealedThree = { Rank: 3, Suit: 1 } as const;
+    const moves = [
+      move({
+        Kind: 7,
+        Card: revealedThree,
+        SubMove: move({ Kind: 4, HandIndex: 0, Card: revealedThree, Target: null, ScrapIndex: 0 }),
+      }),
+      move({
+        Kind: 7,
+        Card: revealedThree,
+        SubMove: move({ Kind: 4, HandIndex: 0, Card: revealedThree, Target: null, ScrapIndex: 0 }), // duplicate, not distinct
+      }),
+    ];
+    const grouped = groupAffordances(moves);
+    const key = 'seven:3:1|hand:0|zone:oneoff';
+    expect(grouped).toEqual({ [key]: [0, 1] });
+    expect(isAmbiguousSlot(grouped[key], moves)).toBe(true);
+  });
+
   it('R11 (B2 guard): a SevenPick group is still ambiguous when the SubMoves do not collapse on their own', () => {
     // `slotKey` never encodes a targetless OneOff's `Card` (only its
     // HandIndex and target-null-ness), so two SubMoves that differ ONLY in
@@ -432,11 +459,14 @@ describe('deriveDiscardPicker', () => {
 // apply.go:621-623 promises (PhaseNormal, not PhaseAwaitingDiscard).
 //
 // The PRIMARY path replays a single pinned seed deterministically to the
-// exact ply where this is already known to happen (seed 2, ply 23). The
-// bounded multi-seed search below it is kept ONLY as a loud-failing
-// fallback: if a future engine bump ever moves the pinned position, the
-// fallback either finds a new one (and says so) or the test fails loudly —
-// it never silently stops covering this half of R15.2.
+// exact ply where this is already known to happen (seed 2, ply 23). If a
+// future engine bump ever moves the pinned position: under `CI` (set by
+// scripts/ci.sh, round 2 W7 F1/F2) the test fails immediately with a
+// message telling the developer to re-pin — a drifted pin must never pass
+// silently in the gate. Outside CI, a bounded multi-seed search below runs
+// instead: it is loud-failing only in the sense that it either finds a new
+// position (and says so via console.warn) or throws — it never silently
+// stops covering this half of R15.2 during local development.
 //
 // This does NOT prove the UI's DiscardPicker component behavior (that is
 // Svelte, out of this round's scope) — it proves the engine-side half of
@@ -549,10 +579,23 @@ describe('R15.2 (engine half): 4-vs-empty-hand auto-resume against the real WASM
       let result = walkToJackpot(PINNED_SEED, PINNED_PLY + 1);
 
       if (result === null || result.ply !== PINNED_PLY) {
-        // The pin drifted (engine bump, heuristic edit, …). Don't treat
-        // that as "this half is now unproven" — widen the search so a real
-        // regression (auto-resume disappearing) still fails loud instead
-        // of being masked by "well, the pin just moved."
+        // The pin drifted (engine bump, heuristic edit, …).
+        if (process.env.CI) {
+          // In the gate (scripts/ci.sh exports CI=1, round 2 W7 F1/F2), a
+          // drifted pin must not pass silently — even a successful fallback
+          // search would hide the fact that the pin is now stale. Fail
+          // loudly and tell the developer exactly what to do.
+          throw new Error(
+            `R15.2 pinned replay drifted under CI: seed ${PINNED_SEED}@ply${PINNED_PLY} ` +
+              `${result === null ? 'found nothing' : `now reaches ply ${result.ply} instead`}. ` +
+              `Re-pin PINNED_SEED/PINNED_PLY in this test to the new position and verify locally ` +
+              '(run without CI set to see the fallback search locate a candidate).',
+          );
+        }
+        // Outside CI: don't treat this as "this half is now unproven" —
+        // widen the search so a real regression (auto-resume disappearing)
+        // still fails loud instead of being masked by "well, the pin just
+        // moved."
         const SEEDS = 500;
         const MAX_PLIES = 400;
         let fallback: JackpotResult | null = null;
@@ -566,7 +609,7 @@ describe('R15.2 (engine half): 4-vs-empty-hand auto-resume against the real WASM
               'reached one. This half of R15.2 is unproven.',
           );
         }
-        console.log(
+        console.warn(
           `[R15.2 engine search] pinned seed ${PINNED_SEED}@ply${PINNED_PLY} drifted; fallback found seed=${fallback.seed} ply=${fallback.ply}`,
         );
         result = fallback;
