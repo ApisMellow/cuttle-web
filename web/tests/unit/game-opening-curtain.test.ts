@@ -20,7 +20,7 @@ function openingGame(first: PlayerId) {
   const storage = fakeStorage();
   const session = new SessionStore();
   const handState = (p: PlayerId) =>
-    playerView({ active: first, viewer: p, you: { hand: [FIRST_SECRET], frozenHandIndices: [], points: [], permanents: [] } });
+    playerView({ active: first, viewer: p, you: { hand: [FIRST_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } });
   const engine = createFakeEngine({
     newGame: vi.fn(() => envelope({ state: handState(first) })),
     view: vi.fn((p: PlayerId) => envelope({ state: handState(p) })),

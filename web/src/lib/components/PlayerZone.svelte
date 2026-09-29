@@ -23,7 +23,7 @@
     theme: CardTheme;
     /** P2 W15: rendered in the hand's slot instead of the hand (the 7's SevenRevealPanel). */
     handTray?: Snippet;
-    /** W24: the opponent's name while they have glasses in play (Board derives it from public permanents); else null. */
+    /** W24: the opponent's name while they have glasses in play (Board reads the bridge's `you.watched`); else null. */
     watchedBy?: string | null;
   }
 
@@ -40,6 +40,12 @@
     handTray,
     watchedBy = null,
   }: PlayerZoneProps = $props();
+
+  // R10: the marker's text is the hand group's description, so a screen
+  // reader hears it with the hand every time focus enters it. A live region
+  // mounted together with its text (the board remounts after every curtain)
+  // is not reliably announced.
+  const markerId = $props.id();
 </script>
 
 <div class="player-zone" data-testid="player-zone">
@@ -68,13 +74,18 @@
   />
   <!-- W22: the hand's slot, pinned to the bottom of the scrolling board
        (sticky), so a short viewport scrolls the field, never the hand. -->
-  <div class="player-zone__hand">
+  <div
+    class="player-zone__hand"
+    role="group"
+    aria-label="Your hand"
+    aria-describedby={watchedBy !== null ? `${markerId}-watched` : undefined}
+  >
     {#if watchedBy !== null}
       <!-- W24: the being-watched marker. It rides the seam between the
            permanents row and the hand (half in the hand slot's 12px lift
            headroom), so it costs the board no height; painted before the
            hand, so a lifted card passes over it rather than under. -->
-      <span class="watched-marker" role="status">
+      <span class="watched-marker">
         <svg class="watched-marker__icon" viewBox="0 0 24 14" aria-hidden="true">
           <path d="M1 5 H23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
           <circle cx="6.5" cy="7.5" r="5" fill="none" stroke="currentColor" stroke-width="2.2" />
@@ -82,7 +93,7 @@
           <circle cx="8" cy="8.5" r="1.8" fill="currentColor" />
           <circle cx="19" cy="8.5" r="1.8" fill="currentColor" />
         </svg>
-        <span class="watched-marker__label">{watchedBy} can see your hand</span>
+        <span class="watched-marker__label" id={`${markerId}-watched`}>{watchedBy} can see your hand</span>
       </span>
     {/if}
     {#if handTray}

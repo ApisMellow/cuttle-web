@@ -581,6 +581,10 @@ func TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand(t *testing.T) {
 						t.Fatalf("seed %d viewer %d: deck card %s leaked", seed, viewer, hidden)
 					}
 				}
+				// you.watched mirrors the OTHER viewer's glasses gate, in real positions.
+				if env.State.You.Watched != viewerHasGlasses(held.Players[viewer.Other()]) {
+					t.Fatalf("seed %d viewer %d: you.watched=%v disagrees with the opponent's glasses", seed, viewer, env.State.You.Watched)
+				}
 				if viewerHasGlasses(held.Players[viewer]) {
 					continue
 				}

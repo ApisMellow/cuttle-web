@@ -15,7 +15,7 @@ function envelope(overrides: { opponentHand?: Card[] | null } = {}): Envelope {
       passesInARow: 0,
       winner: null,
       stalemate: false,
-      you: { hand: [], frozenHandIndices: [], points: [], permanents: [] },
+      you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false },
       opponent: {
         handCount: 0,
         hand: overrides.opponentHand === undefined ? null : overrides.opponentHand,

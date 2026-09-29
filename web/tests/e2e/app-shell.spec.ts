@@ -92,6 +92,37 @@ test('R4: Resume restores the in-progress game after a reload', async ({ page })
   await expect(page.getByTestId('game-screen')).toContainText('Blake');
 });
 
+test('R10: the app fetches both engine files with the engine content token', async ({ page }) => {
+  const urls: string[] = [];
+  page.on('request', (req) => urls.push(req.url()));
+  await page.goto('/');
+  await expect(page.getByTestId('home-screen')).toBeVisible();
+  const wasm = urls.filter((u) => new URL(u).pathname.endsWith('/cuttle.wasm'));
+  const exec = urls.filter((u) => new URL(u).pathname.endsWith('/wasm_exec.js'));
+  expect(wasm.length).toBeGreaterThan(0);
+  expect(exec.length).toBeGreaterThan(0);
+  for (const u of [...wasm, ...exec]) expect(new URL(u).searchParams.get('v')).toMatch(/^[0-9a-f]{16}$/);
+  expect(new URL(wasm[0]).searchParams.get('v')).toBe(new URL(exec[0]).searchParams.get('v'));
+});
+
+test('R10: the last-used names refill the fields after a reload with no saved game', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('home-screen')).toBeVisible();
+  await page.getByTestId('name-input-0').fill('Alice');
+  await page.getByTestId('name-input-1').fill('Blake');
+  await page.getByTestId('new-game').click();
+  await expect(page.getByTestId('game-screen')).toBeVisible();
+
+  // No saved game: the app has no UI that deletes one, so this is the one
+  // storage step, removing only the game key. The settings key stays.
+  await page.evaluate(() => localStorage.removeItem('cuttle-web:game'));
+  await page.reload();
+  await expect(page.getByTestId('home-screen')).toBeVisible();
+  await expect(page.getByTestId('resume')).toHaveCount(0);
+  await expect(page.getByTestId('name-input-0')).toHaveValue('Alice');
+  await expect(page.getByTestId('name-input-1')).toHaveValue('Blake');
+});
+
 // docs/design.md §10 testable rule 1 / this round's brief "Visual": no
 // horizontal scroll at 393 and 430 wide (iPhone 15 and larger; 360 dropped,
 // PRD §10 A-5), on both screens this item owns.

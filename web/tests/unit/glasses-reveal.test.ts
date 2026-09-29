@@ -16,29 +16,23 @@
 // a hand-applied mutant that dropped the viewerHasGlasses gate in the
 // bridge's view builder (every opponent hand visible), direction 2 with a
 // mutant that always rendered backs in OpponentHand. Both reverted.
+//
+// R10: the DOM leak scan now matches every spelling of a hidden card
+// (glyph label, "rank/suit" id, wire JSON, word forms, and any accessible
+// name), via `expectNoLeak` in glasses-leak-scan.ts.
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Card, PlayerId } from '../../src/lib/bridge/schema';
 import { createWasmEngine } from '../scenario/wasm-engine';
 import { Kind } from './game-test-support';
+import { GLYPHS, RANKS, expectNoLeak, id, label, leakForms } from './glasses-leak-scan';
 
 const { default: GameScreen } = await import('../../src/lib/components/GameScreen.svelte');
 const { game } = await import('../../src/lib/stores/game.svelte');
 const { session } = await import('../../src/lib/stores/session.svelte');
 
 const NAMES: [string, string] = ['Alice', 'Blake'];
-const RANKS = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-const GLYPHS = [0x2663, 0x2666, 0x2665, 0x2660].map((cp) => String.fromCodePoint(cp));
-
-/** "8" + heart glyph, etc. — how the vector face and the engine's descriptions name a card. */
-function label(c: Card): string {
-  return `${RANKS[c.Rank]}${GLYPHS[c.Suit]}`;
-}
-
-function id(c: Card): string {
-  return `${c.Rank}/${c.Suit}`;
-}
 
 let host: HTMLDivElement | undefined;
 let instance: ReturnType<typeof mount> | undefined;
@@ -131,20 +125,18 @@ describe('R7: the glasses-8 reveal, both directions, through the real bridge', (
     expect(shown.length).toBeGreaterThan(0); // the watcher's own hand, at least
     expect(shown.filter((s) => hidden.has(s))).toEqual([]);
 
-    const html = document.body.innerHTML;
-    const text = document.body.textContent ?? '';
-    for (const c of ownerHand) {
-      expect(html).not.toContain(label(c));
-      expect(text).not.toContain(label(c));
-    }
+    expectNoLeak(document.body, ownerHand, 'watcher board');
 
     const hook = window.__cuttleTestHook!;
     expect(hook).toBeDefined();
-    const hookDump = JSON.stringify({ moves: hook.moves(), affordances: hook.affordances() });
-    for (const c of ownerHand) expect(hookDump).not.toContain(label(c));
+    const hookDump = JSON.stringify({ moves: hook.moves(), affordances: hook.affordances() }).toLowerCase();
+    for (const c of ownerHand) for (const form of leakForms(c)) expect(hookDump).not.toContain(form);
 
-    const viewDump = JSON.stringify(game.envelope);
-    for (const c of ownerHand) expect(viewDump).not.toContain(`{"Rank":${c.Rank},"Suit":${c.Suit}}`);
+    const viewDump = JSON.stringify(game.envelope).toLowerCase();
+    for (const c of ownerHand) {
+      expect(viewDump).not.toContain(`{"rank":${c.Rank},"suit":${c.Suit}}`);
+      expect(viewDump).not.toContain(label(c).toLowerCase());
+    }
 
     // Public: the watcher is told they are watched.
     expect(el.querySelector('.watched-marker')?.textContent).toContain(`${NAMES[owner]} can see your hand`);
@@ -173,4 +165,29 @@ describe('R7: the glasses-8 reveal, both directions, through the real bridge', (
     // The owner is not watched (the watcher has no glasses).
     expect(el.querySelector('.watched-marker')).toBeNull();
   }, 30_000);
+});
+
+describe('R10: the widened leak scan catches every spelling of a hidden card', () => {
+  const hidden: Card = { Rank: 8, Suit: 2 };
+  const spellings: Array<[string, string]> = [
+    ['glyph label in text', `<span>${RANKS[8]}${GLYPHS[2]}</span>`],
+    ['rank/suit id in an attribute', '<span data-card="8/2"></span>'],
+    ['wire JSON in an attribute', `<span data-card='{"Rank":8,"Suit":2}'></span>`],
+    ['word form in an aria-label', '<button aria-label="Eight of Hearts"></button>'],
+    ['short word form in an aria-label', '<button aria-label="8 of hearts"></button>'],
+    ['face key in an alt', '<img alt="8-hearts">'],
+  ];
+  for (const [name, markup] of spellings) {
+    it(`fails on the ${name}`, () => {
+      const root = document.createElement('div');
+      root.innerHTML = markup;
+      expect(() => expectNoLeak(root, [hidden], name)).toThrow();
+    });
+  }
+
+  it('passes on a clean board naming other cards', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `<button aria-label="Eight of Clubs">8${GLYPHS[0]}</button><span>Blake can see your hand</span>`;
+    expect(() => expectNoLeak(root, [hidden], 'clean')).not.toThrow();
+  });
 });

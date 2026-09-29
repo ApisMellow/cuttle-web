@@ -84,7 +84,7 @@ function p0View(overrides: Partial<PlayerView> = {}): PlayerView {
     viewer: 0,
     active: 0,
     phase: Phase.Normal,
-    you: { hand: [ACE, NINE, KING], frozenHandIndices: [], points: [point({ Rank: 3, Suit: 0 }, 0)], permanents: [] },
+    you: { hand: [ACE, NINE, KING], frozenHandIndices: [], points: [point({ Rank: 3, Suit: 0 }, 0)], permanents: [], watched: false },
     opponent: { handCount: 4, hand: null, points: [point({ Rank: 7, Suit: 1 }, 1)], permanents: [] },
     ...overrides,
   });
@@ -105,7 +105,7 @@ function p1View(overrides: Partial<PlayerView> = {}): PlayerView {
     viewer: 1,
     active: 1,
     phase: Phase.Normal,
-    you: { hand: [...P1_HAND], frozenHandIndices: [], points: [point({ Rank: 7, Suit: 1 }, 1)], permanents: [] },
+    you: { hand: [...P1_HAND], frozenHandIndices: [], points: [point({ Rank: 7, Suit: 1 }, 1)], permanents: [], watched: false },
     opponent: { handCount: 3, hand: null, points: [point({ Rank: 3, Suit: 0 }, 0)], permanents: [] },
     ...overrides,
   });
@@ -441,7 +441,7 @@ async function toAck(real: boolean): Promise<HTMLDivElement> {
               pending: { playedBy: 0, card: NINE, target: { Owner: 1, Zone: 0, Index: 0 }, counterChain: [] },
             })
           : // synthetic: the 9 already resolved — P1's 7 went back to hand, scores changed
-            p1View({ you: { hand: [...P1_HAND, { Rank: 7, Suit: 1 }], frozenHandIndices: [2], points: [], permanents: [] } }),
+            p1View({ you: { hand: [...P1_HAND, { Rank: 7, Suit: 1 }], frozenHandIndices: [2], points: [], permanents: [], watched: false } }),
         lastMove: oneOff,
         history: [oneOff],
         legalMoves: real

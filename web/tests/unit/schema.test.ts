@@ -17,7 +17,7 @@ function envelope(): Envelope {
       passesInARow: 0,
       winner: null,
       stalemate: false,
-      you: { hand: [], frozenHandIndices: [], points: [], permanents: [] },
+      you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false },
       opponent: { handCount: 0, hand: null, points: [], permanents: [] },
       deckCount: 41,
       scrap: [],
@@ -84,6 +84,21 @@ describe('parseBridgeResult', () => {
     visible.state.opponent.hand = [];
     const parsed = parseBridgeResult(JSON.stringify(visible));
     expect(parsed.ok && parsed.state.opponent.hand).toEqual([]);
+  });
+
+  it('SPEC §3.2 (amended 2026-09-28): you.watched is a required boolean, passed through verbatim', () => {
+    const watched = envelope();
+    watched.state.you.watched = true;
+    const parsed = parseBridgeResult(JSON.stringify(watched));
+    expect(parsed.ok && parsed.state.you.watched).toBe(true);
+
+    const missing = envelope() as unknown as { state: { you: Record<string, unknown> } };
+    delete missing.state.you.watched;
+    expect(() => parseBridgeResult(JSON.stringify(missing))).toThrow(/state.you.watched/);
+
+    const notBool = envelope() as unknown as { state: { you: Record<string, unknown> } };
+    notBool.state.you.watched = 1;
+    expect(() => parseBridgeResult(JSON.stringify(notBool))).toThrow(/state.you.watched/);
   });
 
   it('SPEC §2.7 (amended 2026-09-26): AppliedMove.index is optional — omitted for a non-mover, present for the mover', () => {

@@ -163,6 +163,7 @@ Rules:
 - Until it resolves the UI shows a loading state. On rejection it shows a hard-fail screen with the error — never a blank board.
 - No component calls a `__cuttle*` global directly. All calls go through `lib/bridge/engine.ts` (§5.4).
 - `WebAssembly.instantiateStreaming` requires the correct MIME type. The dev server (Vite) and the production Go server must both set `application/wasm`.
+- **Engine URLs carry a content token** *(added 2026-09-28, R10, deploy safety)*. `wasm_exec.js` and `cuttle.wasm` keep fixed names in publicDir, while the app JS is content-hashed. Both are fetched as `${BASE_URL}<name>?v=<token>` (`engineAssetUrl` in `lib/bridge/wasm.ts`), where the token is the first 16 hex digits of a SHA-256 over `wasm_exec.js` then `cuttle.wasm`, computed when `vite.config.ts` loads and injected as the `__CUTTLE_ENGINE_VERSION__` define (`'dev'` if the files don't exist yet). The wasm must therefore be built before `vite build` or the dev server starts, which `scripts/ci.sh` and the Pages workflow already do. A deploy that changes the engine changes both URLs, so a browser can't pair a cached old engine with new JS (which would fail §5.4 validation on every view, e.g. a new required field such as `you.watched`). The two files share one token because `wasm_exec.js` must match the Go version that built the `.wasm`.
 
 ### 2.4 Function surface
 
@@ -347,6 +348,7 @@ export interface PlayerView {
     frozenHandIndices: number[];    // NORMALIZED from FrozenIDs (§2.8)
     points: PointEntry[];
     permanents: Card[];
+    watched: boolean;               // DERIVED: the opponent has glasses, so their view carries this hand (§3.2; amended 2026-09-28, R10)
   };
   opponent: {
     handCount: number;              // always available (R7)
@@ -536,6 +538,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `you.hand` | `Players[viewer].Hand` | always |
 | `you.frozenHandIndices` | `Players[viewer].FrozenIDs` | always; sorted `number[]` (R8) |
 | `you.points` / `you.permanents` | `Players[viewer]` | always — fields are public (R5) |
+| `you.watched` | derived: `viewerHasGlasses(Players[opp])` | always a boolean. True exactly when the opponent's own view carries this viewer's hand. *(added 2026-09-28, R10)* |
 | `opponent.handCount` | `len(Players[opp].Hand)` | **always** (R7: count always) |
 | `opponent.hand` | `Players[opp].Hand` | **only if `viewerHasGlasses`; otherwise `null`** |
 | `opponent.points` / `.permanents` | `Players[opp]` | always — fields are public (R5) |
@@ -550,7 +553,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 
 **`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra in the view.
 
-**The being-watched marker** *(added 2026-09-28, W24 glasses 8, merged `1fbe15f`)*. While the opponent has glasses, the viewer's own hand carries a marker saying so: a goggles icon and "`NAME` can see your hand", on an ochre-edged pill sitting on the top edge of the hand slot, right-aligned (`role="status"`, no testid, not a tap target). `Board` derives it from `view.opponent.permanents` containing any rank-8 card, which is public board state, so the marker adds no information the view does not already carry, and nothing reads a hand to produce it. **Design decision (ApisMellow, 2026-09-28):** being watched must be obvious. Players find the opponent's goggles annoying, so the marker has to be unmistakable at a glance, not a subtle cue.
+**The being-watched marker** *(added 2026-09-28, W24 glasses 8, merged `1fbe15f`; amended 2026-09-28, R10)*. While the opponent has glasses, the viewer's own hand carries a marker saying so: a goggles icon and "`NAME` can see your hand", on an ochre-edged pill sitting on the top edge of the hand slot, right-aligned (no testid, not a tap target). `Board` renders it from `view.you.watched` and nothing else. The bridge computes that flag in `viewFor` by calling `viewerHasGlasses` on the opponent, the same predicate that gates the opponent's `opponent.hand`, so the marker and the watcher's actual exposure can't disagree, and the UI does not re-derive it from permanents (§3.3 rule 2). It is a per-view derived field: it is not stored in engine state or the save, so the snapshot shape (§5.7) is unchanged. The marker is plain text, not a live region: the hand slot is a `role="group"` labelled "Your hand" whose `aria-describedby` points at the marker's text while the viewer is watched, so a screen reader hears it whenever focus enters the hand. (A `role="status"` region mounted together with its text, as the board is after every curtain, is not reliably announced.) **Design decision (ApisMellow, 2026-09-28):** being watched must be obvious. Players find the opponent's goggles annoying, so the marker has to be unmistakable at a glance, not a subtle cue.
 
 **`opponent.hand` uses `null` vs `[]` meaningfully.** `null` = "you may not see this hand." `[]` = "you can see it and it is empty." This is the one deliberate exception to the normalize-nil-to-empty rule of §2.8(b), and it must be preserved through every layer; collapsing it would make an empty opponent hand indistinguishable from a hidden one and would render a face-up empty hand under glasses as though the glasses had stopped working.
 
@@ -836,7 +839,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 
 - **ResultScreen** shows, under the tally, "Final score: `NAME` N – `NAME` N" (`data-testid="final-scores"`), and a Home button (`result-home`) beside Rematch. `App.svelte` reads the final points verbatim off the viewer-relative `scoreboard` and maps them to seats (§3.3 rule 2); nothing is recomputed. Home calls `game.goHome()` (§5.3). The screen still renders neither hand.
 - **OpponentHand** pluralises its count: "1 card", "5 cards".
-- **HomeScreen** fills the name fields once, at mount: from the saved game's `names` when a snapshot exists (so names survive a reload while a game is saved, §5.7), otherwise from the session's names when someone set them this session. The defaults "Player 1" / "Player 2" leave the field blank so the placeholder shows. After mount the fields belong to the user.
+- **HomeScreen** fills the name fields once, at mount: from the saved game's `names` when a snapshot exists (so names survive a reload while a game is saved, §5.7), otherwise from the session's names when someone set them this session, otherwise from the last-used names in settings *(R10, 2026-09-28)*. The defaults "Player 1" / "Player 2" and blank names leave the field blank so the placeholder shows. After mount the fields belong to the user. New game saves the typed names (trimmed) to settings.
 
 ### 5.3 State design
 
@@ -867,7 +870,7 @@ class GameStore {
 
 *(Amended 2026-09-28, W25 playtest fixes, merged `b8238db`.)* `newGame()` raises the opening curtain (§4.2) with `envelope` and `viewer` both `null`; the first actor's view is fetched only after their reveal. `goHome()` is allowed only at curtain `result`: it drops the envelope, the viewer and the pending curtain context, and returns to the home screen. The finished game is already persisted, so Home can still Resume it to see the result. Any other curtain kind throws.
 - **`session.svelte.ts`** — R3 tally, player names, `lastDealer`, `lastSeed`. **Memory only; never persisted** (PRD §4: "the win tally lives only for the browser session"; R3: "does not survive a page reload").
-- **`settings.svelte.ts`** — card theme (§5.6), reduced motion, hold-vs-two-step reveal preference. Persisted separately from game state.
+- **`settings.svelte.ts`** — card theme (§5.6), reduced motion, hold-vs-two-step reveal preference, and the last-used player names (`lastNames`, R10, 2026-09-28). Persisted separately from game state, under `cuttle-web:settings`.
 
 **One-way data flow.** Components read `$derived` values and call store methods. No component calls the bridge directly, and no component mutates another component's state.
 
@@ -977,7 +980,7 @@ interface Snapshot {
 - **`viewer` is passed to restore, not inferred.** `__cuttleRestore(engineState, viewer)` (§2.4) takes the persisted `viewer` field as its second argument and returns that player's envelope. *(amended 2026-09-26)*
 - **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
 - **The opening curtain is persisted too** *(amended 2026-09-28, W25 playtest fixes, merged `b8238db`; no `v` bump, the shape is unchanged)*. `newGame()` writes the snapshot with `viewer` = the first actor and `curtain` = the opening `handoff`. The decoder normally rejects a curtain other than `none` over an empty `history`; it now allows `handoff` with reason `turn` and `reveal` there, since those are the opening deal's. On restore, a curtain with no move behind it is treated as the opening deal's (§4.2).
-- **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, which are memory-only, so a reload with no saved game shows blank fields.
+- **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, then to the last-used names in settings *(R10, 2026-09-28)*, so a reload with no saved game still shows the last names used. Those live under the settings key, never in this snapshot; the snapshot shape is unchanged.
 - **Version mismatch (`v !== 1`) discards the snapshot** and returns to the home screen with a brief notice. No migration code in v1; a bump means the old game is gone. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
 - **The session tally is not persisted** (R3, PRD §4). It lives in `session.svelte.ts` and dies with the tab. A restored game restores the game only.
 - **The card style is not part of the snapshot** *(2026-09-28, round 8 themes)*. It lives in settings (§5.6 rule 5), so the same game saved under Classic and under Mythic is identical apart from `savedAt`, and a save made under either style resumes the same under the other.

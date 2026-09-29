@@ -1,5 +1,6 @@
 // SPEC §5.6 rule 5, §5.7 — user preferences (card theme id, reduced motion,
-// hold-vs-two-step reveal preference), persisted under their own
+// hold-vs-two-step reveal preference, and the last-used player names so the
+// home screen can pre-fill them after a reload), persisted under their own
 // `localStorage` key, independently of the game snapshot key
 // (`SNAPSHOT_KEY = 'cuttle-web:game'`, §5.7).
 //
@@ -18,6 +19,8 @@ interface StoredSettings {
   themeId: string;
   reducedMotion: boolean;
   revealPreference: RevealPreference;
+  /** R10: the names last typed on the home screen, trimmed and capped at NAME_MAX_LENGTH; '' for a blank field. */
+  lastNames: [string, string] | null;
 }
 
 // SPEC §5.6 rule 4: 'vector' is always available and is the fallback theme.
@@ -27,10 +30,22 @@ const DEFAULTS: StoredSettings = {
   themeId: DEFAULT_THEME_ID,
   reducedMotion: false,
   revealPreference: 'hold',
+  lastNames: null,
 };
 
 function isRevealPreference(value: unknown): value is RevealPreference {
   return value === 'hold' || value === 'two-step';
+}
+
+/** R10: longest remembered name; anything longer is cut (a name field, not a document). */
+export const NAME_MAX_LENGTH = 40;
+
+function cleanName(name: string): string {
+  return name.trim().slice(0, NAME_MAX_LENGTH).trim();
+}
+
+function isNamePair(value: unknown): value is [string, string] {
+  return Array.isArray(value) && value.length === 2 && value.every((v) => typeof v === 'string');
 }
 
 function readStoredSettings(): Partial<StoredSettings> {
@@ -55,6 +70,7 @@ function readStoredSettings(): Partial<StoredSettings> {
   if (typeof obj.themeId === 'string') result.themeId = obj.themeId;
   if (typeof obj.reducedMotion === 'boolean') result.reducedMotion = obj.reducedMotion;
   if (isRevealPreference(obj.revealPreference)) result.revealPreference = obj.revealPreference;
+  if (isNamePair(obj.lastNames)) result.lastNames = [cleanName(obj.lastNames[0]), cleanName(obj.lastNames[1])];
   return result;
 }
 
@@ -73,12 +89,14 @@ export class SettingsStore {
   themeId = $state<string>(this.#initial.themeId ?? DEFAULTS.themeId);
   reducedMotion = $state<boolean>(this.#initial.reducedMotion ?? DEFAULTS.reducedMotion);
   revealPreference = $state<RevealPreference>(this.#initial.revealPreference ?? DEFAULTS.revealPreference);
+  lastNames = $state<[string, string] | null>(this.#initial.lastNames ?? DEFAULTS.lastNames);
 
   #persist(): void {
     writeStoredSettings({
       themeId: this.themeId,
       reducedMotion: this.reducedMotion,
       revealPreference: this.revealPreference,
+      lastNames: this.lastNames,
     });
   }
 
@@ -95,6 +113,12 @@ export class SettingsStore {
 
   setRevealPreference(preference: RevealPreference): void {
     this.revealPreference = preference;
+    this.#persist();
+  }
+
+  /** R10: HomeScreen saves the names it starts a game with, so a reload with no saved game can pre-fill them. */
+  setLastNames(player1: string, player2: string): void {
+    this.lastNames = [cleanName(player1), cleanName(player2)];
     this.#persist();
   }
 }

@@ -38,6 +38,11 @@ type YouView struct {
 	FrozenHandIndices []int            `json:"frozenHandIndices"`
 	Points            []PointEntryView `json:"points"`
 	Permanents        []card.Card      `json:"permanents"`
+	// Watched is true while the OPPONENT has glasses in play, i.e. exactly
+	// when the opponent's own view carries this viewer's hand (SPEC §3.2).
+	// It comes from the same viewerHasGlasses predicate as that gate, so the
+	// UI's being-watched marker never re-derives it from the permanents.
+	Watched bool `json:"watched"`
 }
 
 type OpponentView struct {
@@ -146,6 +151,8 @@ func viewFor(state engine.GameState, viewer engine.PlayerID) PlayerView {
 		FrozenHandIndices: frozenIndices(you.FrozenIDs),
 		Points:            pointEntryViews(you.Points),
 		Permanents:        nonNil(you.Permanents),
+		// The mirror of the opponent.hand gate below, from the opponent's side.
+		Watched: viewerHasGlasses(opponent),
 	}
 	view.Opponent = OpponentView{
 		HandCount:  len(opponent.Hand),

@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 
@@ -18,9 +22,30 @@ import { defineConfig } from 'vitest/config';
 // which stay at the '/' default.
 const base = process.env.CUTTLE_BASE ?? '/';
 
+// R10 (deploy safety, SPEC §2.3): the two runtime-fetched engine files keep
+// fixed names in publicDir, so their URLs carry a content token instead. It
+// is a hash of wasm_exec.js + cuttle.wasm as they are when the config
+// loads (scripts/ci.sh and the Pages workflow build the wasm first), so a
+// new engine gets a new URL and a browser can never pair a cached old
+// engine with new JS. 'dev' when the files don't exist yet.
+function engineVersion(): string {
+  const hash = createHash('sha256');
+  try {
+    for (const name of ['wasm_exec.js', 'cuttle.wasm']) {
+      hash.update(readFileSync(fileURLToPath(new URL(`./static/${name}`, import.meta.url))));
+    }
+  } catch {
+    return 'dev';
+  }
+  return hash.digest('hex').slice(0, 16);
+}
+
 export default defineConfig({
   base,
   plugins: [svelte()],
+  define: {
+    __CUTTLE_ENGINE_VERSION__: JSON.stringify(engineVersion()),
+  },
   publicDir: 'static',
   build: {
     outDir: 'dist',

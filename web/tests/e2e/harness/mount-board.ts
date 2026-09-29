@@ -62,7 +62,7 @@ export function playerView(overrides: Partial<PlayerView> = {}): PlayerView {
     passesInARow: 0,
     winner: null,
     stalemate: false,
-    you: { hand: [], frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 0, hand: null, points: [], permanents: [] },
     deckCount: 30,
     scrap: [],
@@ -104,6 +104,8 @@ export function worstCaseView(): PlayerView {
         pointEntry({ Card: card(8, 2), Owner: 0, Controller: 0, JackStack: [card(11, 2)], JackOwners: [0] }),
       ],
       permanents: [card(13, 3), card(8, 1)],
+      // Wire-true: the opponent's glasses below mean the bridge marks this viewer watched.
+      watched: true,
     },
     opponent: {
       handCount: 5,

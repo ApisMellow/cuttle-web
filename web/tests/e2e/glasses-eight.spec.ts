@@ -23,7 +23,7 @@ for (const { width, height } of [
       H.unmountAll();
       (document.getElementById('app') as HTMLElement).style.display = 'none';
       const view = H.playerView({
-        you: { hand: [H.card(2, 2)], frozenHandIndices: [], points: [], permanents: [H.card(8, 1)] },
+        you: { hand: [H.card(2, 2)], frozenHandIndices: [], points: [], permanents: [H.card(8, 1)], watched: true },
         opponent: { handCount: 3, hand: null, points: [], permanents: [H.card(12, 3), H.card(8, 0)] },
       });
       const taps: string[] = [];

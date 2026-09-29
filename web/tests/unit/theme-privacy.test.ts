@@ -70,7 +70,7 @@ function view(): PlayerView {
     active: 0,
     phase: Phase.Normal,
     scrap: [{ Rank: 6, Suit: 3 }, SCRAP_TOP],
-    you: { hand: HAND, frozenHandIndices: [], points: [point(OWN_POINT, 0)], permanents: [] },
+    you: { hand: HAND, frozenHandIndices: [], points: [point(OWN_POINT, 0)], permanents: [], watched: false },
     opponent: { handCount: 5, hand: null, points: [point(OPP_POINT, 1)], permanents: [] },
   });
 }

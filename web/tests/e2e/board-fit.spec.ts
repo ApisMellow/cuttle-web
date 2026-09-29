@@ -165,6 +165,105 @@ test.describe('B2: Mobile Safari with toolbars (393x660): the board scrolls, the
   });
 });
 
+test.describe('D (R10): a wide permanents row never hides a card, and every permanent is reachable', () => {
+  // Q + K + two sideways glasses (the brief's row), then an extreme row of
+  // six, on both sides, at 393x852 and 430x932. Every card must be fully
+  // inside its row's box horizontally (no sideways-scrolled strip), and
+  // reachable: after scrollIntoView, the point at its centre hits that card
+  // (so neither the sticky hand nor the score bar covers it).
+  for (const viewport of [
+    { width: 393, height: 852 },
+    { width: 430, height: 932 },
+  ]) {
+  for (const { name, perms, oneLine } of [
+    { name: 'Q + K + 8 + 8', perms: [[12, 3], [13, 0], [8, 1], [8, 2]], oneLine: true },
+    { name: 'K K Q Q 8 8', perms: [[13, 0], [13, 1], [12, 2], [12, 3], [8, 0], [8, 3]], oneLine: false },
+  ] as const) {
+    test(`${viewport.width}x${viewport.height} ${name}: every permanent inside its row and reachable on both sides`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto('/');
+      await page.waitForSelector('body');
+      const result = await page.evaluate(
+        async ({ harnessUrl, perms }) => {
+          const H = (await import(harnessUrl)) as Harness;
+          H.unmountAll();
+          (document.getElementById('app') as HTMLElement).style.display = 'none';
+          const cards = perms.map(([r, s]) => H.card(r as 8 | 12 | 13, s as 0 | 1 | 2 | 3));
+          const view = H.playerView({
+            you: { hand: [H.card(2, 2)], frozenHandIndices: [], points: [], permanents: cards, watched: true },
+            opponent: { handCount: 3, hand: null, points: [], permanents: cards },
+          });
+          const { board } = H.mountGameColumn({ view });
+          const out: Array<{
+            side: string;
+            count: number;
+            hidden: string[];
+            unreachable: string[];
+            lines: number;
+            rowScroll: number;
+            rowClient: number;
+          }> = [];
+          for (const [side, sel] of [
+            ['far', '[data-testid="opponent-zone"]'],
+            ['near', '[data-testid="player-zone"]'],
+          ] as const) {
+            const zone = board.querySelector(sel) as HTMLElement;
+            const items = [...zone.querySelectorAll<HTMLElement>('[data-testid^="perm-"]')];
+            const row = items[0].parentElement as HTMLElement;
+            const rr = row.getBoundingClientRect();
+            const hidden = items
+              .filter((el) => {
+                const r = el.getBoundingClientRect();
+                return (
+                  r.left < rr.left - 0.5 ||
+                  r.right > rr.right + 0.5 ||
+                  r.top < rr.top - 0.5 ||
+                  r.bottom > rr.bottom + 0.5 ||
+                  r.left < 0 ||
+                  r.right > window.innerWidth + 0.5
+                );
+                // Inside the row's own box and the viewport's width. Vertical
+                // position on screen is the reachability check's business.
+              })
+              .map((el) => el.getAttribute('data-testid') ?? '?');
+            const lines = new Set(
+              items.map((el) => {
+                const r = el.getBoundingClientRect();
+                return Math.round((r.top + r.bottom) / 2 / 10);
+              }),
+            ).size;
+            const unreachable = items
+              .filter((el) => {
+                el.scrollIntoView({ block: 'center', inline: 'center' });
+                const r = el.getBoundingClientRect();
+                const hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+                return hit === null || !el.contains(hit);
+              })
+              .map((el) => el.getAttribute('data-testid') ?? '?');
+            out.push({ side, count: items.length, hidden, unreachable, lines, rowScroll: row.scrollWidth, rowClient: row.clientWidth });
+          }
+          return {
+            rows: out,
+            pageScrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth,
+          };
+        },
+        { harnessUrl: HARNESS_URL, perms: perms.map((p) => [...p]) },
+      );
+      console.log(`[board-fit permanents ${viewport.width} ${name}]`, JSON.stringify(result));
+      expect(result.pageScrollWidth, 'horizontal page scroll').toBeLessThanOrEqual(result.clientWidth);
+      for (const row of result.rows) {
+        expect(row.count, `${row.side} row count`).toBe(perms.length);
+        expect(row.hidden, `${row.side} row: cards outside the visible row`).toEqual([]);
+        expect(row.unreachable, `${row.side} row: cards not hit after scrollIntoView`).toEqual([]);
+        expect(row.rowScroll, `${row.side} row scrolls sideways`).toBeLessThanOrEqual(row.rowClient + 0.5);
+        if (oneLine) expect(row.lines, `${row.side} row holds one line`).toBe(1);
+      }
+    });
+  }
+  }
+});
+
 test.describe('C: the tally chip does not cover the 5th point card at 393px wide', () => {
   test.use({ viewport: { width: 393, height: 852 } });
 
@@ -187,6 +286,7 @@ test.describe('C: the tally chip does not cover the 5th point card at 393px wide
             pointEntry({ Card: card(6, 0), Owner: 0, Controller: 0 }),
           ],
           permanents: [],
+          watched: false,
         },
         // 2+3+4+5+6 = 20: a realistic two-digit tally, wider than the "0"
         // default — the brief's overlap only shows up once the chip is

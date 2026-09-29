@@ -51,7 +51,7 @@ function view(active: PlayerId, phase: Phase, viewer: PlayerId = active): Player
     passesInARow: 0,
     winner: null,
     stalemate: false,
-    you: { hand: [], frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 0, hand: null, points: [], permanents: [] },
     deckCount: 30,
     scrap: [],
