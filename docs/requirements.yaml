@@ -841,3 +841,20 @@ requirements:
     status: todo
     evidence: ""
     fails: 0
+
+  # ---------------------------------------------------------------------
+  # Note — table mode (GitHub issue #37, SPEC §5.10), 2026-09-29
+  # ---------------------------------------------------------------------
+  # No PRD requirement covers table mode, so no requirement entry is added
+  # here; the feature is tracked by its issue and SPEC §5.10. It changes
+  # orientation only: every privacy acceptance above (R13–R16, R20, the
+  # §3.3 redaction rules) applies unchanged. Evidence (feat/37-table-mode,
+  # pending review): vitest web/tests/unit/table-mode.test.ts (addressee and
+  # rotation for every curtain kind, drag delta, the geometry proof),
+  # settings.test.ts 'issue #37: table mode', home-screen.svelte.test.ts
+  # 'issue #37: the table mode toggle', game-screen-table-mode.svelte.test.ts
+  # (only player 2's screens turn, never in normal mode; the latch; drag in
+  # the turned frame); e2e web/tests/e2e/table-mode.spec.ts at 393×852 touch
+  # (player 2's hand at the physical top, player 1's at the bottom, a drag
+  # by player 2 follows the finger and stages, the curtain still hides the
+  # hand, the setting survives a reload).

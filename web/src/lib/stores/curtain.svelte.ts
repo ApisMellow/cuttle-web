@@ -104,12 +104,16 @@ export function curtainRequired(pre: CurtainView, post: CurtainView): boolean {
  * §4.5 (amended 2026-09-27): the label the handoff screen may display.
  * Every response-type reason shares one neutral label. The raw
  * HandoffReason must not reach the DOM before the reveal gate.
+ *
+ * Table mode (SPEC §5.10): the heading already reads "NAME's turn", so the
+ * turn-like label names the reveal control instead of repeating it. The
+ * response-like and resume labels stay as they are.
  */
-export function handoffLabel(reason: HandoffReason): string {
+export function handoffLabel(reason: HandoffReason, tableMode = false): string {
   switch (reason) {
     case 'turn':
     case 'seven-return':
-      return 'Your turn';
+      return tableMode ? 'Hold to show your hand' : 'Your turn';
     case 'counter':
     case 'discard':
       return 'Your response';

@@ -1122,6 +1122,20 @@ The page asks for a new `sw.js` when it reaches the home screen and when it retu
 - **`prefers-reduced-motion: reduce` disables all of them** and the game remains fully playable: every animation is decorative, and no state transition waits on an animation's completion. Any `await animation` in a state path is a bug.
 - Portrait is the design target. Landscape and desktop must be usable and must not overflow, but are explicitly "a functioning afterthought" (G3).
 
+### 5.10 Table mode (GitHub issue #37)
+
+*(Added 2026-09-29.)* A variant of pass-and-play for a phone lying flat between the two players, one at each end. Player 1 (seat 0) sits at the phone's bottom edge and player 2 (seat 1) at its top edge. The board never appears to flip: player 1's side is always at the physical bottom, player 2's at the physical top.
+
+- **Setting.** A home-screen toggle, "Table mode: phone lies flat between you", stored as `tableMode` in `settings.svelte.ts` under the settings key (never in the game snapshot) and kept across reloads. Off by default: normal pass-and-play is unchanged.
+- **Who a screen faces** (`lib/tableMode.ts` `screenAddressee`). A handoff (every reason, the resume gate included), the reveal gate, the recap and the counter prompt face their curtain's `to`. The live board, and the draw reveal and pickers drawn with or in place of it, face the player whose view is held. The home screen, the result screen and the boot and error screens face player 1.
+- **Rotation.** In table mode every game screen facing player 2 is turned 180° by one CSS `transform: rotate(180deg)` on the `game-screen` root (`data-table-rotated="true"`). Nothing below the root knows about it. The root is exactly the viewport, so the turn maps it onto itself; its fixed-position overlays (curtain, prompt, menu, sheets, popover) sit in the root's box instead of the viewport's, which is the same rectangle, and turn with it. The in-game menu and the Rules sheet opened from it therefore face whoever holds the screen.
+- **Geometry.** Each player's own view draws their side at the bottom of the view. A 180° turn about the centre maps a point at fraction *f* of the height to 1 − *f*, so player 2's side (bottom of their view) lands at the physical top and player 1's side (top of player 2's view) at the physical bottom. Player 1's view is not turned. Checked in `table-mode.test.ts` and by element boxes in e2e `table-mode.spec.ts`.
+- **Safe areas.** The turned root swaps `--cu-safe-top` and `--cu-safe-bottom`, so the Dynamic Island and the home indicator stay clear on the physical edges (§5.9).
+- **Drag and drop (§6.1).** Pointer deltas are in screen space and the dragged card's `translate` is in the turned frame, so both axes are negated (`toViewDelta`). The drop hit test (`document.elementFromPoint`) takes screen coordinates and needs no change.
+- **When a change takes effect.** GameScreen reads the setting only when the curtain, the viewer or the move count changes. A change never turns the screen mid-turn or mid-staged-move; it applies at the next curtain or view change. The turn is instant (no animation), so `prefers-reduced-motion` needs nothing extra.
+- **Handoff copy.** The phone is never passed in table mode, so the handoff heading reads "`NAME`'s turn" instead of "Pass the phone to `NAME`" (§4.5), for every reason and in both the handoff and reveal stages. The sub-label follows `handoffLabel(reason, tableMode)`: `turn` and `seven-return` read "Hold to show your hand" (the reveal control) rather than repeat "Your turn"; `counter` and `discard` keep the single neutral "Your response" (R14); `resume` keeps "Resume game". The heading is the same for every reason, so §4.5's no-reason-in-the-DOM rule is unchanged. Normal pass-and-play copy is unchanged.
+- **Privacy is unchanged.** Table mode changes orientation and handoff wording only. What mounts behind each curtain kind (§3.3, §4), the reveal gate, the key auto-repeat guard and the finger-lift guard are exactly as in normal pass-and-play.
+
 ---
 
 ## 6. Move interaction flow (R9–R12)

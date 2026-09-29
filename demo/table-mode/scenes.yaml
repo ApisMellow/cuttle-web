@@ -1,0 +1,55 @@
+size: 1400x2500
+fps: 30
+engine: piper
+voice: en_US-lessac-medium
+
+scenes:
+  - id: title
+    card: Phone flat on the table. Alice sits at the bottom, Blake at the top.
+    subtitle: Cuttle, issue 37, table mode
+    duration: 4
+
+  - id: before-alice
+    frames: out/frames/before-alice
+    rate: 10
+    narration: First, normal mode. Same build, toggle off. Alice's hand is at the bottom. She plays the two of hearts for points.
+
+  - id: before-blake
+    frames: out/frames/before-blake
+    rate: 10
+    narration: The phone says, pass the phone to Blake. On Blake's turn the board flips, so his hand is at the bottom. The phone has to move.
+
+  - id: after-home
+    frames: out/frames/after-home
+    rate: 10
+    narration: Now table mode. At Home, turn on the toggle. The phone lies flat between you.
+
+  - id: after-alice
+    frames: out/frames/after-alice
+    rate: 10
+    narration: Alice sits at the bottom edge. Her turn is upright, her hand at the bottom. She plays the two of hearts.
+
+  - id: after-handoff
+    frames: out/frames/after-handoff
+    rate: 10
+    narration: Blake sits at the top edge. His handoff is turned around, and reads, Blake's turn. Hold to show your hand.
+
+  - id: after-blake
+    frames: out/frames/after-blake
+    rate: 10
+    narration: Blake's board is turned to face him. His hand is at the physical top of the phone. The board never flipped.
+
+  - id: after-drag
+    frames: out/frames/after-drag
+    rate: 10
+    narration: Blake drags a card to his Points zone. The card follows his finger. He lets go, and the move is staged.
+
+  - id: after-confirm
+    frames: out/frames/after-confirm
+    rate: 10
+    narration: Confirm plays it. Then the screen turns back to Alice, upright at the bottom.
+
+  - id: done
+    frames: out/frames/done
+    rate: 10
+    narration: Nobody moves the phone. Alice at the bottom, Blake at the top.

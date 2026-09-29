@@ -253,3 +253,46 @@ describe('R10: names survive a reload with no saved game', () => {
     expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
 });
+
+describe('issue #37: the table mode toggle', () => {
+  beforeEach(() => {
+    settings.tableMode = false;
+  });
+
+  afterEach(() => {
+    settings.tableMode = false;
+  });
+
+  function toggle(el: HTMLElement): HTMLInputElement {
+    const label = el.querySelector<HTMLElement>('[data-testid="table-mode-toggle"]');
+    if (!label) throw new Error('no table-mode-toggle rendered');
+    const input = label.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (!input) throw new Error('the toggle has no checkbox');
+    return input;
+  }
+
+  it('is on the home screen, labelled for a phone lying flat, and off by default', () => {
+    const el = render();
+    const input = toggle(el);
+    expect(input.checked).toBe(false);
+    expect(el.querySelector('[data-testid="table-mode-toggle"]')?.textContent).toContain('Table mode: phone lies flat between you');
+  });
+
+  it('turning it on saves the setting under the settings key, never in the game snapshot', () => {
+    const el = render();
+    toggle(el).click();
+    flushSync();
+    expect(settings.tableMode).toBe(true);
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!).tableMode).toBe(true);
+    expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    toggle(el).click();
+    flushSync();
+    expect(settings.tableMode).toBe(false);
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!).tableMode).toBe(false);
+  });
+
+  it('shows a saved choice as checked', () => {
+    settings.tableMode = true;
+    expect(toggle(render()).checked).toBe(true);
+  });
+});
