@@ -19,9 +19,9 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R2.3 | Result screen names win vs stalemate | — | — | e2e-test | implemented |
 | R3.1 | Rematch alternates dealer | — | — | e2e-test | implemented |
 | R3.2 | Session win tally displays and increments | — | — | e2e-test | implemented |
-| R3.3 | Tally does not survive reload | `vitest: "the persisted snapshot JSON has no 'tally' key, even with a non-zero tally"` (game.test.ts) | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
+| R3.3 | Tally survives reload for the same players, outside the game snapshot (amended 2026-09-29) | `vitest: "the persisted snapshot JSON has no 'tally' key, even with a non-zero tally"` (game.test.ts)<br>`vitest: session-tally-persist.test.ts`<br>`vitest: resume-gate-dom.svelte.test.ts "the tally survives a reload (R3.3 amended)"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | todo (PARTIAL) |
 | R4.1 | Mid-game reload restores state | — | — | e2e-test | todo |
-| R4.2 | Mid-curtain reload restores curtain, not board | — | — | e2e-test | todo |
+| R4.2 | Mid-curtain reload restores curtain, not board; Resume at a board or counter window raises a gate first (2026-09-29) | `e2e: menu.spec.ts "R4 privacy: after a reload, Resume at the board and at a real counter window shows the gate first…"`<br>`vitest: game-resume-gate.test.ts`, `resume-gate-dom.svelte.test.ts` | e2e + vitest (resume gate done; mid-curtain reload e2e open) | e2e-test | todo |
 | R4.3 | New-game confirm before abandoning | — | — | e2e-test | implemented |
 | R4.4 | Snapshot version mismatch discards cleanly | `vitest: snapshot.test.ts "a snapshot with v !== 1 decodes as version-mismatch, not thrown"`<br>`vitest: game-restore.test.ts "v !== 1 -> home screen with a notice, engine.restore never called, no throw"` | vitest | unit-test | verified |
 | R5.1 | All board zones visible on one portrait screen | — | — | screenshot-judge | todo |

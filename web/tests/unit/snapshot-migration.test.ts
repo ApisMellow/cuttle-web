@@ -22,7 +22,7 @@ import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
-import { Kind, fakeStorage } from './game-test-support';
+import { Kind, fakeStorage, passResumeGate } from './game-test-support';
 
 const FIXTURE = join(__dirname, '..', '..', '..', 'internal', 'wasm', 'testdata', 'snapshot-v1-bce9fb2.json');
 
@@ -139,6 +139,9 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       const { store, storage } = await restoreFrom(raw);
       const before = { error: store.error, curtain: store.curtain, view: store.view, historyLength: store.history.length };
       if (kind === 'result') return { before };
+      // SPEC §5.7 (ruling 2026-09-29): `none` and an `ack` resume behind the
+      // resume gate, which writes nothing; pass it, then play on.
+      if (kind === 'none' || kind.startsWith('ack')) await passResumeGate(store);
       await stepOn(store);
       return { before, after: { error: store.error, curtain: store.curtain, view: store.view }, persisted: persisted(storage) };
     }

@@ -61,7 +61,7 @@ Each requirement below becomes one or more entries in the implementation loop's 
 
 - **R1 — New game.** From the home screen, start a new game: shuffled 52-card deck, dealer alternates between games (first game: random), non-dealer gets 5 cards and goes first, dealer gets 6. Player names entered once per session (default "Player 1"/"Player 2").
 - **R2 — Win and stalemate.** Win detection, threshold display (21, lowered by Kings: 14/10/7/5), and three-consecutive-passes stalemate are all engine-driven. A win/stalemate screen names the result.
-- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Blake 1"). The tally does not survive a page reload.
+- **R3 — Rematch + session tally.** The end screen offers Rematch (dealer alternates) and shows a session win tally (e.g., "Alice 2 – Blake 1"). The tally does not survive a page reload. *(Amended 2026-09-29, playtest: families noticed a reset tally. The tally now survives a reload for the same two names and lasts as long as the browser tab; new names start a fresh tally. SPEC §5.3.)*
 - **R4 — Resume in-progress game.** Reloading the page mid-game restores the current game (state snapshot in `localStorage`). A "New game" action from the menu abandons it after a confirm.
 
 ### 6.2 Board and information display

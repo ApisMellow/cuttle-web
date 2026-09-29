@@ -54,6 +54,10 @@ function hasOwnIndex(m: AppliedMove): boolean {
 // auto-resolves to SevenChoosing with Active back on A, so the client stages
 // a synthetic ack for O (P1) and then hands the phone BACK to A.
 const O_SECRET: Card = { Rank: 13, Suit: 3 }; // only ever in O's own hand
+// SPEC §4.3 (ruling 2026-09-29): a synthetic ack is staged only when the
+// would-be responder holds cards. The mover's apply envelope names that count
+// as `opponent.handCount`; these fixtures model a responder holding one.
+const RESPONDER_HOLDS_A_CARD = { handCount: 1, hand: null, points: [], permanents: [] };
 const A_SECRET: Card = { Rank: 12, Suit: 1 }; // only ever in A's own hand
 function sevenRoundTrip() {
   const { storage, session } = setup();
@@ -64,7 +68,7 @@ function sevenRoundTrip() {
     newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }) }),
     apply: vi.fn(() =>
       envelope({
-        state: playerView({ active: 0, viewer: 0, phase: Phase.SevenChoosing, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
+        state: playerView({ active: 0, viewer: 0, phase: Phase.SevenChoosing, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false }, opponent: RESPONDER_HOLDS_A_CARD }),
         lastMove: sevenMoverEntry,
         history: [sevenMoverEntry],
       }),
@@ -254,7 +258,7 @@ describe('R14 synthetic acknowledgment integration', () => {
       newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
       apply: () =>
         envelope({
-          state: playerView({ active: 1, viewer: 0, phase: Phase.Normal }), // engine auto-resolved; no AwaitingCounter
+          state: playerView({ active: 1, viewer: 0, phase: Phase.Normal, opponent: RESPONDER_HOLDS_A_CARD }), // engine auto-resolved; no AwaitingCounter
           lastMove: oneOffMove,
           history,
         }),
@@ -368,7 +372,7 @@ describe('B1: the acknowledger\'s PlayerView does not survive the handoff back t
     const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 9, Suit: 0 } });
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.AwaitingCounter }) }),
-      apply: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal }), lastMove: counter, history: [oneOff, counter] }),
+      apply: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal, opponent: RESPONDER_HOLDS_A_CARD }), lastMove: counter, history: [oneOff, counter] }),
       view: (p) =>
         envelope({
           state: playerView({ active: 0, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
@@ -844,7 +848,7 @@ function oddChainRun(opts: { failViewOnce?: PlayerId } = {}) {
     apply: vi.fn(() => {
       if (applied === 1) {
         applied = 2; // P0's counter
-        return envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal }), lastMove: full[1], history: redactedFor(0, 2) });
+        return envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal, opponent: RESPONDER_HOLDS_A_CARD }), lastMove: full[1], history: redactedFor(0, 2) });
       }
       applied = 3;
       return envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.Normal }), lastMove: full[2], history: redactedFor(0, 3) });

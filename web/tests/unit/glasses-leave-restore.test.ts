@@ -21,7 +21,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Card, Envelope, PlayerId, PlayerView } from '../../src/lib/bridge/schema';
 import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
-import { Kind } from './game-test-support';
+import { Kind, passResumeGate } from './game-test-support';
 import { expectNoLeak, id } from './glasses-leak-scan';
 
 const { default: GameScreen } = await import('../../src/lib/components/GameScreen.svelte');
@@ -213,6 +213,9 @@ async function reloadFromSave(): Promise<void> {
   game.screen = 'home';
   await game.restore();
   expect(game.screen).toBe('game');
+  // SPEC §5.7 (ruling 2026-09-29): a saved board comes back behind the resume gate.
+  expect(game.envelope).toBeNull();
+  await passResumeGate(game);
   expect(game.curtain.kind).toBe('none');
 }
 

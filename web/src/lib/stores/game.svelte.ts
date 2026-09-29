@@ -16,9 +16,16 @@
 // behind a curtain that history carries no mover-only `index` key (§3.2).
 // `envelope` is repopulated only by a fresh `engine.view(p)` for whoever
 // the curtain machine says is due to look next (`#applyViewerChange`), by
-// the mover's own apply result when no handoff follows, or by restore for
-// the persisted viewer at `none`/`ack`/`result`. There is no public call
-// that names a player to view (§2.4).
+// the mover's own apply result when no handoff follows, by restore for the
+// persisted viewer at `result`, or by the resume gate once its viewer has
+// passed it (`#passResumeGate`). There is no public call that names a
+// player to view (§2.4).
+//
+// Resume gate (SPEC §5.7, ruling 2026-09-29): a restore into a resting
+// curtain (`none`, or an `ack`, real or synthetic) raises
+// `handoff(to: viewer, reason: 'resume')` -> `reveal` first, so whoever taps
+// Resume never sees that player's hand or counter options. The gate is
+// memory only; the save keeps the resting position.
 
 import type { NewGameOpts } from '../bridge/engine';
 import type { AppliedMove, BridgeResult, Envelope, EngineError, PlayerId } from '../bridge/schema';
@@ -105,7 +112,12 @@ export class GameStore {
   #seed: string | null = null;
   #dealer: PlayerId | null = null;
   /** The (pre, move, post) that produced the current non-'none' curtain — needed by `advance()`/`recapFor` while a curtain is up, since `envelope` is null then. Cleared once the curtain settles back to 'none'. */
-  #pendingCtx: { pre: CurtainView; move: AppliedMove | null; post: CurtainView } | null = null;
+  #pendingCtx: { pre: CurtainView; move: AppliedMove | null; post: CurtainView; responderHandEmpty: boolean } | null = null;
+  /**
+   * The resting curtain a resume gate leads to (`none` or an `ack`), while
+   * the gate is up; `null` otherwise. Memory only: never saved (SPEC §5.7).
+   */
+  #resumeTo: ResumeTarget | null = null;
 
   /** The only full `PlayerView` (+ legalMoves/descriptions) in memory. `null` whenever nobody's view is currently safe to show (SPEC §3.3 rule 4). */
   envelope = $state<Envelope | null>(null);
@@ -179,7 +191,8 @@ export class GameStore {
     });
 
     this.error = null;
-    this.#pendingCtx = { pre: firstView, move: null, post: firstView };
+    this.#resumeTo = null;
+    this.#pendingCtx = { pre: firstView, move: null, post: firstView, responderHandEmpty: false };
     this.history = history;
     this.seq = result.seq;
     this.lastSeenSeq = freshLastSeenSeq;
@@ -226,7 +239,10 @@ export class GameStore {
       throw new Error('bridge contract violation: apply() succeeded with lastMove null (SPEC §2.7)');
     }
     const postView: CurtainView = { active: result.state.active, phase: result.state.phase };
-    const curtainState = nextCurtainState(preView, mv, postView);
+    // SPEC §4.3 (ruling 2026-09-29): the envelope is the mover's (§2.4), so
+    // its `opponent` is the would-be responder. A public count, read as is.
+    const responderHandEmpty = result.state.opponent.handCount === 0;
+    const curtainState = nextCurtainState(preView, mv, postView, responderHandEmpty);
 
     // 'result' needs no viewer switch either — post.active is meaningless at
     // game over (§4.1), so the current holder simply keeps their own
@@ -236,7 +252,7 @@ export class GameStore {
     // behind a curtain none of that may be held, so it is stripped from
     // everything this store keeps. Deleting a key computes no rule.
     const nextHistory = settled ? result.history : result.history.map(withoutIndex);
-    const nextPendingCtx = settled ? null : { pre: preView, move: withoutIndex(mv), post: postView };
+    const nextPendingCtx = settled ? null : { pre: preView, move: withoutIndex(mv), post: postView, responderHandEmpty };
     const nextLastSeenSeq: Record<PlayerId, number> = { ...this.lastSeenSeq, [mv.by]: result.seq };
 
     // Carry-over 6: write BEFORE the reactive fields change, so a crash
@@ -292,6 +308,10 @@ export class GameStore {
    * `recap`. (A successful `apply()` separately stamps the mover.)
    */
   async advanceCurtain(): Promise<void> {
+    if (this.#resumeTo !== null) {
+      await this.#passResumeGate(this.#resumeTo);
+      return;
+    }
     const ctx = this.#requireCurtainContext();
     const leavingRecap = this.curtain.kind === 'recap';
     const newState = advanceCurtainState(this.curtain, ctx);
@@ -334,6 +354,7 @@ export class GameStore {
     this.envelope = null;
     this.viewer = null;
     this.#pendingCtx = null;
+    this.#resumeTo = null;
     this.history = [];
     this.seq = 0;
     this.curtain = { kind: 'none' };
@@ -354,11 +375,14 @@ export class GameStore {
    * are pushed back into the session store. Carry-over 7: the persisted
    * `curtain` is re-raised before any view is exposed.
    *
-   * B4: what is exposed depends on the curtain kind. `handoff`/`reveal`/
-   * `recap` withhold the fetched view (the next holder has not passed the
-   * reveal gate). `none`, `ack` and `result` expose the persisted viewer's
-   * envelope: that viewer is already past the gate (a real counter window
-   * must stay usable, R4.2) or the game is over.
+   * B4, amended 2026-09-29 (resume gate, SPEC §5.7): nothing view-bearing
+   * is exposed at any restored curtain but `result`. `handoff`/`reveal`/
+   * `recap` come back as they were (the next holder has not passed the
+   * reveal gate). `none` and `ack` (real or synthetic) come back behind a
+   * resume gate for the persisted viewer, since whoever taps Resume may not
+   * be that player; the view is fetched fresh once the gate is passed, and
+   * the real counter window is then usable as before (R4.2). `result` is
+   * public (no hand renders) and is exposed at once.
    */
   async restore(): Promise<void> {
     const raw = this.#storage?.getItem(SNAPSHOT_KEY) ?? null;
@@ -381,27 +405,29 @@ export class GameStore {
     this.#seed = snap.seed;
     this.#dealer = snap.dealer;
 
-    const curtain = withoutRecapIndices(snap.curtain);
-    const withheld = isWithheldCurtain(curtain);
+    const persisted = withoutRecapIndices(snap.curtain);
+    const resumeTo = isResumeTarget(persisted) ? persisted : null;
+    const exposed = persisted.kind === 'result';
     // Carry-over 7: the curtain goes up first, before any view field is set.
-    this.curtain = curtain;
+    this.curtain = resumeTo === null ? persisted : { kind: 'handoff', to: snap.viewer, reason: 'resume' };
+    this.#resumeTo = resumeTo;
     this.error = null;
-    this.history = withheld ? result.history.map(withoutIndex) : result.history;
+    this.history = exposed ? result.history : result.history.map(withoutIndex);
     this.seq = result.seq;
     this.lastSeenSeq = { 0: snap.lastSeenSeq[0], 1: snap.lastSeenSeq[1] };
     this.notice = null;
     this.screen = 'game';
-    this.envelope = withheld ? null : result;
-    this.viewer = withheld ? null : snap.viewer;
+    this.envelope = exposed ? result : null;
+    this.viewer = exposed ? snap.viewer : null;
 
     const lastMove = result.history.at(-1);
     const restoredView: CurtainView = { active: result.state.active, phase: result.state.phase };
     this.#pendingCtx =
-      curtain.kind === 'none' || curtain.kind === 'result'
+      persisted.kind === 'none' || persisted.kind === 'result'
         ? null
         : lastMove === undefined
           ? // W25: a curtain with no move behind it is the opening deal's.
-            { pre: restoredView, move: null, post: restoredView }
+            { pre: restoredView, move: null, post: restoredView, responderHandEmpty: false }
           : {
             // `pre.active` is exactly `mv.by` (§2.7: "by: pre-state Active");
             // `pre.phase` is never read by `advance()`/`afterRecap()` (only
@@ -410,7 +436,45 @@ export class GameStore {
             pre: { active: lastMove.by, phase: result.state.phase },
             move: withoutIndex(lastMove),
             post: { active: result.state.active, phase: result.state.phase },
+            // SPEC §4.3 (ruling 2026-09-29): the same public count the live
+            // apply read, from the restored viewer's seat. The would-be
+            // responder is `other(mv.by)`; the machine consults the flag only
+            // for a curtain addressed to them, whose own hand this is.
+            responderHandEmpty:
+              snap.viewer === lastMove.by
+                ? result.state.opponent.handCount === 0
+                : result.state.you.hand.length === 0,
           };
+  }
+
+  /**
+   * The resume gate's two steps (SPEC §5.7, ruling 2026-09-29): handoff ->
+   * reveal, then reveal -> the saved resting curtain with a freshly fetched
+   * view. Writes nothing: the save already holds exactly that position. A
+   * failed fetch sets `error` and keeps the gate at reveal, so a retry can
+   * pass it.
+   */
+  async #passResumeGate(target: ResumeTarget): Promise<void> {
+    const gate = this.curtain;
+    if (gate.kind === 'handoff') {
+      this.curtain = { kind: 'reveal', to: gate.to };
+      return;
+    }
+    if (gate.kind !== 'reveal') {
+      throw new Error(`GameStore.advanceCurtain(): the resume gate is at '${gate.kind}' (SPEC §5.7)`);
+    }
+    const result = this.#engine.view(gate.to);
+    if (!result.ok) {
+      this.error = result;
+      return;
+    }
+    this.error = null;
+    this.#resumeTo = null;
+    this.history = result.history;
+    this.seq = result.seq;
+    this.envelope = result;
+    this.viewer = gate.to;
+    this.curtain = target;
   }
 
   /**
@@ -465,7 +529,13 @@ export class GameStore {
     if (pending === null) {
       throw new Error(`GameStore.advanceCurtain(): no pending curtain context to advance from (curtain: ${this.curtain.kind})`);
     }
-    return { pre: pending.pre, move: pending.move, post: pending.post, recapFor: (viewer) => this.recapFor(viewer) };
+    return {
+      pre: pending.pre,
+      move: pending.move,
+      post: pending.post,
+      responderHandEmpty: pending.responderHandEmpty,
+      recapFor: (viewer) => this.recapFor(viewer),
+    };
   }
 
   #writeSnapshot(fields: PersistFields): void {
@@ -507,14 +577,17 @@ export class GameStore {
     this.history = [];
     this.seq = 0;
     this.#pendingCtx = null;
+    this.#resumeTo = null;
   }
 }
 
 type WithheldCurtain = Extract<CurtainState, { kind: 'handoff' | 'reveal' | 'recap' }>;
 
-/** The curtain kinds during which no `PlayerView` may be held (SPEC §3.3 rule 4, §4.5). */
-function isWithheldCurtain(curtain: CurtainState): curtain is WithheldCurtain {
-  return curtain.kind === 'handoff' || curtain.kind === 'reveal' || curtain.kind === 'recap';
+/** The resting curtains a restore puts behind a resume gate (SPEC §5.7, ruling 2026-09-29). */
+type ResumeTarget = Extract<CurtainState, { kind: 'none' | 'ack' }>;
+
+function isResumeTarget(curtain: CurtainState): curtain is ResumeTarget {
+  return curtain.kind === 'none' || curtain.kind === 'ack';
 }
 
 /** The persisted `viewer` for a curtain: its addressee when it has one (N2), else whoever holds the exposed view. */

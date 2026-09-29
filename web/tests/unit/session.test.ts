@@ -49,7 +49,7 @@ describe('session store (SPEC §5.3, §8 OQ-12)', () => {
     expect(store.tally).toEqual({ 0: 2, 1: 1 });
   });
 
-  it('groundwork for R3.3: session module never touches storage (SPEC §5.3 "memory only; never persisted")', () => {
+  it('a store built without storage never touches Storage (the app singleton alone is given sessionStorage, SPEC §5.3 amended 2026-09-29)', () => {
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
