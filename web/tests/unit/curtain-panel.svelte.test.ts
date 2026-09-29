@@ -31,6 +31,7 @@ interface RenderProps {
   revealPreference: 'hold' | 'two-step';
   recapEntries: AppliedMove[];
   viewer: PlayerId | null;
+  tableMode?: boolean;
   onadvance: () => void;
 }
 
@@ -172,6 +173,72 @@ describe('B2: the handoff DOM is invariant across HandoffReason at the Curtain l
     for (const reason of REASONS) {
       expect(render(baseProps({ kind: 'handoff', to: 1, reason })).textContent ?? '').not.toMatch(/\d/);
     }
+  });
+});
+
+describe('table mode handoff copy (SPEC §5.10): "NAME\'s turn", never "Pass the phone to"', () => {
+  const ALL_REASONS: HandoffReason[] = [...REASONS, 'resume'];
+  const tableProps = (curtain: CurtainState): RenderProps => ({ ...baseProps(curtain), tableMode: true });
+  const heading = (el: HTMLElement): string | null | undefined => gate(el).querySelector('.gate__name')?.textContent;
+
+  it('every reason reads "Blake\'s turn" with no pass prompt; the sub-label per reason', () => {
+    const expected: Record<HandoffReason, string> = {
+      turn: 'Hold to show your hand',
+      'seven-return': 'Hold to show your hand',
+      counter: 'Your response',
+      discard: 'Your response',
+      resume: 'Resume game',
+    };
+    for (const reason of ALL_REASONS) {
+      const el = render(tableProps({ kind: 'handoff', to: 1, reason }));
+      expect(heading(el)).toBe("Blake's turn");
+      expect(gate(el).querySelector('.gate__prompt')).toBeNull();
+      expect(gate(el).textContent).not.toContain('Pass');
+      expect(label(el)).toBe(expected[reason]);
+    }
+  });
+
+  it('R14 neutrality holds: the heading is identical for every reason, and the label differs only turn-like vs response-like', () => {
+    const html = (reason: HandoffReason): string => render(tableProps({ kind: 'handoff', to: 1, reason })).innerHTML;
+    const norm = (s: string): string =>
+      s.replace('Hold to show your hand', '<<LABEL>>').replace('Your response', '<<LABEL>>').replace('Resume game', '<<LABEL>>');
+    const all = ALL_REASONS.map((r) => norm(html(r)));
+    for (const h of all) expect(h).toBe(all[0]);
+    expect(html('seven-return')).toBe(html('turn'));
+    expect(html('discard')).toBe(html('counter'));
+  });
+
+  it('no raw reason token reaches the text or any attribute', () => {
+    for (const reason of REASONS) {
+      const el = render(tableProps({ kind: 'handoff', to: 1, reason }));
+      // "turn" is allowed only inside the heading's "'s turn".
+      const text = (el.textContent ?? '').replace("'s turn", '');
+      for (const token of REASONS) expect(text.toLowerCase()).not.toContain(token);
+      for (const node of el.querySelectorAll('*')) {
+        for (const attr of Array.from(node.attributes)) {
+          for (const token of REASONS) {
+            expect(attr.name.toLowerCase()).not.toContain(token);
+            expect(attr.value.toLowerCase()).not.toContain(token);
+          }
+        }
+      }
+    }
+  });
+
+  it('the heading and the remembered label carry into the reveal stage on the same instance', () => {
+    const { el, props } = renderLive(tableProps({ kind: 'handoff', to: 0, reason: 'turn' }));
+    expect(heading(el)).toBe("Alice's turn");
+    props.curtain = { kind: 'reveal', to: 0 };
+    flushSync();
+    expect(heading(el)).toBe("Alice's turn");
+    expect(label(el)).toBe('Hold to show your hand');
+  });
+
+  it('table mode off: the pass prompt, the bare name and "Your turn" are unchanged', () => {
+    const el = render({ ...baseProps({ kind: 'handoff', to: 1, reason: 'turn' }), tableMode: false });
+    expect(heading(el)).toBe('Blake');
+    expect(gate(el).querySelector('.gate__prompt')).toBeTruthy();
+    expect(label(el)).toBe('Your turn');
   });
 });
 

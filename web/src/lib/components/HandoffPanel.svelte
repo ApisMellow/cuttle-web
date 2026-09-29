@@ -26,11 +26,13 @@
     stage: 'handoff' | 'reveal';
     /** Bumped by Curtain for every new curtain state (RevealGate's latch). */
     epoch?: number;
+    /** Table mode (SPEC §5.10): the phone is never passed, so the heading is "NAME's turn". */
+    tableMode?: boolean;
     revealPreference: 'hold' | 'two-step';
     onadvance: () => void;
   }
 
-  let { name, player, label, stage, epoch = 0, revealPreference, onadvance }: HandoffPanelProps = $props();
+  let { name, player, label, stage, epoch = 0, tableMode = false, revealPreference, onadvance }: HandoffPanelProps = $props();
 
   // Amended 2026-09-28 (playtest friction, SPEC §4.5): "Pass the phone to"
   // only on a phone — a coarse pointer on a small screen, either way up.
@@ -61,8 +63,12 @@
        activate anything. One Tab reaches the "I'm NAME" pill. Same DOM for
        every HandoffReason. -->
   <div class="gate__text" tabindex="-1" bind:this={textEl}>
-    <p class="gate__prompt">{prompt}</p>
-    <p class="gate__name">{name}</p>
+    {#if tableMode}
+      <p class="gate__name">{name}'s turn</p>
+    {:else}
+      <p class="gate__prompt">{prompt}</p>
+      <p class="gate__name">{name}</p>
+    {/if}
     <p class="gate__label">{label}</p>
   </div>
   <RevealGate {name} {player} {stage} {epoch} {revealPreference} {onadvance} />
