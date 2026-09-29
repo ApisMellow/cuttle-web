@@ -42,7 +42,7 @@
   import { StagingStore, type StagingEnv } from '../stores/staging.svelte';
   import { resolveBoardTap, type TargetKey } from '../targetKey';
   import { installTestHook } from '../testHook';
-  import { getTheme } from '../theme';
+  import { clearImageFailures, getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
   import Board from './Board.svelte';
   import CardDetailPopover from './CardDetailPopover.svelte';
@@ -98,6 +98,13 @@
       staging.reset();
       browsingScrap = false;
     });
+  });
+
+  // A-6: bitmap image errors are forgotten at every handoff, so a transient
+  // failure gets retried and the next player never inherits the previous
+  // player's fallbacks.
+  $effect(() => {
+    if (game.curtain.kind === 'handoff') untrack(clearImageFailures);
   });
 
   const board = $derived(boardEnvelope());
@@ -274,6 +281,11 @@
       {theme}
     />
   {:else if board !== null}
+    {#if theme.Table}
+      <!-- A-6: the theme's playmat, behind the board only (never behind a
+           curtain). Decorative; a theme without one shows the ink table. -->
+      <theme.Table />
+    {/if}
     <Board
       view={board.state}
       names={session.names}
@@ -355,6 +367,9 @@
      Dynamic Island and the home indicator. Board is the flexible middle and
      the only region that scrolls; the action bar below it is pinned. */
   .game-screen {
+    position: relative;
+    /* A theme playmat (z-index -1) paints above this background, below the board. */
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     height: 100dvh;

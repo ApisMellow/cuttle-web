@@ -160,7 +160,9 @@
     min-height: 0;
     max-width: var(--cu-board-max, 560px);
     margin: 0 auto;
-    background: var(--cu-ink, #241c2b);
+    /* GameScreen paints the ink table; transparent here so a theme's
+       playmat (A-6) behind the board shows through. */
+    background: transparent;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;

@@ -1,0 +1,577 @@
+{
+  "id": "mythic",
+  "label": "Mythic",
+  "assetBytes": 1436240,
+  "index": {
+    "x": 0.0156,
+    "y": 0.009,
+    "w": 0.2461,
+    "h": 0.3643
+  },
+  "faces": {
+    "A-clubs": [
+      {
+        "src": "faces/A-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/A-clubs.webp",
+        "w": 264
+      }
+    ],
+    "A-diamonds": [
+      {
+        "src": "faces/A-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/A-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "A-hearts": [
+      {
+        "src": "faces/A-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/A-hearts.webp",
+        "w": 264
+      }
+    ],
+    "A-spades": [
+      {
+        "src": "faces/A-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/A-spades.webp",
+        "w": 264
+      }
+    ],
+    "2-clubs": [
+      {
+        "src": "faces/2-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/2-clubs.webp",
+        "w": 264
+      }
+    ],
+    "2-diamonds": [
+      {
+        "src": "faces/2-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/2-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "2-hearts": [
+      {
+        "src": "faces/2-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/2-hearts.webp",
+        "w": 264
+      }
+    ],
+    "2-spades": [
+      {
+        "src": "faces/2-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/2-spades.webp",
+        "w": 264
+      }
+    ],
+    "3-clubs": [
+      {
+        "src": "faces/3-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/3-clubs.webp",
+        "w": 264
+      }
+    ],
+    "3-diamonds": [
+      {
+        "src": "faces/3-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/3-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "3-hearts": [
+      {
+        "src": "faces/3-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/3-hearts.webp",
+        "w": 264
+      }
+    ],
+    "3-spades": [
+      {
+        "src": "faces/3-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/3-spades.webp",
+        "w": 264
+      }
+    ],
+    "4-clubs": [
+      {
+        "src": "faces/4-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/4-clubs.webp",
+        "w": 264
+      }
+    ],
+    "4-diamonds": [
+      {
+        "src": "faces/4-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/4-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "4-hearts": [
+      {
+        "src": "faces/4-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/4-hearts.webp",
+        "w": 264
+      }
+    ],
+    "4-spades": [
+      {
+        "src": "faces/4-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/4-spades.webp",
+        "w": 264
+      }
+    ],
+    "5-clubs": [
+      {
+        "src": "faces/5-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/5-clubs.webp",
+        "w": 264
+      }
+    ],
+    "5-diamonds": [
+      {
+        "src": "faces/5-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/5-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "5-hearts": [
+      {
+        "src": "faces/5-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/5-hearts.webp",
+        "w": 264
+      }
+    ],
+    "5-spades": [
+      {
+        "src": "faces/5-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/5-spades.webp",
+        "w": 264
+      }
+    ],
+    "6-clubs": [
+      {
+        "src": "faces/6-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/6-clubs.webp",
+        "w": 264
+      }
+    ],
+    "6-diamonds": [
+      {
+        "src": "faces/6-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/6-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "6-hearts": [
+      {
+        "src": "faces/6-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/6-hearts.webp",
+        "w": 264
+      }
+    ],
+    "6-spades": [
+      {
+        "src": "faces/6-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/6-spades.webp",
+        "w": 264
+      }
+    ],
+    "7-clubs": [
+      {
+        "src": "faces/7-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/7-clubs.webp",
+        "w": 264
+      }
+    ],
+    "7-diamonds": [
+      {
+        "src": "faces/7-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/7-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "7-hearts": [
+      {
+        "src": "faces/7-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/7-hearts.webp",
+        "w": 264
+      }
+    ],
+    "7-spades": [
+      {
+        "src": "faces/7-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/7-spades.webp",
+        "w": 264
+      }
+    ],
+    "8-clubs": [
+      {
+        "src": "faces/8-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/8-clubs.webp",
+        "w": 264
+      }
+    ],
+    "8-diamonds": [
+      {
+        "src": "faces/8-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/8-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "8-hearts": [
+      {
+        "src": "faces/8-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/8-hearts.webp",
+        "w": 264
+      }
+    ],
+    "8-spades": [
+      {
+        "src": "faces/8-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/8-spades.webp",
+        "w": 264
+      }
+    ],
+    "9-clubs": [
+      {
+        "src": "faces/9-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/9-clubs.webp",
+        "w": 264
+      }
+    ],
+    "9-diamonds": [
+      {
+        "src": "faces/9-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/9-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "9-hearts": [
+      {
+        "src": "faces/9-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/9-hearts.webp",
+        "w": 264
+      }
+    ],
+    "9-spades": [
+      {
+        "src": "faces/9-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/9-spades.webp",
+        "w": 264
+      }
+    ],
+    "10-clubs": [
+      {
+        "src": "faces/10-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/10-clubs.webp",
+        "w": 264
+      }
+    ],
+    "10-diamonds": [
+      {
+        "src": "faces/10-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/10-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "10-hearts": [
+      {
+        "src": "faces/10-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/10-hearts.webp",
+        "w": 264
+      }
+    ],
+    "10-spades": [
+      {
+        "src": "faces/10-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/10-spades.webp",
+        "w": 264
+      }
+    ],
+    "J-clubs": [
+      {
+        "src": "faces/J-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/J-clubs.webp",
+        "w": 264
+      }
+    ],
+    "J-diamonds": [
+      {
+        "src": "faces/J-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/J-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "J-hearts": [
+      {
+        "src": "faces/J-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/J-hearts.webp",
+        "w": 264
+      }
+    ],
+    "J-spades": [
+      {
+        "src": "faces/J-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/J-spades.webp",
+        "w": 264
+      }
+    ],
+    "Q-clubs": [
+      {
+        "src": "faces/Q-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/Q-clubs.webp",
+        "w": 264
+      }
+    ],
+    "Q-diamonds": [
+      {
+        "src": "faces/Q-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/Q-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "Q-hearts": [
+      {
+        "src": "faces/Q-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/Q-hearts.webp",
+        "w": 264
+      }
+    ],
+    "Q-spades": [
+      {
+        "src": "faces/Q-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/Q-spades.webp",
+        "w": 264
+      }
+    ],
+    "K-clubs": [
+      {
+        "src": "faces/K-clubs.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/K-clubs.webp",
+        "w": 264
+      }
+    ],
+    "K-diamonds": [
+      {
+        "src": "faces/K-diamonds.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/K-diamonds.webp",
+        "w": 264
+      }
+    ],
+    "K-hearts": [
+      {
+        "src": "faces/K-hearts.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/K-hearts.webp",
+        "w": 264
+      }
+    ],
+    "K-spades": [
+      {
+        "src": "faces/K-spades.webp",
+        "w": 132
+      },
+      {
+        "src": "faces-2x/K-spades.webp",
+        "w": 264
+      }
+    ]
+  },
+  "glasses": {
+    "clubs": [
+      {
+        "src": "glasses/clubs.webp",
+        "w": 172
+      },
+      {
+        "src": "glasses-2x/clubs.webp",
+        "w": 344
+      }
+    ],
+    "diamonds": [
+      {
+        "src": "glasses/diamonds.webp",
+        "w": 172
+      },
+      {
+        "src": "glasses-2x/diamonds.webp",
+        "w": 344
+      }
+    ],
+    "hearts": [
+      {
+        "src": "glasses/hearts.webp",
+        "w": 172
+      },
+      {
+        "src": "glasses-2x/hearts.webp",
+        "w": 344
+      }
+    ],
+    "spades": [
+      {
+        "src": "glasses/spades.webp",
+        "w": 172
+      },
+      {
+        "src": "glasses-2x/spades.webp",
+        "w": 344
+      }
+    ]
+  },
+  "back": null,
+  "table": null
+}

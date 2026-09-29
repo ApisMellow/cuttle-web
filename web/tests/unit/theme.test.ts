@@ -79,7 +79,20 @@ describe('theme registry (SPEC §5.6)', () => {
 
   it('the public surface exports no glyph helper — <Face>/<Back> are the only way to draw a card (rule 1)', () => {
     expect(Object.keys(themeIndex).sort()).toEqual(
-      ['DEFAULT_THEME_ID', 'getTheme', 'listThemes', 'registerTheme', 'vectorTheme'].sort(),
+      [
+        'DEFAULT_THEME_ID',
+        'getTheme',
+        'listThemes',
+        'registerTheme',
+        'vectorTheme',
+        // A-6: the bitmap-theme catalog. Theme ids and labels only; no glyph.
+        'ensureThemeLoaded',
+        'listThemeChoices',
+        'loadThemeCatalog',
+        'resetThemeCatalogForTests',
+        // A-6: forget bitmap image load errors (called at each handoff). No glyph.
+        'clearImageFailures',
+      ].sort(),
     );
   });
 

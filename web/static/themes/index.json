@@ -1,0 +1,9 @@
+{
+  "themes": [
+    {
+      "id": "mythic",
+      "label": "Mythic",
+      "manifest": "mythic/manifest.json"
+    }
+  ]
+}
