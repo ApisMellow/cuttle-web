@@ -108,6 +108,7 @@
     opponent={view.opponent}
     {opponentId}
     pointTotal={view.scoreboard.opponent.points}
+    goal={view.scoreboard.opponent.threshold}
     {highlighted}
     {staged}
     ontap={tap}
@@ -131,6 +132,7 @@
     you={view.you}
     viewerId={view.viewer}
     pointTotal={view.scoreboard.you.points}
+    goal={view.scoreboard.you.threshold}
     {highlighted}
     {staged}
     {dimmedHand}

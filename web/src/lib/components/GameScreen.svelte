@@ -34,6 +34,7 @@
   import { tick, untrack } from 'svelte';
 
   import type { Card, Envelope, PlayerId } from '../bridge/schema';
+  import { cardEffectLine, cardName } from '../cardText';
   import { MoveKind, Phase } from '../enums';
   import { counterPromptEntries, lastMoveLine, nineReturn, plainMoveText } from '../recap';
   import { game } from '../stores/game.svelte';
@@ -140,6 +141,36 @@
     const move = index === null || board === null ? undefined : board.legalMoves[index];
     return plainMoveText(description, move === undefined || board === null ? undefined : nineReturn(move, board.state));
   }
+
+  // ---- Card labels (ROADMAP "Card labels") --------------------------------
+  // A selected card's name and one-line effect fill the action bar (empty
+  // while a card is selected), and a staged move's card names the staging
+  // line. Both read only the board's own envelope (so only at curtain
+  // `none`): the viewer's own hand, the 7's revealed cards (already
+  // actor-only, `revealed`), or the viewer's own staged legal move. Never
+  // another hand, the deck or anything behind the curtain; `staging.reset()`
+  // clears the selection on every apply and viewer change.
+  const selectedCard = $derived.by((): Card | null => {
+    if (board === null || staging.state !== 'selected' || staging.chooser !== null || staging.scrapPick !== null) {
+      return null;
+    }
+    if (staging.selectedHand !== null) return board.state.you.hand[staging.selectedHand] ?? null;
+    if (staging.selectedReveal !== null && revealed !== null) return revealed[staging.selectedReveal] ?? null;
+    return null;
+  });
+  const hint = $derived(selectedCard === null ? null : { name: cardName(selectedCard, theme), effect: cardEffectLine(selectedCard) });
+
+  // The staged card is named only when the move uses its ability: a
+  // one-off, or a permanent (a Jack steal included), directly or as a 7's
+  // pick. Playing it for points or scuttling with it uses no ability.
+  const stagedTitle = $derived.by((): string | undefined => {
+    if (board === null || staging.stagedIndex === null) return undefined;
+    const move = board.legalMoves[staging.stagedIndex];
+    if (move === undefined || move.Card === null) return undefined;
+    const kind = move.Kind === MoveKind.SevenPick ? move.SubMove?.Kind : move.Kind;
+    if (kind !== MoveKind.OneOff && kind !== MoveKind.PlayPermanent) return undefined;
+    return cardName(move.Card, theme);
+  });
 
   // ---- Desktop keyboard (W25) ---------------------------------------------
   // A click that a key press produced (Enter/Space on a focused button)
@@ -348,6 +379,7 @@
       {#if staging.stagedDescription !== null}
         <StagingBar
           description={optionText(staging.stagedIndex, staging.stagedDescription)}
+          title={stagedTitle}
           disabled={staging.inert}
           onconfirm={() => {
             staging.confirm().catch(report);
@@ -356,6 +388,13 @@
         />
       {:else if staging.discard !== null}
         <DiscardPicker need={staging.discard.need} picked={staging.discard.picked.length} />
+      {:else if hint !== null}
+        <!-- Card labels: the selected card's name and what it does, in the
+             bar's reserved space (nothing else uses it while selecting). -->
+        <p class="game-screen__hint" data-card-hint>
+          <span class="game-screen__hint-name" data-card-label="name">{hint.name}</span>
+          <span class="game-screen__hint-effect" data-card-label="effect">{hint.effect}</span>
+        </p>
       {:else if staging.passAvailable}
         <button type="button" class="game-screen__pass" data-testid="pass" onclick={() => staging.tap('pass')}>
           Pass
@@ -457,6 +496,12 @@
       --cu-text-sm: 17px;
       --cu-text-md: 19px;
       --cu-text-lg: 28px;
+      /* Card labels: room for the staged card's name plus a two-line
+         description at the larger desktop type, so staging never grows
+         the bar. */
+      --cu-zone-action: 76px;
+      /* Card labels: in-play badges read at laptop distance too. */
+      --cu-text-badge: 12px;
     }
   }
 
@@ -530,6 +575,26 @@
   .game-screen__menu-button:focus-visible {
     outline: 2px solid var(--cu-iris, #5ccfc4);
     outline-offset: -2px;
+  }
+
+  /* Card labels: one paragraph, name then effect, at most two lines
+     inside the reserved bar (design.md §6: staging never reflows). */
+  .game-screen__hint {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    margin: 0 var(--cu-space-4, 16px);
+    font-size: var(--cu-text-sm, 14px);
+    line-height: 1.25;
+    color: var(--cu-pearl, #eee8f1);
+  }
+
+  .game-screen__hint-name {
+    margin-right: 0.4em;
+    color: var(--cu-ochre, #f0b54a);
+    font-weight: var(--cu-weight-bold, 700);
   }
 
   .game-screen__pass {

@@ -119,3 +119,5 @@ other player, so the card may sit on one side while
 repro (e.g. A's point stolen by B's Jack, stolen back by A's Jack, then a 2
 on the top Jack) checking which side's `Points` holds the entry and which
 scoreboard counts it.
+
+**Update 2026-09-29 (card labels, `loop/r11-labels`): confirmed** via the engine test caseF25. After a 2 pops the top Jack of a 2-Jack stack, the entry stays in the holder's `Points` slice while `PointEntry.Controller()` names the remaining Jack's owner. The UI's owner mark and the "Stole" badge follow `Controller` (the bridge's `PointEntry.Controller`), so in that state they can disagree with the side the card is drawn on. The UI decision is deferred until the engine resolves this; no web-side compensation (AGENTS.md "Engine canon").

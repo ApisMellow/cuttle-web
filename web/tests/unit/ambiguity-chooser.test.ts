@@ -60,17 +60,17 @@ describe('AmbiguityChooser', () => {
     });
     const option = (i: number): string =>
       el.querySelector(`[data-testid="ambiguity-chooser-option-${i}"]`)?.textContent?.trim() ?? '';
-    expect(option(6)).toBe('Play 9♣ as a one-off: that card goes back to its owner’s hand (a card they stole from you comes back to you).');
+    expect(option(6)).toBe('Play 9♣ as a one-off: send a card back to its owner’s hand.');
     expect(option(7)).toBe('Scuttle their 4♣ with 9♣: both cards go to the scrap.');
   });
 
   it('review B2: a describe prop (GameScreen\'s, which knows the 9 case) sets the option text', () => {
     const el = render({
       candidates: [{ index: 6, description: 'play 9♣ as one-off' }],
-      describe: () => 'Play 9♣ as a one-off: the card they stole comes back to your hand.',
+      describe: () => 'Play 9♣ as a one-off: your stolen card comes back to you.',
     });
     expect(el.querySelector('[data-testid="ambiguity-chooser-option-6"]')?.textContent?.trim()).toBe(
-      'Play 9♣ as a one-off: the card they stole comes back to your hand.',
+      'Play 9♣ as a one-off: your stolen card comes back to you.',
     );
   });
 

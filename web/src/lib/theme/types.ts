@@ -42,7 +42,7 @@
 
 import type { Component } from 'svelte';
 
-import type { Card } from '../bridge/schema';
+import type { Card, Rank } from '../bridge/schema';
 
 /**
  * The three fixed geometry tokens (SPEC §5.6 rule 2). The container sizes
@@ -92,4 +92,10 @@ export interface CardTheme {
   assetBytes: number;
   /** False until this theme's assets are cached (SPEC §5.6 rule 4). */
   available: () => boolean;
+  /**
+   * Optional card names by rank (ROADMAP "Card labels"), e.g. a theme's own
+   * name for its King. Each rank left out keeps its Classic name
+   * (`lib/cardText.ts`), so a theme may name one card or all of them.
+   */
+  names?: Readonly<Partial<Record<Rank, string>>>;
 }

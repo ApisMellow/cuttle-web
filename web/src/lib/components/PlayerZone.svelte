@@ -15,6 +15,8 @@
     you: PlayerView['you'];
     viewerId: PlayerId;
     pointTotal: number;
+    /** Card labels: this side's win threshold, from the scoreboard (the Kings' badge). */
+    goal?: number;
     highlighted: ReadonlySet<string>;
     staged: ReadonlySet<string>;
     dimmedHand: ReadonlySet<number>;
@@ -31,6 +33,7 @@
     you,
     viewerId,
     pointTotal,
+    goal,
     highlighted,
     staged,
     dimmedHand,
@@ -65,6 +68,7 @@
     rowId={viewerId}
     cards={you.permanents}
     label="Permanents"
+    {goal}
     dropZoneKey="zone:permanents"
     dropZoneLabel="Play as a permanent"
     {highlighted}

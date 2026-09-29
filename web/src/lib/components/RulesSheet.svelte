@@ -19,25 +19,24 @@
   // No card glyphs: ranks are words or numerals and suits are named
   // (SPEC §5.6 rule 1: only the theme draws a rank with its suit).
 
+  import { rulesOneOffLines, rulesPermanentLines, type RulesLine } from '../cardText';
+
   interface RulesSheetProps {
     onclose: () => void;
   }
 
   let { onclose }: RulesSheetProps = $props();
 
-  const ONE_OFFS: Array<[string, string]> = [
-    ['Ace', 'Scrap every point card on the table, both sides.'],
-    ['2', 'Stop a one-off as it’s played, even on their turn (a 2 can stop a 2). Or on your turn: scrap one royal or glasses 8.'],
-    ['3', 'Take any one card from the scrap into your hand.'],
-    ['4', 'Your opponent discards 2 cards of their choice (or all they have, if fewer).'],
-    ['5', 'Draw 2 cards (never past 8 in your hand).'],
-    ['6', 'Scrap every royal and glasses 8 on the table, both sides.'],
-    ['7', 'Look at the top 2 cards of the deck and play one right away. The other goes back on top. If neither can be played, scrap one instead.'],
-    // engine/apply.go (v0.2.0) resolveOneOffWith, case Nine: the card goes
-    // to its OWNER's hand (a stolen point card goes home), and the freeze
-    // only matters to the opponent, whose turn is next (review B2).
-    ['9', 'Send one of their table cards back to its owner’s hand. If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to you.'],
-  ];
+  // Card labels: every one-off and permanent line is built from the same
+  // effect clauses the cards, the chooser and the staging bar show
+  // (lib/cardText.ts), so the sheet and the table can never disagree.
+  const ONE_OFFS = rulesOneOffLines();
+  const PERMANENTS = rulesPermanentLines();
+
+  /** "Ace, Board Wipe:"; a line whose rank already says its name reads "8 as glasses:". */
+  function heading(line: RulesLine): string {
+    return line.rank.toLowerCase().includes(line.name.toLowerCase()) ? `${line.rank}:` : `${line.rank}, ${line.name}:`;
+  }
 
   function onkeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') onclose();
@@ -69,8 +68,8 @@
       <h3>One-offs</h3>
       <p>Play the card for its effect, then it goes to the scrap. A 10 is points only.</p>
       <ul class="rules__list">
-        {#each ONE_OFFS as [rank, text] (rank)}
-          <li><b>{rank}:</b> {text}</li>
+        {#each ONE_OFFS as line (line.rank)}
+          <li><b>{heading(line)}</b> {line.text}</li>
         {/each}
       </ul>
     </section>
@@ -90,10 +89,9 @@
     <section>
       <h3>Permanents</h3>
       <ul class="rules__list">
-        <li><b>Jack:</b> steal one of their point cards. It counts for you until the Jack is scrapped or stolen back, or a 9 sends that card home.</li>
-        <li><b>Queen:</b> their cards can’t target your other cards. It doesn’t stop an Ace, a 6 or a scuttle.</li>
-        <li><b>King:</b> you need fewer points to win.</li>
-        <li><b>8 as glasses:</b> you can see their hand. An 8 can also just be 8 points.</li>
+        {#each PERMANENTS as line (line.rank)}
+          <li><b>{heading(line)}</b> {line.text}</li>
+        {/each}
       </ul>
     </section>
 

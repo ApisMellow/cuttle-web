@@ -32,7 +32,8 @@
 // "this one had no target" and the base line is returned unchanged, with
 // no rank-2/rank-9 knowledge encoded here (docs/assumptions.md).
 
-import type { AppliedMove, Card, Move, PlayerId, PlayerView } from './bridge/schema';
+import type { AppliedMove, Card, Move, PlayerId, PlayerView, Rank } from './bridge/schema';
+import { NINE_EFFECT, ONE_OFF_EFFECT, PERMANENT_EFFECT, sentenceCase } from './cardText';
 
 // A card token exactly as `card.Card.String()` renders it (card/card.go:14-
 // 47), used to render `entry.targetCard` into the same glyph form the
@@ -383,33 +384,19 @@ export function winningMoveLine(
   }
 }
 
-// One-off effects, in the player's own words, for the cheat-sheet-style
-// staging text. Sourced from the engine's RULES.md "One-Offs" table
-// (github.com/ApisMellow/cuttle@v0.2.0), shortened; nothing here decides
-// legality — the engine already offered the move.
-const ONE_OFF_EFFECT: Record<string, string> = {
-  A: 'scrap every point card',
-  '2': 'scrap the royal or glasses you picked',
-  '3': 'take a card from the scrap',
-  '4': 'they discard 2 cards',
-  '5': 'draw 2 cards',
-  '6': 'scrap every royal and glasses',
-  '7': 'see the top 2 cards and play one',
-  // engine/apply.go (v0.2.0) resolveOneOffWith, case Nine: the card goes to
-  // its OWNER's hand (a point card's original owner), so a card they stole
-  // from you comes back to you. The freeze only bites the opponent: their
-  // turn is next. `plainMoveText` narrows this when the caller knows which
-  // case applies (`NineReturn`).
-  '9': 'that card goes back to its owner’s hand (a card they stole from you comes back to you)',
-};
+// One-off and permanent effects come from `lib/cardText.ts`, the single
+// source the popover, the selected-card hint and the Rules sheet share, so
+// the chooser, the staging bar and the cards can never disagree. Nothing
+// there decides legality: the engine already offered the move.
+
+/** The Rank a card token's rank part names ("A" -> 1, "10" -> 10, "K" -> 13). */
+function rankNumber(token: string): Rank {
+  return (RANK_GLYPHS.indexOf(rankOf(token)) + 1) as Rank;
+}
 
 /** Where a 9 one-off sends its target: 'theirs' (their card) or 'yours' (a card they stole from you). */
 export type NineReturn = 'theirs' | 'yours';
 
-const NINE_EFFECT: Record<NineReturn, string> = {
-  theirs: 'that card goes back to their hand, and they can’t play it next turn',
-  yours: 'the card they stole comes back to your hand',
-};
 
 /**
  * Which way a 9 one-off (or a 7-revealed 9) sends its target, from public
@@ -432,14 +419,15 @@ export function nineReturn(move: Move, view: Pick<PlayerView, 'viewer' | 'you' |
   return entry.Owner === view.viewer ? 'yours' : 'theirs';
 }
 
-const PERMANENT_EFFECT: Record<string, (token: string) => string> = {
-  Q: (t) => `Play ${t} as a permanent: it protects your other cards.`,
-  K: (t) => `Play ${t} as a permanent: you need fewer points to win.`,
-  '8': (t) => `Play ${t} as glasses: you see their hand.`,
-};
-
-function sentenceCase(text: string): string {
-  return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
+function permanentText(token: string): string {
+  const rank = rankNumber(token);
+  const effect = PERMANENT_EFFECT[rank];
+  if (effect === undefined) return `Play ${token} as a permanent.`;
+  if (rank === 8) return `Play ${token} as glasses: ${effect}.`;
+  // A Queen can only ever be a permanent, and its targeting clause is long:
+  // the short form keeps the staged line whole at 393 wide.
+  if (rank === 12) return `Play ${token}: ${effect}.`;
+  return `Play ${token} as a permanent: ${effect}.`;
 }
 
 /**
@@ -471,15 +459,15 @@ export function plainMoveText(text: string, nine?: NineReturn): string {
   m = t.match(new RegExp(`^play (${CARD}) \\(steal opponent point\\)$`));
   if (m) return `Play ${m[1]} to steal that point card.`;
   m = t.match(new RegExp(`^play (${CARD}) as permanent$`));
-  if (m) return PERMANENT_EFFECT[rankOf(m[1])]?.(m[1]) ?? `Play ${m[1]} as a permanent.`;
+  if (m) return permanentText(m[1]);
   m = t.match(new RegExp(`^scuttle opponent's (${CARD}) with (${CARD})$`));
   if (m) return `Scuttle their ${m[1]} with ${m[2]}: both cards go to the scrap.`;
   m = t.match(new RegExp(`^scuttle with (${CARD})$`));
   if (m) return `Scuttle with ${m[1]}: both cards go to the scrap.`;
   m = t.match(new RegExp(`^play (${CARD}) as one-off$`));
   if (m) {
-    const rank = rankOf(m[1]);
-    const effect = rank === '9' && nine !== undefined ? NINE_EFFECT[nine] : ONE_OFF_EFFECT[rank];
+    const rank = rankNumber(m[1]);
+    const effect = rank === 9 && nine !== undefined ? NINE_EFFECT[nine] : ONE_OFF_EFFECT[rank];
     return effect ? `Play ${m[1]} as a one-off: ${effect}.` : `Play ${m[1]} as a one-off.`;
   }
   m = t.match(new RegExp(`^counter with (${CARD})$`));

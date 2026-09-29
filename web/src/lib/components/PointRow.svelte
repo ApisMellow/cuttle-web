@@ -42,6 +42,7 @@
   // `scoreboard.opponent.points` verbatim — this component never sums
   // `entries` itself.
   import type { PlayerId, PointEntry } from '../bridge/schema';
+  import { inPlayBadge } from '../cardText';
   import '../styles/card-geometry.css';
   import type { CardTheme, CardVisualState } from '../theme/types';
   import DropZones from './DropZones.svelte';
@@ -88,6 +89,7 @@
       {@const key = keyFor(index)}
       {@const jackCount = entry.JackStack.length}
       {@const topJack = jackCount > 0 ? entry.JackStack[jackCount - 1] : null}
+      {@const jackBadge = topJack === null ? null : inPlayBadge(topJack, 'jack', { stolen: entry.Controller !== entry.Owner })}
       <div class="point-row__slot" data-has-jack={jackCount > 0 ? 'true' : undefined}>
         <!-- The Jack and the owner badge live INSIDE the tap target, after the
              face, so they paint over it and a tap anywhere on the stack is a
@@ -122,7 +124,13 @@
                 <span class="point-row__jack-edge point-row__jack-edge--2" aria-hidden="true"></span>
                 <span class="point-row__jack-edge point-row__jack-edge--1" aria-hidden="true"></span>
               {/if}
-              <span class="point-row__jack"><theme.Face card={topJack} size="field" /></span>
+              <span class="point-row__jack"
+                ><theme.Face card={topJack} size="field" />{#if jackBadge !== null}
+                  <!-- Card labels: the top Jack says it stole this card, at
+                       the Jack's own foot, clear of both corner indices. -->
+                  <span class="point-row__badge" data-card-label="badge">{jackBadge}</span>
+                {/if}</span
+              >
             </span>
           {/if}
           {#if entry.Controller !== entry.Owner}
@@ -338,6 +346,32 @@
     overflow: hidden;
     border-radius: 7%;
     box-shadow: 0 -2px 6px rgb(0 0 0 / 30%), 0 1px 2px rgb(0 0 0 / 45%);
+  }
+
+  /* Card labels: the stolen stack's "Stole" pill, inside the top Jack's
+     own clipped box, at its foot and centred. */
+  .point-row__badge {
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    z-index: 3;
+    transform: translateX(-50%);
+    max-width: calc(100% - 4px);
+    box-sizing: border-box;
+    padding: 1px 3px;
+    border-radius: 999px;
+    background: var(--cu-ink, #241c2b);
+    box-shadow: 0 0 0 1px rgb(250 248 244 / 0.55);
+    color: var(--cu-pearl, #eee8f1);
+    font-family: var(--cu-font-ui, sans-serif);
+    font-size: calc(var(--cu-text-badge, 10px) * var(--cu-badge-scale, 1));
+    font-weight: var(--cu-weight-bold, 700);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
 
   /* Owner badge (SPEC §5.2, design §6 "a small ownership mark"): an ink

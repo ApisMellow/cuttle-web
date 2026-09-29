@@ -23,6 +23,7 @@
   // public state only; until then, generic is the only text that provably
   // can't leak.
   import type { Card } from '../bridge/schema';
+  import { cardEffectLine, cardName } from '../cardText';
   import '../styles/card-geometry.css';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -37,6 +38,13 @@
   }
 
   let { card, reason = DEFAULT_REASON, onclose, theme = getTheme(DEFAULT_THEME_ID) }: CardDetailPopoverProps = $props();
+
+  // Card labels: the card's short name (the theme's, else Classic) and one
+  // line on what it does, from lib/cardText.ts, the source the chooser, the
+  // staging bar and the Rules sheet share. Only ever for `card`, the
+  // viewer's own hand card.
+  const name = $derived(cardName(card, theme));
+  const effect = $derived(cardEffectLine(card));
 </script>
 
 <!-- design.md §5/§11 bottom-sheet family, same chrome as AmbiguityChooser/
@@ -54,10 +62,17 @@
   data-testid="card-detail-popover"
   role="dialog"
   aria-modal="true"
-  aria-labelledby="card-detail-popover-reason"
+  aria-labelledby="card-detail-popover-name"
+  aria-describedby="card-detail-popover-effect card-detail-popover-reason"
 >
-  <div class="card-detail-popover__face">
-    <theme.Face {card} size="field" />
+  <div class="card-detail-popover__card">
+    <div class="card-detail-popover__face">
+      <theme.Face {card} size="field" />
+    </div>
+    <div class="card-detail-popover__label">
+      <p id="card-detail-popover-name" class="card-detail-popover__name" data-card-label="name">{name}</p>
+      <p id="card-detail-popover-effect" class="card-detail-popover__effect" data-card-label="effect">{effect}</p>
+    </div>
   </div>
   <p id="card-detail-popover-reason" class="card-detail-popover__reason">{reason}</p>
   <button type="button" class="card-detail-popover__close" data-testid="card-detail-popover-close" onclick={onclose}>
@@ -93,6 +108,33 @@
     background: var(--cu-ink-raised, #30263a);
     color: var(--cu-pearl, #eee8f1);
     border-radius: var(--cu-radius-sheet, 18px) var(--cu-radius-sheet, 18px) 0 0;
+  }
+
+  /* Card labels: the face with its name and effect beside it. */
+  .card-detail-popover__card {
+    display: flex;
+    align-items: center;
+    gap: var(--cu-space-3, 12px);
+    max-width: 100%;
+  }
+
+  .card-detail-popover__label {
+    min-width: 0;
+  }
+
+  .card-detail-popover__name {
+    margin: 0 0 var(--cu-space-1, 4px);
+    color: var(--cu-ochre, #f0b54a);
+    font-size: var(--cu-text-lg, 20px);
+    font-weight: var(--cu-weight-bold, 700);
+    line-height: 1.15;
+  }
+
+  .card-detail-popover__effect {
+    margin: 0;
+    color: var(--cu-pearl, #eee8f1);
+    font-size: var(--cu-text-md, 16px);
+    line-height: var(--cu-leading-body, 1.4);
   }
 
   /* SPEC §5.6 rule 2: the container owns the box. */
