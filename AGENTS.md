@@ -197,6 +197,17 @@ that makes your list complete.
 - The bridge never panics across the boundary. Every error is a §2.9
   `EngineError` and leaves held state unchanged.
 
+### Online server (two-phone W3)
+
+- `cmd/cuttle-server` is a thin `main`; config, CORS, request logging,
+  handlers and the run loop live in `internal/server`. The server never
+  serves the app and never binds 8765 (config rejects it).
+- Request logs carry method, path, status, size and duration only. Never
+  log a query string, header or body: future seat tokens must not reach logs.
+- CORS echoes an exact allowed origin, never `*`; a disallowed `Origin` gets
+  403. Add new routes in `server.Handler` so CORS and logging wrap them.
+- `scripts/build-server.sh [out]` builds the static linux/amd64 binary.
+
 ### Svelte 5 conventions
 
 - Runes only: `$state`, `$derived`, `$props`, `$effect`. No `export let`,
