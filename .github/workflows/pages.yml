@@ -75,11 +75,15 @@ jobs:
       - name: Add the card gallery at /gallery/
         run: cp -R gallery/site web/dist/gallery
 
-      # NOTE: no PWA/service-worker step here. `vite-plugin-pwa` (SPEC
-      # §5.8, R18) is not wired up yet — "PWA/offline polish" is explicitly
-      # deferred past the family beta (docs/loop-workflow.md §4.5). When it
-      # lands, its generated sw.js needs the same CUTTLE_BASE-aware
-      # treatment as the wasm fetch (see web/src/lib/bridge/wasm.ts).
+      # R18 (SPEC §5.8): the build emits sw.js, which precaches the game for
+      # offline play. A file missing from that list only shows up when a
+      # player is offline, so check it here and stop the deploy if the
+      # wasm, its loader, the icons or a card image is missing, or if the
+      # gallery (copied in above, deliberately not precached) got in.
+      - name: Check the offline precache
+        run: node scripts/precache-manifest.mjs dist
+        working-directory: web
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
