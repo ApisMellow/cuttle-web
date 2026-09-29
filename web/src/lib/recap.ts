@@ -132,14 +132,11 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
     }
     case KIND.Decline: {
       // ApisMellow, 2026-09-27 (binding on §4.6): a Decline entry must never
-      // reach this function. A real decline writes a `Decline` history
-      // row; the synthetic R14 acknowledgment writes none — so rendering
-      // "NAME let it resolve." would tell the acting player the opponent
-      // actually held a counter-2, and would change whether a recap
-      // screen appears at all. Callers MUST filter with `isRecapVisible`
-      // first. Fail loudly if that contract was skipped, rather than
-      // silently rendering the very leak this exists to prevent.
-      fail(entry, 'Decline entries must never be recapped (R14) — filter with isRecapVisible first');
+      // reach this function. The recap tells what happened, and "NAME let
+      // it resolve." adds nothing the next line doesn't. Callers MUST
+      // filter with `isRecapVisible` first. Fail loudly if that contract
+      // was skipped.
+      fail(entry, 'Decline entries must never be recapped — filter with isRecapVisible first');
       break;
     }
     case KIND.PlayPoint: {
@@ -193,21 +190,19 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       if (!m) fail(entry, 'OneOff description did not match the engine format');
       const base = `played ${m[1]} as a one-off`;
       // Amended 2026-09-28 (playtest friction): a 5 says what it does. The
-      // recap and the counter prompt show the 5 BEFORE it resolves on the
-      // real counter-window path, so this is the card's effect ("to draw 2
-      // cards", RULES.md One-Offs), never the count it drew. The count
-      // (`entry.drawn`) is never read here: on the synthetic path it is
-      // already set, and reading it would make the two paths differ (R14).
-      // `lastMoveLine` reports the count once the board is back.
+      // counter prompt shows the 5 BEFORE it resolves, so this is the
+      // card's effect ("to draw 2 cards", RULES.md One-Offs), never the
+      // count it drew. The count (`entry.drawn`) is never read here, so the
+      // line is the same before and after the 5 resolves. `lastMoveLine`
+      // reports the count once the board is back.
       if (entry.targetCard === null && rankOf(m[1]) === '5') return `${base}${FIVE_INTENT}`;
       // Playtest 2026-09-29: a 3 and a 4 say what they do too, by the same
       // rule as the 5 — the effect, never the outcome. A 3's recap never
-      // names the card it takes: on the real counter-window path the 3 has
-      // not resolved, and its choice is the acting player's intent (SPEC
-      // §3.2 drops `pending.scrapIndex` for exactly that reason), and
+      // names the card it takes: in a counter window the 3 has not
+      // resolved, and its choice is the acting player's intent (SPEC §3.2
+      // drops `pending.scrapIndex` for exactly that reason), and
       // `AppliedMove` carries no taken card. A 4 says "2 cards (or all …,
-      // if fewer)", never a count read from a hand, so the line is the same
-      // on both R14 paths.
+      // if fewer)", never a count read from a hand.
       if (entry.targetCard === null && rankOf(m[1]) === '3') return `${base}${THREE_INTENT}`;
       if (entry.targetCard === null && rankOf(m[1]) === '4') return `${base}${fourIntent(ctx)}`;
       if (entry.targetCard === null) return base;
@@ -275,12 +270,10 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
 }
 
 /**
- * SPEC §4.6, ApisMellow 2026-09-27 (binding, R14): whether an entry may ever
- * appear in a recap, for ANY viewer. False exactly for `Decline` — a real
- * decline writes a `Decline` history row, but the synthetic R14
- * acknowledgment writes none, so recapping a `Decline` would tell the
- * acting player the opponent actually held a counter-2 and would change
- * whether a recap screen appears at all. True for every other kind.
+ * SPEC §4.6, ApisMellow 2026-09-27: whether an entry may ever appear in a
+ * recap, for ANY viewer. False exactly for `Decline`: "let it resolve"
+ * adds nothing the one-off's own line and the board don't already say.
+ * True for every other kind.
  *
  * Callers building a recap list (out of this round's scope — the
  * `lastSeenSeq`-filtered list itself is R20.3) must filter with this
@@ -292,8 +285,8 @@ export function isRecapVisible(entry: AppliedMove): boolean {
 }
 
 /**
- * Optional context a recap line may read, all public and all from the same
- * `history` both R14 paths hold (playtest 2026-09-29):
+ * Optional context a recap line may read, all public, from `history`
+ * (playtest 2026-09-29):
  *   - `prev`: the entry just before this one. A Counter names what it stops
  *     ("to stop your 5♥") from it.
  *   - `history`: the game's history. A Jack steal reads it to see whether
@@ -440,6 +433,21 @@ function chainOriginIndex(history: readonly AppliedMove[], i: number): number {
   return -1;
 }
 
+/**
+ * Issue #27 (SPEC §4.7): who drew for `history[i]`, an entry that resolved
+ * a 5 (`drawn !== null`, SPEC §2.7): the 5's player, which is the entry's
+ * own `by` for a 5 that resolved in its own apply (a OneOff, or a SevenPick
+ * whose sub-move was the 5), else the `by` of the one-off that opened the
+ * Decline's or Counter's chain. Reads kinds and `by` only, never a card.
+ * null when `history[i]` resolved no 5.
+ */
+export function fiveDrawer(history: readonly AppliedMove[], i: number): PlayerId | null {
+  const entry = history[i];
+  if (entry === undefined || entry.drawn === null) return null;
+  const origin = isOneOffEntry(entry) ? i : chainOriginIndex(history, i);
+  return origin < 0 ? null : history[origin].by;
+}
+
 function drewText(count: number): string {
   if (count === 0) return 'drew no cards';
   return count === 1 ? 'drew 1 card' : `drew ${count} cards`;
@@ -453,13 +461,12 @@ function drewText(count: number): string {
  *
  * A 5 that has resolved adds its draw count, read from `drawn` (SPEC §2.7):
  * "Alice played 5♥ as a one-off and drew 2 cards." The bridge puts `drawn`
- * on the entry whose apply resolved the 5 — the 5 itself when nobody could
- * counter (synthetic path), or the Decline/Counter that closed its chain
- * (real path). Only entries from the last visible one onward are read, and
- * those after it can only be Declines, so both paths read the same line
- * here (R14). The board shows only after the counter prompt is gone, so on
- * both paths the 5 has resolved by the time this line renders. A count
- * only: history never names the drawn cards.
+ * on the entry whose apply resolved the 5 — the 5 itself when no counter
+ * window opened, or the Decline/Counter that closed its chain. Only entries
+ * from the last visible one onward are read, and those after it can only
+ * be Declines, so both read the same line. The board shows only after any
+ * counter prompt is gone, so the 5 has resolved by the time this line
+ * renders. A count only: history never names the drawn cards.
  */
 export function lastMoveLine(history: readonly AppliedMove[], viewer: PlayerId, names: readonly [string, string]): string {
   let i = history.length - 1;
@@ -480,8 +487,7 @@ export function lastMoveLine(history: readonly AppliedMove[], viewer: PlayerId, 
   // Playtest 2026-09-29: a chain that ended on a Counter says whether the
   // one-off it answered was stopped. An odd number of 2s cancels it
   // (engine/apply.go v0.2.0 resolvePending). Only Counters and the origin
-  // are read, and a Decline after them changes nothing, so this reads the
-  // same on the real and the synthetic path (R14).
+  // are read, and a Decline after them changes nothing.
   if (last.kind === KIND.Counter) {
     const origin = chainOriginIndex(history, i);
     const token = origin < 0 ? null : playedToken(history[origin]);
@@ -882,13 +888,10 @@ export function recapCards(entry: AppliedMove): Card[] {
  * `SevenPick` whose `subKind` is `OneOff`), then every `Counter` played on
  * it, oldest first. `[]` when the history does not end in such a chain.
  *
- * ONE derivation for both paths. The real window could read
- * `pending.card`/`pending.counterChain` instead, but the synthetic ack has
- * no pending (the engine already resolved the one-off), so SPEC §4.3 takes
- * its card and chain "from `lastMove`" and "from `history`". Reading history
- * for both means the two prompts cannot render differently, which is the
- * R14 property. Every entry returned is one a §4.6 recap line already names
- * (played face-up, public), and the kind check reads no identity.
+ * Read from `history`, never `pending` (SPEC §4.3). Every entry returned is
+ * one a §4.6 recap line already names (played face-up, public), and the
+ * kind check reads no identity. The curtain drops these same entries from
+ * the recap before the prompt (curtain.svelte.ts `withoutPromptEntries`).
  */
 export function counterPromptEntries(history: readonly AppliedMove[]): AppliedMove[] {
   let i = history.length - 1;

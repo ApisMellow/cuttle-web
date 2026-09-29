@@ -59,7 +59,30 @@ function isPlayerId(value: unknown): value is PlayerId {
   return value === 0 || value === 1;
 }
 
-const HANDOFF_REASONS: readonly string[] = ['turn', 'counter', 'discard', 'seven-return', 'acknowledge'];
+const HANDOFF_REASONS: readonly string[] = ['turn', 'counter', 'discard', 'seven-return'];
+
+/**
+ * Ruling 2026-09-29 (SPEC §4.3, §5.7): the client no longer stages an
+ * acknowledgment for a one-off the engine resolved at once, and the `ack`
+ * curtain lost its `synthetic` flag. The written shape only loses a field,
+ * so there is no `v` bump; a save written before the ruling is read like
+ * this:
+ *   - `ack` with `synthetic: false` is the counter window: the flag is dropped.
+ *   - `ack` with `synthetic: true` becomes `reveal` for the same player: the
+ *     step just before it. Passing that gate fetches their view fresh, or
+ *     hands the phone on when the turn is not theirs (curtain machine,
+ *     `afterRecap`), so nothing new is shown to anyone.
+ *   - a `handoff` with the retired reason `acknowledge` becomes `turn`.
+ * An `ack` whose `synthetic` is not a boolean is malformed.
+ */
+function withoutLegacyAck(curtain: unknown): unknown {
+  if (!isPlainObject(curtain)) return curtain;
+  if (curtain.kind === 'handoff' && curtain.reason === 'acknowledge') return { ...curtain, reason: 'turn' };
+  if (curtain.kind !== 'ack' || !('synthetic' in curtain)) return curtain;
+  if (curtain.synthetic === true) return { kind: 'reveal', to: curtain.to };
+  if (curtain.synthetic === false) return { kind: 'ack', to: curtain.to };
+  return curtain; // a non-boolean flag: isCurtainState rejects it
+}
 
 /** SPEC §4.2: exactly the six variants, each with the fields it requires. */
 function isCurtainState(value: unknown): value is CurtainState {
@@ -75,7 +98,7 @@ function isCurtainState(value: unknown): value is CurtainState {
     case 'recap':
       return isPlayerId(value.to) && Array.isArray(value.entries);
     case 'ack':
-      return isPlayerId(value.to) && typeof value.synthetic === 'boolean';
+      return isPlayerId(value.to) && !('synthetic' in value);
     default:
       return false;
   }
@@ -182,8 +205,9 @@ export function decodeSnapshot(raw: string | null): DecodeResult {
   if (parsed.v !== SNAPSHOT_VERSION && parsed.v !== MIGRATABLE_VERSION) {
     return { ok: false, reason: 'version-mismatch', detail: `found v=${JSON.stringify(parsed.v)}` };
   }
-  const current = parsed.v === MIGRATABLE_VERSION ? migrateV1(parsed) : parsed;
-  if (current === null) return { ok: false, reason: 'malformed', detail: 'v1 entry already carries drawn' };
+  const migrated = parsed.v === MIGRATABLE_VERSION ? migrateV1(parsed) : parsed;
+  if (migrated === null) return { ok: false, reason: 'malformed', detail: 'v1 entry already carries drawn' };
+  const current = { ...migrated, curtain: withoutLegacyAck(migrated.curtain) };
 
   if (!isWellFormed(current)) {
     return { ok: false, reason: 'malformed', detail: 'missing or invalid field' };

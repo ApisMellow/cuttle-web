@@ -37,7 +37,7 @@
      * Playtest 2026-09-29: the game's history, so a Counter names what it
      * stops even when the one-off is older than this recap, and a Jack
      * steal can say it took back the actor's own card. Public (every `index`
-     * is stripped behind a curtain) and the same on both R14 paths.
+     * is stripped behind a curtain).
      * Defaults to the game store's.
      */
     history?: readonly AppliedMove[];

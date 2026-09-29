@@ -320,35 +320,31 @@ describe('Card labels privacy: only face-up cards the viewer can see', () => {
     expect(q(el, 'opp-hand')?.getAttribute('data-revealed')).toBe('true');
   });
 
-  for (const real of [true, false]) {
-    it(`nothing is labelled at a ${real ? 'real counter window' : 'synthetic ack'}`, async () => {
-      const el = await start();
-      const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: NINE, targetCard: c(7, 1), description: 'play 9♥ as one-off' });
-      bridge.apply.mockImplementation(
-        (): BridgeResult =>
-          envelope({ state: p0View({ active: 1, phase: real ? Phase.AwaitingCounter : Phase.Normal }), lastMove: { ...oneOff, index: 5 }, history: [{ ...oneOff, index: 5 }] }),
-      );
-      bridge.view.mockImplementation(
-        (): BridgeResult =>
-          envelope({
-            state: real
-              ? p1View({ phase: Phase.AwaitingCounter, pending: { playedBy: 0, card: NINE, target: { Owner: 1, Zone: 0, Index: 0 }, counterChain: [] } })
-              : p1View(),
-            lastMove: oneOff,
-            history: [oneOff],
-            legalMoves: real ? [mv({ Kind: Kind.Decline }), mv({ Kind: Kind.Counter, HandIndex: 1, Card: TWO })] : [mv({ Kind: Kind.Draw })],
-            descriptions: real ? ['decline to counter', 'counter with 2♦'] : ['draw a card'],
-          }),
-      );
-      await click(el, 'hand-card-1');
-      await click(el, 'point-1-0');
-      await click(el, 'ambiguity-chooser-option-5');
-      await click(el, 'staging-confirm');
-      await click(el, 'reveal-two-step');
-      await click(el, 'reveal-two-step');
-      await click(el, 'recap-dismiss');
-      expect(game.curtain).toEqual({ kind: 'ack', to: 1, synthetic: !real });
-      expectNoLabels(el, real ? 'real ack' : 'synthetic ack');
-    });
-  }
+  it('nothing is labelled at the counter window', async () => {
+    const el = await start();
+    const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: NINE, targetCard: c(7, 1), description: 'play 9♥ as one-off' });
+    bridge.apply.mockImplementation(
+      (): BridgeResult =>
+        envelope({ state: p0View({ active: 1, phase: Phase.AwaitingCounter }), lastMove: { ...oneOff, index: 5 }, history: [{ ...oneOff, index: 5 }] }),
+    );
+    bridge.view.mockImplementation(
+      (): BridgeResult =>
+        envelope({
+          state: p1View({ phase: Phase.AwaitingCounter, pending: { playedBy: 0, card: NINE, target: { Owner: 1, Zone: 0, Index: 0 }, counterChain: [] } }),
+          lastMove: oneOff,
+          history: [oneOff],
+          legalMoves: [mv({ Kind: Kind.Decline }), mv({ Kind: Kind.Counter, HandIndex: 1, Card: TWO })],
+          descriptions: ['decline to counter', 'counter with 2♦'],
+        }),
+    );
+    await click(el, 'hand-card-1');
+    await click(el, 'point-1-0');
+    await click(el, 'ambiguity-chooser-option-5');
+    await click(el, 'staging-confirm');
+    await click(el, 'reveal-two-step');
+    await click(el, 'reveal-two-step');
+    // Ruling 2026-09-29: no recap screen before the prompt (it shows the 9).
+    expect(game.curtain).toEqual({ kind: 'ack', to: 1 });
+    expectNoLabels(el, 'counter window');
+  });
 });

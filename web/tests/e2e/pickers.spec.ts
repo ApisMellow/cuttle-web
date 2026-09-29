@@ -120,12 +120,6 @@ async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your r
   }
 }
 
-/** The receiver of a counterable one-off lets it resolve (real window or synthetic ack; same control). */
-async function letItResolve(page: Page): Promise<void> {
-  await expect(page.getByTestId('counter-prompt')).toBeVisible();
-  await page.getByTestId('counter-resolve').click();
-}
-
 async function playOneOff(page: Page, pattern: RegExp): Promise<HookMove> {
   const m = await findMove(page, pattern, Kind.OneOff);
   await page.getByTestId(`hand-card-${m.handIndex}`).click();
@@ -159,8 +153,10 @@ for (const { width, height } of [
     const four = await playOneOff(page, /^play 4. as one-off$/);
     await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(four.description));
     await page.getByTestId('staging-confirm').click();
+    // Alice holds no 2: the 4 resolved at once (ruling 2026-09-29), so her
+    // handoff leads straight to the discard picker, with no prompt first.
     await passThePhone(page, 'Alice', 'Your response');
-    await letItResolve(page);
+    await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
 
     await expect(page.getByTestId('board')).toBeVisible();
     await expect(page.getByTestId('discard-picker')).toContainText('Choose 2 cards to discard');
@@ -186,14 +182,14 @@ for (const { width, height } of [
     expect(await hook(page, (h) => h.viewer())).toBe(0);
     await expect(page.getByTestId('player-hand').locator('[data-testid^="hand-card-"]')).toHaveCount(handCount - 2);
 
-    // 2. Alice plays the 7: round trip to Blake and back, then the reveal.
+    // 2. Alice plays the 7. Blake holds no 2, so it resolves at once
+    // (ruling 2026-09-29): no round trip, Alice goes straight to the reveal.
     const seven = await playOneOff(page, /^play 7. as one-off$/);
     await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(seven.description));
     await page.getByTestId('staging-confirm').click();
-    await passThePhone(page, 'Blake', 'Your response');
-    await expect(page.locator('[data-testid^="seven-"]')).toHaveCount(0);
-    await letItResolve(page);
-    await passThePhone(page, 'Alice', 'Your turn');
+    await expect(page.getByTestId('curtain-gate')).toHaveCount(0);
+    expect(await hook(page, (h) => h.curtain())).toBe('none');
+    expect(await hook(page, (h) => h.viewer())).toBe(0);
 
     await expect(page.getByTestId('seven-reveal')).toBeVisible();
     await expect(page.getByTestId('seven-reveal')).toContainText('Top of the deck');
@@ -261,8 +257,9 @@ for (const { width, height } of [
     await expect(page.getByTestId('staging-bar')).toContainText(/^Recycle Play 3. as a one-off: take .+ from the scrap\./); // card labels: the staged 3's name, then the move
     const seqBeforeThree = await hook(page, (h) => h.seq());
     await page.getByTestId('staging-confirm').click();
-    await passThePhone(page, 'Alice', 'Your response');
-    await letItResolve(page);
+    // Alice holds no 2: her normal turn follows, no prompt.
+    await passThePhone(page, 'Alice', 'Your turn');
+    await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
     await expect(page.getByTestId('board')).toBeVisible();
     expect(await hook(page, (h) => h.seq())).toBeGreaterThan(seqBeforeThree);
     await expectFits(page);

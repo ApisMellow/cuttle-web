@@ -5,8 +5,9 @@
 // every transition here runs the store's real apply/advanceCurtain code.
 //
 // Strict layer (testing policy 2026-09-28): move wiring (R9/R10/R11/R12),
-// the curtain gate (R13.2: the board is unmounted, not hidden) and the R14
-// privacy rule (real counter window and synthetic ack identical).
+// the curtain gate (R13.2: the board is unmounted, not hidden) and the
+// one-off rule (SPEC §4.3, ruling 2026-09-29): a counter prompt only when the
+// responder holds a 2, with no duplicate recap before it.
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -431,19 +432,21 @@ describe('GameScreen clears bitmap image failures at each handoff (A-6)', () => 
 });
 
 // ---------------------------------------------------------------------------
-// CounterPrompt: real window vs synthetic ack (R14)
+// CounterPrompt (SPEC §4.3, ruling 2026-09-29)
 // ---------------------------------------------------------------------------
 
 const TWO = { Rank: 2, Suit: 1 } as const;
 
-/**
- * P0 plays the 9 as a one-off at P1's 7. `real` decides whether the engine
- * opened a counter window (P1 holds a 2) or auto-resolved it (synthetic ack).
- * Either way P1 walks handoff → reveal → recap → ack.
- */
-async function toAck(real: boolean): Promise<HTMLDivElement> {
-  const el = await start();
-  const oneOff = appliedMove({
+/** P0 plays the 9 as a one-off at P1's 7, through the staging UI and Confirm. */
+async function playNine(el: HTMLElement): Promise<void> {
+  await click(el, 'hand-card-1');
+  await click(el, 'point-1-0');
+  await click(el, 'ambiguity-chooser-option-5');
+  await click(el, 'staging-confirm');
+}
+
+function nineEntry() {
+  return appliedMove({
     by: 0,
     kind: Kind.OneOff,
     seq: 1,
@@ -451,10 +454,20 @@ async function toAck(real: boolean): Promise<HTMLDivElement> {
     targetCard: { Rank: 7, Suit: 1 },
     description: 'play 9♥ as one-off',
   });
+}
+
+/**
+ * P1 holds a 2, so the engine opens a counter window. P1 walks handoff →
+ * reveal → counter prompt: no recap screen, since the prompt already shows
+ * the 9 and nothing else is unseen.
+ */
+async function toAck(): Promise<HTMLDivElement> {
+  const el = await start();
+  const oneOff = nineEntry();
   bridge.apply.mockImplementation(
     (): BridgeResult =>
       envelope({
-        state: p0View({ active: 1, phase: real ? Phase.AwaitingCounter : Phase.Normal }),
+        state: p0View({ active: 1, phase: Phase.AwaitingCounter }),
         lastMove: { ...oneOff, index: 5 },
         history: [{ ...oneOff, index: 5 }],
       }),
@@ -462,71 +475,79 @@ async function toAck(real: boolean): Promise<HTMLDivElement> {
   bridge.view.mockImplementation(
     (): BridgeResult =>
       envelope({
-        state: real
-          ? p1View({
-              phase: Phase.AwaitingCounter,
-              pending: { playedBy: 0, card: NINE, target: { Owner: 1, Zone: 0, Index: 0 }, counterChain: [] },
-            })
-          : // synthetic: the 9 already resolved — P1's 7 went back to hand, scores changed
-            p1View({ you: { hand: [...P1_HAND, { Rank: 7, Suit: 1 }], frozenHandIndices: [2], points: [], permanents: [], watched: false } }),
+        state: p1View({
+          phase: Phase.AwaitingCounter,
+          pending: { playedBy: 0, card: NINE, target: { Owner: 1, Zone: 0, Index: 0 }, counterChain: [] },
+        }),
         lastMove: oneOff,
         history: [oneOff],
-        legalMoves: real
-          ? [mv({ Kind: Kind.Decline }), mv({ Kind: Kind.Counter, HandIndex: 1, Card: TWO })]
-          : [mv({ Kind: Kind.Draw })],
-        descriptions: real ? ['decline', 'counter with two'] : ['draw a card'],
+        legalMoves: [mv({ Kind: Kind.Decline }), mv({ Kind: Kind.Counter, HandIndex: 1, Card: TWO })],
+        descriptions: ['decline', 'counter with two'],
       }),
   );
 
-  await click(el, 'hand-card-1');
-  await click(el, 'point-1-0');
-  await click(el, 'ambiguity-chooser-option-5');
-  await click(el, 'staging-confirm');
+  await playNine(el);
   await click(el, 'reveal-two-step');
   await click(el, 'reveal-two-step');
-  await click(el, 'recap-dismiss');
-  expect(game.curtain).toEqual({ kind: 'ack', to: 1, synthetic: !real });
+  expect(game.curtain).toEqual({ kind: 'ack', to: 1 });
   return el;
 }
 
-function withoutCounterOptions(el: HTMLElement): string {
-  const clone = el.cloneNode(true) as HTMLElement;
-  for (const node of clone.querySelectorAll('[data-testid^="counter-option-"]')) node.remove();
-  return clone.innerHTML;
-}
-
-describe('GameScreen CounterPrompt (R14, SPEC §4.3)', () => {
-  it('PRIVACY: the real counter window and the synthetic ack render identically apart from the 2-buttons', async () => {
-    const synthetic = withoutCounterOptions(await toAck(false));
-    cleanup();
-    resetSingletons();
-    const realEl = await toAck(true);
-    expect(realEl.querySelectorAll('[data-testid^="counter-option-"]')).toHaveLength(1);
-    expect(withoutCounterOptions(realEl)).toBe(synthetic);
+describe('GameScreen CounterPrompt (SPEC §4.3)', () => {
+  it('ruling 2026-09-29: the prompt follows the reveal directly, showing the one-off once (no recap screen, one tap fewer)', async () => {
+    const el = await toAck();
+    expect(q(el, 'recap')).toBeNull();
+    expect(q(el, 'recap-dismiss')).toBeNull();
+    const prompt = q(el, 'counter-prompt');
+    expect(prompt).not.toBeNull();
+    expect(prompt!.textContent).toContain('Alice played 9♥ as a one-off');
+    expect(prompt!.textContent!.match(/played 9♥/g)).toHaveLength(1);
+    expect(el.querySelectorAll('[data-testid^="counter-option-"]')).toHaveLength(1);
   });
 
-  it('neither ack path mounts the board (a peek would show post-resolution state on one path only)', async () => {
-    const synthetic = await toAck(false);
-    expect(q(synthetic, 'counter-prompt')).not.toBeNull();
-    expect(q(synthetic, 'board')).toBeNull();
-    cleanup();
-    resetSingletons();
-    const real = await toAck(true);
-    expect(q(real, 'counter-prompt')).not.toBeNull();
-    expect(q(real, 'board')).toBeNull();
+  it('the board is not mounted at the counter window', async () => {
+    const el = await toAck();
+    expect(q(el, 'counter-prompt')).not.toBeNull();
+    expect(q(el, 'board')).toBeNull();
   });
 
-  it('synthetic ack: "Let it resolve" advances the local curtain with no bridge apply', async () => {
-    const el = await toAck(false);
-    bridge.apply.mockClear();
-    await click(el, 'counter-resolve');
-    expect(bridge.apply).not.toHaveBeenCalled();
-    expect(game.curtain.kind).toBe('none');
+  it('ruling 2026-09-29: with no 2 to answer there is no prompt and no "Let it resolve": turn handoff, recap, then the board', async () => {
+    const el = await start();
+    const oneOff = nineEntry();
+    bridge.apply.mockImplementation(
+      (): BridgeResult =>
+        envelope({
+          state: p0View({ active: 1, phase: Phase.Normal }),
+          lastMove: { ...oneOff, index: 5 },
+          history: [{ ...oneOff, index: 5 }],
+        }),
+    );
+    bridge.view.mockImplementation(
+      (): BridgeResult =>
+        envelope({
+          // The 9 already resolved: P1's 7 went back to hand.
+          state: p1View({ you: { hand: [...P1_HAND, { Rank: 7, Suit: 1 }], frozenHandIndices: [2], points: [], permanents: [], watched: false } }),
+          lastMove: oneOff,
+          history: [oneOff],
+          legalMoves: [mv({ Kind: Kind.Draw })],
+          descriptions: ['draw a card'],
+        }),
+    );
+    await playNine(el);
+    expect(game.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
+    const seen: string[] = [];
+    for (const step of ['reveal-two-step', 'reveal-two-step', 'recap-dismiss']) {
+      await click(el, step);
+      seen.push(game.curtain.kind);
+      expect(q(el, 'counter-prompt')).toBeNull();
+      expect(q(el, 'counter-resolve')).toBeNull();
+    }
+    expect(seen).toEqual(['reveal', 'recap', 'none']);
     expect(q(el, 'board')).not.toBeNull();
   });
 
   it('real window: "Let it resolve" applies the engine Decline index', async () => {
-    const el = await toAck(true);
+    const el = await toAck();
     bridge.apply.mockReset();
     bridge.apply.mockImplementation(
       (): BridgeResult =>
@@ -542,7 +563,7 @@ describe('GameScreen CounterPrompt (R14, SPEC §4.3)', () => {
   });
 
   it('real window: a counter needs Confirm, then applies that Counter index', async () => {
-    const el = await toAck(true);
+    const el = await toAck();
     bridge.apply.mockReset();
     bridge.apply.mockImplementation(
       (): BridgeResult =>
@@ -558,27 +579,19 @@ describe('GameScreen CounterPrompt (R14, SPEC §4.3)', () => {
     expect(bridge.apply).toHaveBeenCalledWith(1);
   });
 
-  it('SPEC §6.5: at a real window the hook exposes the counter and decline slots', async () => {
-    await toAck(true);
+  it('SPEC §6.5: at the counter window the hook exposes the counter and decline slots', async () => {
+    await toAck();
     const hook = (window as unknown as { __cuttleTestHook: { affordances(): Record<string, number[]> } })
       .__cuttleTestHook;
     expect(hook.affordances()).toEqual({ decline: [0], 'counter:1': [1] });
   });
-
-  it('SPEC §6.5: at a synthetic ack the hook exposes nothing (the held envelope is post-resolution)', async () => {
-    await toAck(false);
-    // The store does hold the acknowledger's envelope here, with a live Draw.
-    expect(game.envelope?.legalMoves).toHaveLength(1);
-    const hook = (
-      window as unknown as { __cuttleTestHook: { affordances(): Record<string, number[]>; moves(): unknown[] } }
-    ).__cuttleTestHook;
-    expect(hook.affordances()).toEqual({});
-    expect(hook.moves()).toEqual([]);
-  });
 });
 
 // ---------------------------------------------------------------------------
-// Last-move line (R20.1) must not reveal whether the opponent held a 2 (R14)
+// Last-move line (R20.1): the same board text whichever way a one-off
+// resolved. Since the 2026-09-29 ruling the acting player may infer whether
+// the opponent held a 2 from the phone passing; these pin that the board
+// line itself reads the same (the Decline is never shown).
 // ---------------------------------------------------------------------------
 
 const SEVEN = { Rank: 7, Suit: 2 } as const;
@@ -591,10 +604,10 @@ async function boardAt(env: Envelope): Promise<string> {
   return el.innerHTML;
 }
 
-describe('GameScreen last-move line (R14 privacy, SPEC §4.3)', () => {
-  it('PRIVACY: a 7 one-off back at SevenChoosing renders the same board whether or not the opponent declined', async () => {
-    // A (P0) played the 7 as a one-off. Synthetic path: O had no 2, the
-    // engine resolved it at once. Real path: O held a 2 and declined.
+describe('GameScreen last-move line (SPEC §4.6)', () => {
+  it('a 7 one-off back at SevenChoosing renders the same board whether or not the opponent declined', async () => {
+    // A (P0) played the 7 as a one-off. No window: O had no 2, the engine
+    // resolved it at once. Window: O held a 2 and declined.
     const sevenOneOff = appliedMove({
       by: 0,
       kind: Kind.OneOff,
@@ -606,17 +619,17 @@ describe('GameScreen last-move line (R14 privacy, SPEC §4.3)', () => {
     const decline = appliedMove({ by: 1, kind: Kind.Decline, seq: 2, description: 'decline' });
     const state = p0View({ phase: Phase.SevenChoosing, active: 0 });
 
-    const synthetic = await boardAt(envelope({ state, lastMove: sevenOneOff, history: [sevenOneOff] }));
+    const noWindow = await boardAt(envelope({ state, lastMove: sevenOneOff, history: [sevenOneOff] }));
     cleanup();
     resetSingletons();
     const real = await boardAt(envelope({ state, lastMove: decline, history: [sevenOneOff, decline] }));
 
-    expect(real).toBe(synthetic);
+    expect(real).toBe(noWindow);
   });
 
-  it('PRIVACY: an odd-chain counter cancel renders the same board to the counterer on both paths', async () => {
-    // A (P0) played a one-off, O (P1) countered. Synthetic: A had no 2, the
-    // counter resolved (cancelled) at once. Real: A held a 2 and declined.
+  it('an odd-chain counter cancel renders the same board to the counterer either way', async () => {
+    // A (P0) played a one-off, O (P1) countered. No window: A had no 2, the
+    // counter resolved (cancelled) at once. Window: A held a 2 and declined.
     const oneOff = appliedMove({
       by: 0,
       kind: Kind.OneOff,
@@ -638,7 +651,7 @@ describe('GameScreen last-move line (R14 privacy, SPEC §4.3)', () => {
     const moves = [mv({ Kind: Kind.Draw })];
     const descriptions = ['draw a card'];
 
-    const synthetic = await boardAt(
+    const noWindow = await boardAt(
       envelope({ state, lastMove: counter, history: [oneOff, counter], legalMoves: moves, descriptions }),
     );
     cleanup();
@@ -647,13 +660,13 @@ describe('GameScreen last-move line (R14 privacy, SPEC §4.3)', () => {
       envelope({ state, lastMove: decline, history: [oneOff, counter, decline], legalMoves: moves, descriptions }),
     );
 
-    expect(real).toBe(synthetic);
+    expect(real).toBe(noWindow);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Last-move line TEXT (R20.1, SPEC §4.6) — the reviewer found only real-vs-
-// synthetic equality was tested, never the rendered text itself. History has
+// Last-move line TEXT (R20.1, SPEC §4.6) — the reviewer found only
+// with-and-without-window equality was tested, never the rendered text itself. History has
 // four entries so the last visible one (the 4 one-off) differs from every
 // earlier one, catching a formatter that picks the wrong entry.
 // ---------------------------------------------------------------------------
@@ -715,14 +728,14 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
     expect(lastMoveLine(el)).toBe('Alice played 4♣ as a one-off.');
   });
 
-  it('amended 2026-09-28 (R14, strict): a resolved 5 says how many it drew, the same after a real decline and a synthetic ack', async () => {
+  it('amended 2026-09-28: a resolved 5 says how many it drew, the same after a decline and with no window', async () => {
     const FIVE = { Rank: 5, Suit: 2 } as const;
     const fiveBy1 = (drawn: number | null) =>
       appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: FIVE, description: 'play 5♥ as one-off', drawn });
     const real = [fiveBy1(null), appliedMove({ by: 0, kind: Kind.Decline, seq: 2, description: 'decline to counter', drawn: 2 })];
-    const synthetic = [fiveBy1(2)];
+    const noWindow = [fiveBy1(2)];
     const lines: (string | null)[] = [];
-    for (const history of [real, synthetic]) {
+    for (const history of [real, noWindow]) {
       cleanup();
       resetSingletons();
       const state = playerView({ viewer: 0, active: 0, phase: Phase.Normal });

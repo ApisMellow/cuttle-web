@@ -100,8 +100,8 @@ When the diff touches stores, curtain flow, history or recap:
   `createWasmEngine` from `web/tests/scenario/wasm-engine.ts`.
 - So the walk can see private state, rename `#field` to `_field` with `sed`
   in the scratch copy.
-- Drive every curtain step: `handoff`, `reveal`, `recap`, real and
-  synthetic `ack`, `none`, `result`. Include a Draw, the 7's round trip, an
+- Drive every curtain step: `handoff`, `reveal`, `recap`, `ack`
+  (counter window only), `none`, `result`. Include a Draw, the 7's round trip, an
   odd-chain counter cancel, and restore into each curtain kind.
 - At each step, walk every reachable store field recursively. Search for
   the non-holder's card identities (`{Rank,Suit}` from their hand),
@@ -110,9 +110,10 @@ When the diff touches stores, curtain flow, history or recap:
   design, SPEC §3.4).
 - `index` rule: none at `handoff`, `reveal` or `recap`. At `none` or an
   ack, only on entries with `by === viewer`.
-- **R14 A/B probe:** run the same position through a real Decline and
-  through a synthetic ack. The acting player's screens and recap must be
-  identical.
+- **R14 probe** *(rewritten 2026-09-29, SPEC §4.3)*: a one-off against an
+  opponent with no legal 2 must produce no `ack` and no "Let it resolve"
+  anywhere; with a 2, the prompt follows the reveal. The mover-side leak of
+  "had no 2" is accepted; no card may leak.
 - A hit is blocking. Report step, field path and value.
 
 For DOM work, check each playbook rule under "Redaction rules" and

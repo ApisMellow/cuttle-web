@@ -122,13 +122,13 @@ its own repo root, so calling it by absolute path tests that tree.
 
 | Behavior | Why it matters |
 |---|---|
-| Builds `web/static/cuttle.wasm` before any npm step | Three unit files boot the real wasm: `scenario-replay.opening.test.ts`, `game-restore.test.ts`, and the seed-2/ply-23 walk in `affordances.test.ts`. A stale wasm fails them, or passes them against old code. A failed build deletes the artifact so the dependent rows fail loudly. |
+| Builds `web/static/cuttle.wasm` before any npm step | Twelve unit files (2026-09-29) boot the real wasm: every file that calls `createWasmEngine()` from `web/tests/scenario/wasm-engine.ts` (grep for it; the count grows), among them `scenario-replay.opening.test.ts`, `game-restore.test.ts`, `game-draw-reveal-wasm.test.ts` and the seed-2/ply-23 walk in `affordances.test.ts`. A stale wasm fails them, or passes them against old code. A failed build deletes the artifact so the dependent rows fail loudly. |
 | Exports `CI=1` | Playwright won't reuse another worktree's dev server; `.only` fails; engine-walk pin drift throws. |
 | Picks a free port, exports `CUTTLE_E2E_PORT` | Parallel worktrees each get their own e2e server. |
 | Exits early if `web/node_modules` is missing | Run `npm --prefix <worktree>/web ci`. The script installs nothing. |
 
 - After a Go change, run `<worktree>/scripts/build-wasm.sh` before any
-  targeted run of the three wasm-backed files or the smoke test.
+  targeted run of a wasm-backed unit file or the smoke test.
 - Never run `test:e2e` outside `ci.sh`. If you must, set `CI=1` and your own
   `CUTTLE_E2E_PORT`.
 - Under CI, Playwright `retries: 2` can hide a flaky test. `flaky` or
@@ -142,7 +142,7 @@ its own repo root, so calling it by absolute path tests that tree.
 
 | SPEC says | Reality |
 |---|---|
-| §7.1: unit tests use no WASM | Three unit files boot the real wasm (above). |
+| §7.1: unit tests use no WASM | Twelve unit files boot the real wasm (above). |
 | §1.3: `web/src/routes/` | Doesn't exist. The shell is `web/src/App.svelte` and `web/src/main.ts`. |
 | §5.4, §3.3 rule 1: `lib/bridge/types.ts`, `raw.ts` | Don't exist. The wire types live in `lib/bridge/schema.ts`. |
 | §2.10, §7.2 item 6: smoke exclusion list | Gone. The smoke corpus is seeds 1–240, unfiltered. |
@@ -259,12 +259,12 @@ Hard rejects. Each came up in rounds 1–2.
 - **Nothing of the previous holder survives a curtain:** not the envelope,
   not the view, not mover-only `index` in history or recap entries, not a
   closure or component-local copy.
-- **The board renders only at curtain `none`, never at `ack`** (real or
-  synthetic), and never merely because `view` is non-null. Behind the
-  curtain it is unmounted, not hidden. *(Amended 2026-09-28, W13 GameScreen
-  review: at a synthetic ack the one-off has already resolved and at a real
-  window it hasn't, so a board or `ScoreBar` at either would leak which case
-  it was, under R14.)*
+- **The board renders only at curtain `none`, never at `ack`** (the counter
+  window, where the responder is deciding whether to play a 2), and never
+  merely because `view` is non-null. Behind the curtain it is unmounted, not
+  hidden. *(Amended 2026-09-29, product-owner ruling, SPEC §4.3: the
+  synthetic ack is gone, so the board is hidden at an ack only because the
+  one-off is still pending while the responder decides.)*
 - **The idle last-move line reads the last `isRecapVisible` entry in
   `history`**, never raw `lastMove`, which can be a filtered-out `Decline`
   *(amended 2026-09-28, W13 GameScreen review)*. The counter prompt's
@@ -281,8 +281,11 @@ Hard rejects. Each came up in rounds 1–2.
   layout before the reveal gate. Assert it in a DOM test.
 - **No auto-advance anywhere in the curtain.** The ack can't be skipped,
   fast-forwarded or auto-dismissed.
-- **Real and synthetic ack are identical** to the acting player: screen
-  count, DOM, testids, control position, dwell (§4.3).
+- **No counter prompt without a legal 2** *(2026-09-29, SPEC §4.3)*. A
+  one-off resolves at once and ends the turn; the `ack` curtain appears only
+  when the engine opened a counter window. No "Let it resolve" prompt is ever
+  staged for a responder who holds no 2. The acting player can infer that
+  from whether the phone passes; the product owner accepts this leak.
 - **Recap:** never name the 7's unchosen card; never show a Decline (filter
   with `isRecapVisible` before the "skip when empty" check); `DiscardPair`
   names no indices and no identities.

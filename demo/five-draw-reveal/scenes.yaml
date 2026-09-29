@@ -1,0 +1,60 @@
+size: 1400x2500
+fps: 30
+engine: piper
+voice: en_US-lessac-medium
+
+scenes:
+  - id: title
+    card: A 5 shows you what you drew
+    subtitle: Cuttle, issues 27 and 23
+    duration: 3
+
+  - id: before-setup
+    frames: out/frames/before-setup
+    rate: 10
+    narration: First, the game as it runs today. Alice plays a two. Blake stages a five.
+
+  - id: before-five
+    frames: out/frames/before-five
+    rate: 10
+    narration: Alice has no two. Still, she is asked to let the five resolve.
+
+  - id: before-result
+    frames: out/frames/before-result
+    rate: 10
+    narration: Nobody sees the cards drawn. Now, the fix.
+
+  - id: after-setup
+    frames: out/frames/after-setup
+    rate: 10
+    narration: Same game, same seed. Blake stages the five.
+
+  - id: after-reveal
+    frames: out/frames/after-reveal
+    rate: 10
+    narration: No prompt for Alice. Blake sees just his two new cards.
+
+  - id: after-pass
+    frames: out/frames/after-pass
+    rate: 10
+    narration: The phone passes to Alice. Her screens never show those cards.
+
+  - id: two-setup
+    frames: out/frames/two-setup
+    rate: 10
+    narration: Now a different deal, where Alice keeps a two. Blake stages a five.
+
+  - id: two-counter
+    frames: out/frames/two-counter
+    rate: 10
+    narration: This time Alice is asked to counter, straight after the pass. No recap first.
+
+  - id: two-resolve
+    frames: out/frames/two-resolve
+    rate: 10
+    narration: She lets it resolve and takes her turn. Blake then sees what he drew.
+
+  - id: done
+    frames: out/frames/done
+    rate: 10
+    narration: Only a player who can counter is asked.

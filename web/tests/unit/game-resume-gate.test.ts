@@ -6,14 +6,14 @@
 // prompt, with no "I'm NAME" gate. Whoever tapped Resume saw that hand, or
 // whether that player held a 2.
 //
-// Ruling: a restore into a resting curtain (`none`, or an `ack`, real or
-// synthetic) first raises a resume gate addressed to the persisted viewer:
+// Ruling: a restore into a resting curtain (`none`, or the counter window
+// `ack`) first raises a resume gate addressed to the persisted viewer:
 // `handoff` with reason `resume` -> `reveal` -> the persisted resting curtain.
 // Nothing view-bearing is held until the gate is passed; the view is then
 // fetched fresh with `engine.view`. The gate is never written to the save
 // (the save already holds the resting position), so a reload during the gate
 // comes back to the gate. The gate is the same for every resting kind, so a
-// real counter window and a synthetic ack resume behind identical curtains.
+// counter window and a board resume behind identical curtains.
 // `result` is public (no hand renders, SPEC §5.2) and is not gated.
 
 import { describe, expect, it, vi } from 'vitest';
@@ -137,21 +137,19 @@ describe('Resume at the live board raises a gate for the persisted viewer (both 
   }
 });
 
-describe('Resume at a counter window: the gate is identical for a real window and a synthetic ack (R14)', () => {
-  // Blake (1) played the 9; Alice (0) is the responder.
+describe('Resume at a counter window: the gate is identical to a board resume', () => {
+  // Blake (1) played the 9; Alice (0) is the responder and holds a 2.
   const history = [oneOffBy(1)];
 
-  async function atGate(synthetic: boolean) {
-    const env = synthetic
-      ? viewerEnvelope(0, { phase: Phase.Normal, active: 0, history })
-      : viewerEnvelope(0, { phase: Phase.AwaitingCounter, active: 0, counter: true, history });
-    const s = setup(snapshot({ viewer: 0, curtain: { kind: 'ack', to: 0, synthetic }, history, lastSeenSeq: { 0: 1, 1: 1 } }), env);
+  async function atGate() {
+    const env = viewerEnvelope(0, { phase: Phase.AwaitingCounter, active: 0, counter: true, history });
+    const s = setup(snapshot({ viewer: 0, curtain: { kind: 'ack', to: 0 }, history, lastSeenSeq: { 0: 1, 1: 1 } }), env);
     await s.store.restore();
     return s;
   }
 
-  it('real window: gate first, then the window with its Counter option, and apply() works', async () => {
-    const { store, engine } = await atGate(false);
+  it('gate first, then the window with its Counter option, and apply() works', async () => {
+    const { store, engine } = await atGate();
     expect(store.curtain).toEqual(resumeGate(0));
     expectNothingExposed(store);
     // No move can be submitted from behind the gate.
@@ -161,32 +159,19 @@ describe('Resume at a counter window: the gate is identical for a real window an
     await store.advanceCurtain();
     expectNothingExposed(store);
     await store.advanceCurtain();
-    expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: false });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 0 });
     expect(store.legalMoves.some((m) => m.Kind === Kind.Counter)).toBe(true);
     expect(store.isViewerActive).toBe(true);
   });
 
-  it('synthetic ack: gate first, then the ack, which advances on to the board', async () => {
-    const { store } = await atGate(true);
-    expect(store.curtain).toEqual(resumeGate(0));
-    expectNothingExposed(store);
-    await store.advanceCurtain();
-    await store.advanceCurtain();
-    expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: true });
-    await store.advanceCurtain(); // post.active (0) is the acknowledger -> none
-    expect(store.curtain).toEqual({ kind: 'none' });
-    expect(store.viewer).toBe(0);
-  });
-
-  it('the gate and its reveal are the same state on both paths, and the same as a board resume for that player', async () => {
-    const real = await atGate(false);
-    const synthetic = await atGate(true);
+  it('the gate and its reveal are the same state as a board resume for that player', async () => {
+    const window = await atGate();
     const board = setup(snapshot({ viewer: 0, history }), viewerEnvelope(0, { phase: Phase.Normal, active: 0, history }));
     await board.store.restore();
-    const states = [real.store, synthetic.store, board.store].map((s) => JSON.stringify([s.curtain, s.envelope, s.viewer, s.history, s.legalMoves]));
+    const states = [window.store, board.store].map((s) => JSON.stringify([s.curtain, s.envelope, s.viewer, s.history, s.legalMoves]));
     expect(new Set(states).size).toBe(1);
-    for (const s of [real.store, synthetic.store, board.store]) await s.advanceCurtain();
-    const reveals = [real.store, synthetic.store, board.store].map((s) => JSON.stringify([s.curtain, s.envelope, s.viewer, s.history]));
+    for (const s of [window.store, board.store]) await s.advanceCurtain();
+    const reveals = [window.store, board.store].map((s) => JSON.stringify([s.curtain, s.envelope, s.viewer, s.history]));
     expect(new Set(reveals).size).toBe(1);
   });
 });
@@ -283,73 +268,49 @@ describe('A failed fetch at the gate keeps the gate, and a retry passes it', () 
   });
 });
 
-// Review B1: the saved ack's addressee is not the engine's Active player.
-// A cancelled counter chain leaves Active on the counterer (engine v0.2.0
+// Review B1, kept for saves from before the 2026-09-29 ruling: a saved
+// synthetic ack's addressee need not be the engine's Active player. A
+// cancelled counter chain leaves Active on the counterer (engine v0.2.0
 // apply.go resolvePending: Active = PlayedBy, then endTurn), and a 7 leaves
-// Active on the actor (resolveOneOffWith, case Seven). The gate, the fetched
-// view and the viewer must all be the addressee's, never the active player's.
-describe('Resume at a synthetic ack whose addressee is not the engine Active player', () => {
-  const HAND: Record<PlayerId, { Rank: 13 | 12; Suit: 3 | 2 }> = { 0: { Rank: 13, Suit: 3 }, 1: { Rank: 12, Suit: 2 } };
-
-  function envFor(viewer: PlayerId, active: PlayerId, phase: number, history: ReturnType<typeof appliedMove>[]): Envelope {
-    return envelope({
-      state: playerView({
-        viewer,
-        active,
-        phase: phase as 0 | 1 | 2 | 3 | 4,
-        you: { hand: [HAND[viewer]], frozenHandIndices: [], points: [], permanents: [], watched: false },
-        opponent: { handCount: 1, hand: null, points: [], permanents: [] },
-      }),
-      history,
-      seq: history.length,
-    });
-  }
-
+// Active on the actor (resolveOneOffWith, case Seven). The old ack comes back
+// as the addressee's reveal (snapshot.ts); passing it hands the phone to the
+// Active player without fetching anyone's view.
+describe('Resume at a pre-ruling synthetic ack whose addressee is not the engine Active player', () => {
   function run(active: PlayerId, phase: number, history: ReturnType<typeof appliedMove>[]) {
     const storage = fakeStorage();
-    storage.setItem(
-      SNAPSHOT_KEY,
-      encodeSnapshot(snapshot({ history, viewer: 0, curtain: { kind: 'ack', to: 0, synthetic: true }, lastSeenSeq: { 0: history.length, 1: history.length } })),
-    );
+    const legacy = { ...snapshot({ history, viewer: 0, lastSeenSeq: { 0: history.length, 1: history.length } }), curtain: { kind: 'ack', to: 0, synthetic: true } };
+    storage.setItem(SNAPSHOT_KEY, JSON.stringify(legacy));
+    const env = (viewer: PlayerId): Envelope =>
+      envelope({ state: playerView({ viewer, active, phase: phase as 0 | 1 | 2 | 3 | 4 }), history, seq: history.length });
     const engine = createFakeEngine({
-      restore: vi.fn((_s: string, v: PlayerId) => envFor(v, active, phase, history)),
-      view: vi.fn((p: PlayerId) => envFor(p, active, phase, history)),
+      restore: vi.fn((_s: string, v: PlayerId) => env(v)),
+      view: vi.fn((p: PlayerId) => env(p)),
     });
     return { store: new GameStore({ engine, storage, session: new SessionStore() }), engine };
   }
 
-  async function passGateAsAlice(store: GameStore, engine: ReturnType<typeof createFakeEngine>): Promise<void> {
-    await store.restore();
-    expect(store.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'resume' });
-    await store.advanceCurtain();
-    await store.advanceCurtain();
-    expect(engine.view).toHaveBeenCalledTimes(1);
-    expect(engine.view).toHaveBeenCalledWith(0);
-    expect(store.viewer).toBe(0);
-    expect(store.view?.viewer).toBe(0);
-    expect(store.view?.you.hand).toEqual([HAND[0]]);
-    expect(JSON.stringify(store.envelope)).not.toContain(JSON.stringify(HAND[1]));
-    expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: true });
-  }
-
-  it('cancelled chain: Alice played, Blake countered, Alice (no 2) acknowledges; Active is Blake', async () => {
+  it('cancelled chain: Alice played, Blake countered, Alice held no 2; Active is Blake', async () => {
     const history = [
       appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 5, Suit: 0 } }),
       appliedMove({ by: 1, kind: Kind.Counter, seq: 2, card: { Rank: 2, Suit: 0 } }),
     ];
     const { store, engine } = run(1, Phase.Normal, history);
-    await passGateAsAlice(store, engine);
+    await store.restore();
+    expect(store.curtain).toEqual({ kind: 'reveal', to: 0 });
+    expect(store.envelope).toBeNull();
     await store.advanceCurtain();
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
     expect(store.envelope).toBeNull();
+    expect(engine.view).not.toHaveBeenCalled();
   });
 
-  it('a 7 by Blake, Alice acknowledges; Active is Blake at SevenChoosing', async () => {
+  it('a 7 by Blake, Alice held no 2; Active is Blake at SevenChoosing', async () => {
     const history = [appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 7, Suit: 0 } })];
     const { store, engine } = run(1, Phase.SevenChoosing, history);
-    await passGateAsAlice(store, engine);
+    await store.restore();
     await store.advanceCurtain();
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'seven-return' });
     expect(store.envelope).toBeNull();
+    expect(engine.view).not.toHaveBeenCalled();
   });
 });

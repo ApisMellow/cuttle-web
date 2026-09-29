@@ -2,13 +2,12 @@
 // prompt say what a card does, blocked cards say why, staging names its
 // target, and the result screen labels the tally and goal.
 //
-// Strict tier here (R14): every recap / counter-prompt line must read the
-// same before and after its one-off resolves, because on the real
-// counter-window path it renders before resolution and on the synthetic
-// path after. The tests pair the two history shapes the paths produce and
-// assert identical text. The board's last-move line renders after
-// resolution on both paths, and its tests pair the real history (a Decline
-// at the end) with the synthetic one (none).
+// Strict tier here: every recap / counter-prompt line must read the same
+// before and after its one-off resolves, because in a counter window it
+// renders before resolution and in a recap after. The tests pair the two
+// history shapes and assert identical text. The board's last-move line
+// renders after resolution, and its tests pair a window's history (a
+// Decline at the end) with a no-window one (none).
 
 import { describe, expect, it } from 'vitest';
 
@@ -93,13 +92,13 @@ describe('counter prompt / recap: a 2 names what it stops (R14 strict)', () => {
     expect(formatRecapLines([history[1]], 0, NAMES)).toEqual(['Blake countered with 2♣.']);
   });
 
-  it('R14: the real window and the synthetic ack read the same lines (drawn and a later Decline are never read)', () => {
-    // Real: Alice holds a 2, the chain is still open. Synthetic: Alice held
+  it('a line reads the same before and after its one-off resolves (drawn and a later Decline are never read)', () => {
+    // Open: Alice holds a 2, the chain is still open. Closed: Alice held
     // none, the 5 was cancelled at once (drawn stays null on a cancel) — the
     // history is the same shape; only `drawn` can differ on an even chain.
     const real = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
-    const synthetic = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
-    expect(formatRecapLines(real, 0, NAMES, real)).toEqual(formatRecapLines(synthetic, 0, NAMES, synthetic));
+    const closed = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
+    expect(formatRecapLines(real, 0, NAMES, real)).toEqual(formatRecapLines(closed, 0, NAMES, closed));
     const evenOpen = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣'), counter(0, 3, '2♦')];
     const evenResolved = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣'), counter(0, 3, '2♦', 2)];
     for (const viewer of [0, 1] as const) {
@@ -108,13 +107,13 @@ describe('counter prompt / recap: a 2 names what it stops (R14 strict)', () => {
   });
 });
 
-describe('board line after a counter: the original card was stopped (R14 strict)', () => {
+describe('board line after a counter: the original card was stopped', () => {
   it('one 2: "Blake countered with 2♣: your 5♥ was stopped."', () => {
-    const synthetic = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
-    const real = [...synthetic, decline(0, 3)];
-    expect(lastMoveLine(synthetic, 0, NAMES)).toBe('Blake countered with 2♣: your 5♥ was stopped.');
-    expect(lastMoveLine(synthetic, 1, NAMES)).toBe("You countered with 2♣: Alice's 5♥ was stopped.");
-    for (const viewer of [0, 1] as const) expect(lastMoveLine(real, viewer, NAMES)).toBe(lastMoveLine(synthetic, viewer, NAMES));
+    const atOnce = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
+    const real = [...atOnce, decline(0, 3)];
+    expect(lastMoveLine(atOnce, 0, NAMES)).toBe('Blake countered with 2♣: your 5♥ was stopped.');
+    expect(lastMoveLine(atOnce, 1, NAMES)).toBe("You countered with 2♣: Alice's 5♥ was stopped.");
+    for (const viewer of [0, 1] as const) expect(lastMoveLine(real, viewer, NAMES)).toBe(lastMoveLine(atOnce, viewer, NAMES));
   });
 
   it('three 2s: the last line, then the one-off was stopped', () => {

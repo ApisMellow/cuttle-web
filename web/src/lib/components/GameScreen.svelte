@@ -9,12 +9,19 @@
   //   handoff / reveal / recap -> Curtain only. The board is NOT in the DOM.
   //     One `{#if}` branch spans all three, so Curtain stays mounted across
   //     handoff -> reveal (ruling A1: the press carries into the hold).
-  //   ack (real or synthetic)  -> CounterPrompt only. The board is not
-  //     mounted on EITHER path: at a synthetic ack the one-off has already
-  //     resolved, so a board (or a score) would show post-resolution state
-  //     on one path and pre-resolution state on the other (R14).
+  //   ack (the counter window) -> CounterPrompt only. The board is not
+  //     mounted: the one-off has not resolved yet, and the prompt is a
+  //     full-screen decision.
   //   none                     -> Board + the action bar (+ AmbiguityChooser).
   //   result                   -> never reached here; App routes to ResultScreen.
+  //
+  // Issue #27 draw reveal (SPEC §4.7): while `game.drawReveal` is up and the
+  // exposed envelope is its drawer's own, at `none` or an `ack` (never a
+  // withheld curtain), DrawRevealPanel takes the place of the board or the
+  // counter prompt. Continuing (tap, key, or 3 s) calls
+  // `game.dismissDrawReveal()`, which brings the board, the counter prompt,
+  // or (before the pass) the saved handoff. Before the pass it gets only the
+  // drawn cards; the menu (`menuOpen`) pauses its 3 s wait.
   //
   // Stuck curtain (brief): if `engine.view` fails while the curtain leaves
   // reveal/recap, the store keeps the curtain and sets `game.error`, and
@@ -52,6 +59,7 @@
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
+  import DrawRevealPanel from './DrawRevealPanel.svelte';
   import GameMenu from './GameMenu.svelte';
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
@@ -119,6 +127,29 @@
   });
 
   const board = $derived(boardEnvelope());
+
+  /**
+   * SPEC §4.7 privacy gate for the draw reveal, independent of the store's
+   * own: only at `none` or an `ack`, and only when the exposed envelope and
+   * the store's viewer are both the drawer. The cards come from that
+   * envelope; the store holds indices only.
+   *
+   * Before the pass the phone is about to change hands, so the panel gets
+   * ONLY the drawn cards (every one of them marked drawn), never the rest of
+   * the hand. At the drawer's own next view it gets the whole hand with the
+   * drawn indices marked.
+   */
+  const drawReveal = $derived.by((): { hand: Card[]; indices: number[] } | null => {
+    const reveal = game.drawReveal;
+    const env = game.envelope;
+    const kind = game.curtain.kind;
+    if (reveal === null || env === null || (kind !== 'none' && kind !== 'ack')) return null;
+    if (env.state.viewer !== reveal.to || game.viewer !== reveal.to) return null;
+    const hand = env.state.you.hand;
+    if (!reveal.beforePass) return { hand, indices: reveal.indices };
+    const drawnCards = reveal.indices.flatMap((i) => (hand[i] === undefined ? [] : [hand[i]]));
+    return { hand: drawnCards, indices: drawnCards.map((_, i) => i) };
+  });
   const revealed = $derived(board === null ? null : sevenCards(board));
   const withheld = $derived(
     game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
@@ -140,9 +171,8 @@
   // amended 2026-09-28): the last `isRecapVisible` history entry as a
   // sentence for this viewer — "You played 7♥ for points." for the viewer's
   // own move, never the raw engine description — plus a resolved 5's draw
-  // count. Never from `lastMove` (R14): after a real counter window
-  // `lastMove` is the Decline, after a synthetic ack it is the move itself,
-  // so reading it would tell the acting player whether the opponent held a 2.
+  // count. Never from `lastMove`: after a counter window `lastMove` is the
+  // Decline, which the recap never shows.
   // Playtest 2026-09-29: while the viewer picks discards for a 4, the line
   // says so ("Alice's 4♠: choose 2 to discard.").
   const lastMoveText = $derived.by(() => {
@@ -329,8 +359,13 @@
   // No `board === null` guard (review N1): every control `bestFocusTarget`
   // can return lives in the board branch, and staging and the scrap sheet
   // reset at every curtain, so behind a curtain it finds nothing to focus.
+  // Issue #27: `drawReveal` is tracked too. While the reveal is up the board
+  // branch is unmounted, so this finds nothing and never takes focus from
+  // the panel's Continue; when Continue unmounts at the drawer's next board
+  // (nothing else here changes then), focus lands on the board.
   $effect(() => {
     void board;
+    void drawReveal;
     void staging.state;
     void staging.stagedIndex;
     void staging.chooser;
@@ -367,14 +402,14 @@
   }
 
   // ---- CounterPrompt (SPEC §4.3) -----------------------------------------
-  // Both paths get the same entries (history), viewer (the ack's `to`) and
-  // names. Only `options` differs: the Counter moves of a real window.
+  // The counter window only (ruling 2026-09-29): the entries come from
+  // history, the options are the window's Counter moves.
   const ackTo = $derived<PlayerId | null>(game.curtain.kind === 'ack' ? game.curtain.to : null);
   const ackEntries = $derived(ackTo === null ? [] : counterPromptEntries(game.history));
   const counterOptions = $derived.by(() => {
     const curtain = game.curtain;
     const env = game.envelope;
-    if (curtain.kind !== 'ack' || curtain.synthetic || env === null) return [];
+    if (curtain.kind !== 'ack' || env === null) return [];
     const out: { index: number; description: string }[] = [];
     env.legalMoves.forEach((m, index) => {
       if (m.Kind === MoveKind.Counter) out.push({ index, description: env.descriptions[index] });
@@ -385,11 +420,6 @@
   function resolveAck(): void {
     const curtain = game.curtain;
     if (curtain.kind !== 'ack') return;
-    if (curtain.synthetic) {
-      // No bridge call: advance the local curtain machine (SPEC §4.3).
-      advanceCurtain();
-      return;
-    }
     const env = game.envelope;
     const decline = env?.legalMoves.findIndex((m) => m.Kind === MoveKind.Decline) ?? -1;
     if (decline >= 0) game.apply(decline).catch(report);
@@ -463,6 +493,15 @@
       recapEntries={game.curtain.kind === 'recap' ? game.curtain.entries : []}
       viewer={game.curtain.kind === 'recap' ? game.curtain.to : null}
       onadvance={advanceCurtain}
+      {theme}
+    />
+  {:else if drawReveal !== null}
+    <DrawRevealPanel
+      hand={drawReveal.hand}
+      drawn={drawReveal.indices}
+      reducedMotion={settings.reducedMotion}
+      paused={menuOpen}
+      oncontinue={() => game.dismissDrawReveal()}
       {theme}
     />
   {:else if ackTo !== null}
@@ -572,7 +611,7 @@
     {/if}
   {/if}
 
-  {#if board === null}
+  {#if board === null || drawReveal !== null}
     <div class="game-screen__menu-float">
       {@render menuButtonSnippet()}
     </div>
@@ -580,7 +619,7 @@
 
   <GameMenu
     open={menuOpen}
-    anchor={board === null ? 'screen' : 'column'}
+    anchor={board === null || drawReveal !== null ? 'screen' : 'column'}
     names={session.names}
     onclose={closeMenu}
     onhome={menuHome}

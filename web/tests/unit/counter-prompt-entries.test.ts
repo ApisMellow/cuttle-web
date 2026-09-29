@@ -1,9 +1,7 @@
-// P2 W13, SPEC §4.3 Presentation table — the CounterPrompt's card and chain.
-// ONE derivation feeds both the real counter window and the synthetic ack,
+// P2 W13, SPEC §4.3 Presentation table — the CounterPrompt's card and chain,
 // from public history only (the played one-off and every 2 played on it),
-// so the two cannot render differently. A view-derived source (pending,
-// scoreboard) would differ: at a synthetic ack the one-off has already
-// resolved.
+// never `pending`. The curtain drops the same entries from the recap before
+// the prompt (ruling 2026-09-29).
 import { describe, expect, it } from 'vitest';
 
 import { counterPromptEntries } from '../../src/lib/recap';
@@ -14,7 +12,7 @@ const two = { Rank: 2 as const, Suit: 3 as const };
 const twoB = { Rank: 2 as const, Suit: 0 as const };
 
 describe('counterPromptEntries (SPEC §4.3)', () => {
-  it('first window / synthetic ack after a one-off: just the one-off', () => {
+  it('first window after a one-off: just the one-off', () => {
     const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 3, card: nine, targetCard: { Rank: 5, Suit: 1 } });
     const history = [appliedMove({ by: 1, kind: Kind.Draw, seq: 2 }), oneOff];
     expect(counterPromptEntries(history)).toEqual([oneOff]);

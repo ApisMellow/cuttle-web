@@ -231,16 +231,21 @@ test('R12: a repeated Enter on the board\'s staged Confirm applies nothing', asy
 test('1440x900: the counter prompt keeps to the board column, with focus on a control', async ({ page }) => {
   await startGolden(page);
   await page.setViewportSize({ width: 1440, height: 900 });
+  // Ruling 2026-09-29: a prompt only for a responder who holds a 2. Alice
+  // draws (keeping her 2♥); Blake plays 5♥ as a one-off into her window.
+  await page.getByTestId('deck-pile').click();
+  await page.getByTestId('staging-confirm').click();
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('recap-dismiss').click();
   const moves = await hook(page, (h) => h.moves());
-  const ace = moves.find((m) => m.kind === 4 && m.targetKey === 'zone:oneoff')!;
-  await page.getByTestId(`hand-card-${ace.handIndex}`).click();
+  const five = moves.find((m) => m.kind === 4 && /^play 5. as one-off$/.test(m.description))!;
+  await page.getByTestId(`hand-card-${five.handIndex}`).click();
   await page.getByTestId('zone-oneoff').click();
   await page.getByTestId('staging-confirm').click();
-  // Blake's response: the curtain, then the prompt (real window or synthetic ack alike).
+  // Alice's response: the curtain, then the prompt (no recap: it would only repeat the 5).
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
-  await expect(page.locator('[data-testid="recap"], [data-testid="counter-prompt"]').first()).toBeVisible();
-  if ((await page.getByTestId('recap').count()) > 0) await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
   const box = (await page.getByTestId('counter-prompt').boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(560.5);

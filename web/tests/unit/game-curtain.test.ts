@@ -50,16 +50,13 @@ function hasOwnIndex(m: AppliedMove): boolean {
   return Object.prototype.hasOwnProperty.call(m, 'index');
 }
 
-// SPEC §4.3/§4.4 "OneOff rank 7, no 2": A (P0) plays a 7, the engine
-// auto-resolves to SevenChoosing with Active back on A, so the client stages
-// a synthetic ack for O (P1) and then hands the phone BACK to A.
+// SPEC §4.3/§4.4 "OneOff rank 7, no 2" (ruling 2026-09-29): A (P0) plays a
+// 7, the engine auto-resolves to SevenChoosing with Active back on A, and O
+// (P1), who holds cards but no 2, is not handed the phone at all.
 const O_SECRET: Card = { Rank: 13, Suit: 3 }; // only ever in O's own hand
-// SPEC §4.3 (ruling 2026-09-29): a synthetic ack is staged only when the
-// would-be responder holds cards. The mover's apply envelope names that count
-// as `opponent.handCount`; these fixtures model a responder holding one.
 const RESPONDER_HOLDS_A_CARD = { handCount: 1, hand: null, points: [], permanents: [] };
 const A_SECRET: Card = { Rank: 12, Suit: 1 }; // only ever in A's own hand
-function sevenRoundTrip() {
+function sevenNoTwo() {
   const { storage, session } = setup();
   const sevenMoverEntry = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 7, Suit: 2 }, index: 4 });
   const sevenPublicEntry = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 7, Suit: 2 } });
@@ -249,11 +246,12 @@ describe('carry-over 5: recap is built with isRecapVisible + lastSeenSeq, stampe
   });
 });
 
-describe('R14 synthetic acknowledgment integration', () => {
-  it('a one-off with no real counter window raises a synthetic ack for the opponent, then hands control back per post.active', async () => {
+describe('SPEC §4.3 (ruling 2026-09-29): a one-off with no counter window is followed like any resolved move', () => {
+  it('no ack: the responder gets a turn handoff, reveal, recap and their board; stamped at the board', async () => {
     const { storage, session } = setup();
     const oneOffMove = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 9, Suit: 2 } });
     const history = [oneOffMove];
+    const view = vi.fn((p: PlayerId) => envelope({ state: playerView({ active: 1, viewer: p }), history }));
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
       apply: () =>
@@ -262,28 +260,34 @@ describe('R14 synthetic acknowledgment integration', () => {
           lastMove: oneOffMove,
           history,
         }),
-      view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history }),
+      view,
     });
     const store = new GameStore({ engine, storage, session });
     await startGame(store, engine);
 
     await store.apply(0);
-    expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'acknowledge' });
+    expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
 
     await store.advanceCurtain(); // reveal
     await store.advanceCurtain(); // recap (1 unseen entry)
     expect(store.curtain.kind).toBe('recap');
-    expect(store.lastSeenSeq[1]).toBe(0); // not stamped at reveal or on entering recap
-    await store.advanceCurtain(); // recap dismissed -> ack
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: true });
-    // The ack screen needs pending/lastMove info — a fresh view was fetched for the ack target.
-    expect(store.viewer).toBe(1);
-    expect(store.envelope).not.toBeNull();
-    expect(store.lastSeenSeq[1]).toBe(1); // stamped at recap dismissal (§4.6 amended 2026-09-27)
-
-    await store.advanceCurtain(); // control returns to post.active (player 1, who already holds it) -> none
+    expect(store.lastSeenSeq[1]).toBe(0);
+    await store.advanceCurtain(); // recap dismissed -> the board, no ack
     expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.viewer).toBe(1);
     expect(store.lastSeenSeq[1]).toBe(1);
+    expect(view).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 7 with no 2 against it: no curtain, the actor stays on their own view, the opponent\'s view is never fetched', async () => {
+    const { store, engine } = sevenNoTwo();
+    await startGame(store, engine);
+    await store.apply(0);
+    expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.viewer).toBe(0);
+    expect(engine.view).not.toHaveBeenCalledWith(1);
+    expect(reachable(store)).toContain(cardJson(A_SECRET));
+    expect(reachable(store)).not.toContain(cardJson(O_SECRET));
   });
 });
 
@@ -330,70 +334,6 @@ describe('carry-over 6: snapshot is written synchronously, before the reactive U
   });
 });
 
-describe('B1: the acknowledger\'s PlayerView does not survive the handoff back to the mover', () => {
-  it('7 round trip: after the synthetic ack hands the phone back to A, no O card identity is reachable anywhere in the store', async () => {
-    const { store, engine } = sevenRoundTrip();
-    await startGame(store, engine);
-    await store.apply(0);
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    // Sanity: during O's ack, O's own envelope is legitimately exposed.
-    expect(store.viewer).toBe(1);
-    expect(reachable(store)).toContain(cardJson(O_SECRET));
-
-    await store.advanceCurtain(); // ack -> handoff back to A
-    expect(store.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'seven-return' });
-    expect(store.envelope).toBeNull();
-    expect(store.view).toBeNull();
-    expect(store.viewer).toBeNull();
-    expect(reachable(store)).not.toContain(cardJson(O_SECRET));
-
-    await store.advanceCurtain(); // -> reveal to A
-    expect(store.curtain).toEqual({ kind: 'reveal', to: 0 });
-    expect(store.envelope).toBeNull();
-    expect(reachable(store)).not.toContain(cardJson(O_SECRET));
-    // And a move cannot be submitted from behind the curtain.
-    await expect(store.apply(0)).rejects.toThrow();
-
-    await advanceUntil(store, () => store.curtain.kind === 'none');
-    expect(store.viewer).toBe(0);
-    expect(reachable(store)).not.toContain(cardJson(O_SECRET));
-    expect(reachable(store)).toContain(cardJson(A_SECRET));
-  });
-
-  it('odd-chain Counter cancel: the ack hands back to the other player and the acknowledger\'s view is dropped', async () => {
-    // P1 played a one-off, P0 counters, P1 holds no second 2 (§4.3 "Counter
-    // links need it too"). The store only sees {active, phase}: here the
-    // post-state leaves Active on P0, which is not the ack target (P1), so
-    // the machine hands the phone back after the ack (docs/assumptions.md
-    // "P2 round 01", W1).
-    const { storage, session } = setup();
-    const counter = appliedMove({ by: 0, kind: Kind.Counter, seq: 2, card: { Rank: 2, Suit: 0 }, index: 1 });
-    const counterPublic = appliedMove({ by: 0, kind: Kind.Counter, seq: 2, card: { Rank: 2, Suit: 0 } });
-    const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 9, Suit: 0 } });
-    const engine = createFakeEngine({
-      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.AwaitingCounter }) }),
-      apply: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal, opponent: RESPONDER_HOLDS_A_CARD }), lastMove: counter, history: [oneOff, counter] }),
-      view: (p) =>
-        envelope({
-          state: playerView({ active: 0, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
-          history: [oneOff, p === 0 ? counter : counterPublic],
-        }),
-    });
-    const store = new GameStore({ engine, storage, session });
-    await startGame(store, engine);
-    await store.apply(0);
-    expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'acknowledge' });
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    expect(reachable(store)).toContain(cardJson(O_SECRET));
-
-    await store.advanceCurtain(); // -> handoff back to P0
-    expect(store.curtain).toMatchObject({ kind: 'handoff', to: 0 });
-    expect(store.envelope).toBeNull();
-    expect(store.viewer).toBeNull();
-    expect(reachable(store)).not.toContain(cardJson(O_SECRET));
-  });
-});
-
 describe('B2: the mover-only AppliedMove.index never survives behind a curtain', () => {
   beforeEach(() => {
     vi.mocked(curtainModule.advance).mockClear();
@@ -401,16 +341,25 @@ describe('B2: the mover-only AppliedMove.index never survives behind a curtain',
 
   it('after a handoff, nothing in history, curtain/recap entries, recapFor, or the pending context has an own index key', async () => {
     const { storage, session } = setup();
-    // A pending-3 style entry: the mover's envelope carries its legal-move index.
-    const moverEntry = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 3, Suit: 1 }, index: 7 });
+    // A pending-3 style entry: the mover's envelope carries its legal-move
+    // index. An earlier discard of the mover's is unseen too, so the recap
+    // before the counter prompt still has a line (the 3 itself is left to
+    // the prompt).
+    const moverDiscard = appliedMove({ by: 0, kind: Kind.DiscardPair, seq: 1, index: 3 });
+    const moverEntry = appliedMove({ by: 0, kind: Kind.OneOff, seq: 2, card: { Rank: 3, Suit: 1 }, index: 7 });
+    const strip = (m: AppliedMove): AppliedMove => {
+      const copy = { ...m };
+      delete copy.index;
+      return copy;
+    };
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
       apply: () =>
-        envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: moverEntry, history: [moverEntry] }),
+        envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: moverEntry, history: [moverDiscard, moverEntry] }),
       view: (p) =>
         envelope({
           state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }),
-          history: [p === 0 ? moverEntry : appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 3, Suit: 1 } })],
+          history: p === 0 ? [moverDiscard, moverEntry] : [strip(moverDiscard), strip(moverEntry)],
         }),
     });
     const store = new GameStore({ engine, storage, session });
@@ -503,7 +452,7 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
     expect(reachable(store)).not.toContain(cardJson(A_SECRET));
   });
 
-  it('refresh() throws in handoff, recap, synthetic ack and result too', async () => {
+  it('refresh() throws in handoff and recap too', async () => {
     const { store, engine } = simpleGame();
     await startGame(store, engine);
     await store.apply(0);
@@ -513,18 +462,19 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
     await store.advanceCurtain();
     expect(store.curtain.kind).toBe('recap');
     await expect(store.refresh()).rejects.toThrow();
-
-    const trip = sevenRoundTrip();
-    await startGame(trip.store, trip.engine);
-    await trip.store.apply(0);
-    await advanceUntil(trip.store, () => trip.store.curtain.kind === 'ack');
-    await expect(trip.store.refresh()).rejects.toThrow();
   });
 });
 
 describe('N5: apply() is guarded by the curtain', () => {
-  it('throws before touching the bridge in handoff, reveal, recap and a synthetic ack', async () => {
-    const { store, engine } = sevenRoundTrip();
+  it('throws before touching the bridge in handoff, reveal and recap', async () => {
+    const { storage, session } = setup();
+    const drawMove = appliedMove({ by: 0, kind: Kind.Draw, seq: 1 });
+    const engine = createFakeEngine({
+      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
+      apply: vi.fn(() => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] })),
+      view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history: [drawMove] }),
+    });
+    const store = new GameStore({ engine, storage, session });
     await startGame(store, engine);
     await store.apply(0);
     vi.mocked(engine.apply).mockClear();
@@ -566,7 +516,7 @@ describe('N5: apply() is guarded by the curtain', () => {
     await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: false });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 1 });
 
     await expect(store.apply(0)).resolves.toBeUndefined();
     expect(engine.apply).toHaveBeenCalledTimes(2);
@@ -630,13 +580,16 @@ describe('B5: carry-over 6 ordering on every curtain transition, not only apply(
     expect(writes[0].storeViewer).toBe(beforeViewer);
   }
 
-  function counterGame() {
+  /** P0 discards (unseen by P1), then plays a 9 into P1's real counter window. */
+  function counterGame(withEarlierMove = true) {
     const { storage, session } = setup();
-    const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 9, Suit: 0 } });
+    const discard = appliedMove({ by: 0, kind: Kind.DiscardPair, seq: 1 });
+    const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 2, card: { Rank: 9, Suit: 0 } });
+    const history = withEarlierMove ? [discard, oneOff] : [{ ...oneOff, seq: 1 }];
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
-      apply: () => envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: oneOff, history: [oneOff] }),
-      view: (p) => envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history: [oneOff] }),
+      apply: () => envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: history[history.length - 1], history }),
+      view: (p) => envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history }),
     });
     return { store: new GameStore({ engine, storage, session }), storage, engine };
   }
@@ -682,21 +635,12 @@ describe('B5: carry-over 6 ordering on every curtain transition, not only apply(
     await expectPersistBeforeUpdate(store, storage, 'none');
   });
 
-  it('synthetic ack -> handoff back (the 7 round trip), persisted with viewer = the new holder', async () => {
-    const { store, storage, engine } = sevenRoundTrip();
+  it('reveal -> ack when the prompt shows everything unseen (recap skipped, fetches a view)', async () => {
+    const { store, storage, engine } = counterGame(false);
     await startGame(store, engine);
     await store.apply(0);
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    const writes = observeWrites(store, storage);
     await store.advanceCurtain();
-    vi.mocked(storage.setItem).mockRestore();
-
-    expect(writes).toHaveLength(1);
-    expect(writes[0].persistedCurtainKind).toBe('handoff');
-    expect(writes[0].persistedViewer).toBe(0);
-    expect(writes[0].storeCurtainKind).toBe('ack');
-    expect(writes[0].storeViewer).toBe(1);
-    expect(writes[0].storeEnvelope).not.toBeNull();
+    await expectPersistBeforeUpdate(store, storage, 'ack');
   });
 });
 
@@ -814,12 +758,16 @@ describe('SPEC §4.6 (amended 2026-09-27): a successful apply stamps lastSeenSeq
   });
 });
 
-// Odd-chain Counter cancel with real per-viewer redaction: every viewer's
-// history carries `index` on that viewer's OWN entries only (§3.2). P1 played
-// a one-off (seq 1), P0 counters (seq 2, applied here), P1 has no second 2,
-// the chain cancels and Active lands on P0: P1 synthetic-acks, then the
-// phone goes back to P0. A later P0 Draw (seq 3) hands the phone to P1 again.
-function oddChainRun(opts: { failViewOnce?: PlayerId } = {}) {
+function persisted(storage: Storage) {
+  return JSON.parse(storage.getItem(SNAPSHOT_KEY) as string);
+}
+
+// Odd-chain Counter cancel (ruling 2026-09-29): P1 played a one-off (seq 1),
+// P0 counters (seq 2, applied here), P1 holds no 2, so the chain cancels at
+// once and Active lands on P0, who plays on with no curtain. A later P0 Draw
+// (seq 3) hands the phone to P1. Every viewer's history carries `index` on
+// that viewer's OWN entries only (§3.2).
+function oddChainRun() {
   const { storage, session } = setup();
   const full = [
     appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 9, Suit: 0 }, index: 5 }),
@@ -834,12 +782,7 @@ function oddChainRun(opts: { failViewOnce?: PlayerId } = {}) {
       return copy;
     });
   let applied = 1; // seq 1 (P1's one-off) is already applied when the game starts
-  let failPending = opts.failViewOnce;
   const view = vi.fn((p: PlayerId) => {
-    if (failPending === p) {
-      failPending = undefined;
-      return { ok: false as const, code: 'INTERNAL' as const, message: 'transient' };
-    }
     const active: PlayerId = applied <= 2 ? 0 : 1;
     return envelope({ state: playerView({ active, viewer: p }), history: redactedFor(p, applied) });
   });
@@ -859,63 +802,96 @@ function oddChainRun(opts: { failViewOnce?: PlayerId } = {}) {
   return { store, storage, view, full, engine };
 }
 
-function persisted(storage: Storage) {
-  return JSON.parse(storage.getItem(SNAPSHOT_KEY) as string);
-}
+describe('odd-chain cancel with no 2 to answer (ruling 2026-09-29)', () => {
+  it('the counterer plays on at once: no curtain, their own envelope, P1 never handed the phone', async () => {
+    const { store, storage, view, engine } = oddChainRun();
+    await startGame(store, engine);
+    await store.apply(0); // P0 counters, P1 has no 2
+    expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.viewer).toBe(0);
+    expect(view).not.toHaveBeenCalledWith(1);
+    expect(persisted(storage).curtain).toEqual({ kind: 'none' });
+    expect(persisted(storage).viewer).toBe(0);
+  });
 
-describe('B-R1: the acknowledger\'s own indexed history does not survive the synthetic-ack handback', () => {
-  it('odd-chain cancel: at the handoff back and the reveal, no own index key in history, curtain, the persisted snapshot, or recapFor', async () => {
+  it('P1 learns of the counter from the recap at their next turn, with no mover index behind the curtain', async () => {
     const { store, storage, engine } = oddChainRun();
     await startGame(store, engine);
-    await store.apply(0); // P0 counters
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    expect(store.viewer).toBe(1);
-    // Sanity: the acknowledger's own envelope legitimately carries their own index.
-    expect(store.history.some(hasOwnIndex)).toBe(true);
-
-    await store.advanceCurtain(); // ack -> handoff back to P0
-    expect(store.curtain).toMatchObject({ kind: 'handoff', to: 0 });
-    const assertNoIndex = () => {
-      expect(store.history.some(hasOwnIndex)).toBe(false);
-      expect(JSON.stringify(store.curtain)).not.toContain('"index"');
-      expect(store.recapFor(0).some(hasOwnIndex)).toBe(false);
-      expect(store.recapFor(1).some(hasOwnIndex)).toBe(false);
-      const snap = persisted(storage);
-      expect(JSON.stringify(snap.history)).not.toContain('"index"');
-      expect(JSON.stringify(snap.curtain)).not.toContain('"index"');
-    };
-    assertNoIndex();
-
-    await store.advanceCurtain(); // -> reveal to P0
-    expect(store.curtain).toEqual({ kind: 'reveal', to: 0 });
-    assertNoIndex();
+    await store.apply(0); // counter, no curtain
+    await store.apply(0); // P0 draws, seq 3
+    expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
+    expect(store.history.some(hasOwnIndex)).toBe(false);
+    expect(JSON.stringify(persisted(storage).history)).not.toContain('"index"');
+    await store.advanceCurtain(); // reveal to P1
+    await store.advanceCurtain(); // recap
+    expect(store.curtain.kind).toBe('recap');
+    if (store.curtain.kind === 'recap') {
+      // The fixture's game starts with P1's one-off already applied, so P1
+      // was never stamped for it; the counter (2) and the draw (3) are the
+      // point: P1 is told their one-off was answered.
+      expect(store.curtain.entries.map((e) => e.seq)).toEqual([1, 2, 3]);
+      expect(store.curtain.entries.some(hasOwnIndex)).toBe(false);
+    }
   });
 });
 
 describe('R2: a failed view() fetch leaves the sequence resumable', () => {
-  it('reveal -> none fails once, the curtain stays put with the error, and a retry reaches the resting state', async () => {
-    const { store, view, engine } = oddChainRun({ failViewOnce: 0 });
-    await startGame(store, engine);
-    await store.apply(0);
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    await store.advanceCurtain(); // handoff back to P0
-    await store.advanceCurtain(); // reveal to P0 (nothing unseen for P0: recap is skipped next)
-    expect(store.curtain).toEqual({ kind: 'reveal', to: 0 });
+  function drawGame(failViewOnce: PlayerId | null) {
+    const { storage, session } = setup();
+    const drawMove = appliedMove({ by: 0, kind: Kind.Draw, seq: 1 });
+    let failPending = failViewOnce;
+    const view = vi.fn((p: PlayerId) => {
+      if (failPending === p) {
+        failPending = null;
+        return { ok: false as const, code: 'INTERNAL' as const, message: 'transient' };
+      }
+      return envelope({ state: playerView({ active: 1, viewer: p }), history: [drawMove] });
+    });
+    const engine = createFakeEngine({
+      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
+      apply: () => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] }),
+      view,
+    });
+    return { store: new GameStore({ engine, storage, session }), view, engine };
+  }
 
-    await store.advanceCurtain(); // -> none, but view(0) fails
+  it('reveal -> none fails once, the curtain stays put with the error, and a retry reaches the resting state', async () => {
+    const { store, view, engine } = drawGame(1);
+    await startGame(store, engine);
+    store.lastSeenSeq = { 0: 1, 1: 1 }; // nothing unseen: reveal goes straight to none
+    await store.apply(0);
+    await store.advanceCurtain(); // reveal to P1
+    expect(store.curtain).toEqual({ kind: 'reveal', to: 1 });
+
+    await store.advanceCurtain(); // -> none, but view(1) fails
     expect(store.error).toMatchObject({ code: 'INTERNAL' });
-    expect(store.curtain).toEqual({ kind: 'reveal', to: 0 });
+    expect(store.curtain).toEqual({ kind: 'reveal', to: 1 });
     expect(store.envelope).toBeNull();
 
     await expect(store.advanceCurtain()).resolves.toBeUndefined(); // retry
     expect(store.curtain).toEqual({ kind: 'none' });
-    expect(store.viewer).toBe(0);
+    expect(store.viewer).toBe(1);
     expect(store.error).toBeNull();
-    expect(view).toHaveBeenLastCalledWith(0);
+    expect(view).toHaveBeenLastCalledWith(1);
   });
 
   it('recap -> ack fails once, then the retry reaches the ack', async () => {
-    const { store, engine } = oddChainRun({ failViewOnce: 1 });
+    const { storage, session } = setup();
+    const discard = appliedMove({ by: 0, kind: Kind.DiscardPair, seq: 1 });
+    const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 2, card: { Rank: 9, Suit: 0 } });
+    let failed = false;
+    const engine = createFakeEngine({
+      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
+      apply: () => envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: oneOff, history: [discard, oneOff] }),
+      view: (p) => {
+        if (!failed) {
+          failed = true;
+          return { ok: false as const, code: 'INTERNAL' as const, message: 'transient' };
+        }
+        return envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history: [discard, oneOff] });
+      },
+    });
+    const store = new GameStore({ engine, storage, session });
     await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'recap');
@@ -923,13 +899,21 @@ describe('R2: a failed view() fetch leaves the sequence resumable', () => {
     expect(store.curtain.kind).toBe('recap');
     expect(store.error).toMatchObject({ code: 'INTERNAL' });
     await store.advanceCurtain();
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: true });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 1 });
   });
 });
 
 describe('R3: SPEC §4.6 (amended again 2026-09-27): leaving recap stamps lastSeenSeq[viewer]', () => {
-  it('the acknowledger is stamped at recap dismissal, in that transition\'s write, before the store updates', async () => {
-    const { store, storage, engine } = oddChainRun();
+  it('the responder is stamped at recap dismissal into the counter window, in that transition\'s write, before the store updates', async () => {
+    const { storage, session } = setup();
+    const discard = appliedMove({ by: 0, kind: Kind.DiscardPair, seq: 1 });
+    const oneOff = appliedMove({ by: 0, kind: Kind.OneOff, seq: 2, card: { Rank: 9, Suit: 0 } });
+    const engine = createFakeEngine({
+      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
+      apply: () => envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: oneOff, history: [discard, oneOff] }),
+      view: (p) => envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history: [discard, oneOff] }),
+    });
+    const store = new GameStore({ engine, storage, session });
     await startGame(store, engine);
     await store.apply(0);
     expect(store.lastSeenSeq).toEqual({ 0: 2, 1: 0 }); // mover stamped by apply
@@ -943,32 +927,11 @@ describe('R3: SPEC §4.6 (amended again 2026-09-27): leaving recap stamps lastSe
       writes.push({ storeCurtain: store.curtain.kind, storeSeen1: store.lastSeenSeq[1], persistedSeen1: parsed.lastSeenSeq[1], persistedCurtain: parsed.curtain.kind });
       original(key, value);
     });
-    await store.advanceCurtain(); // recap -> ack (synthetic)
+    await store.advanceCurtain(); // recap -> ack
     vi.mocked(storage.setItem).mockRestore();
 
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: true });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 1 });
     expect(store.lastSeenSeq[1]).toBe(2);
     expect(writes).toEqual([{ storeCurtain: 'recap', storeSeen1: 0, persistedSeen1: 2, persistedCurtain: 'ack' }]);
-  });
-
-  it('end state after the odd-chain run, and the acknowledger\'s next recap does not repeat what they already saw', async () => {
-    const { store, storage, full, engine } = oddChainRun();
-    await startGame(store, engine);
-    await store.apply(0);
-    await advanceUntil(store, () => store.curtain.kind === 'ack');
-    await store.advanceCurtain(); // handoff back to P0 — P1 never reaches 'none'
-    expect(store.lastSeenSeq).toEqual({ 0: 2, 1: 2 });
-    expect(persisted(storage).lastSeenSeq).toEqual({ 0: 2, 1: 2 });
-    await advanceUntil(store, () => store.curtain.kind === 'none');
-    expect(store.lastSeenSeq).toEqual({ 0: 2, 1: 2 });
-
-    await store.apply(0); // P0 draws, seq 3
-    await store.advanceCurtain(); // reveal to P1
-    await store.advanceCurtain(); // recap
-    expect(store.curtain.kind).toBe('recap');
-    if (store.curtain.kind === 'recap') {
-      expect(store.curtain.entries.map((e) => e.seq)).toEqual([3]);
-      expect(store.curtain.entries[0].kind).toBe(full[2].kind);
-    }
   });
 });

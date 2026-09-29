@@ -7,8 +7,8 @@
 // saved game is resumed through HomeScreen's Resume button, exactly as a
 // player does after a reload or Menu -> Home. Before the gate is passed the
 // DOM holds no hand, no card, no board and no counter option, and it is the
-// same markup whether the saved position is the live board, a real counter
-// window or a synthetic ack.
+// same markup whether the saved position is the live board or a counter
+// window.
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -96,7 +96,7 @@ function saved(curtain: CurtainState, viewer: PlayerId = 0): Snapshot {
   };
 }
 
-function viewerEnvelope(kind: 'board' | 'real' | 'synthetic', viewer: PlayerId = 0): Envelope {
+function viewerEnvelope(kind: 'board' | 'real', viewer: PlayerId = 0): Envelope {
   const real = kind === 'real';
   const legalMoves = real ? [DECLINE_MOVE, COUNTER_MOVE] : [];
   return envelope({
@@ -114,10 +114,9 @@ function viewerEnvelope(kind: 'board' | 'real' | 'synthetic', viewer: PlayerId =
   });
 }
 
-const CASES: Array<{ name: string; curtain: CurtainState; env: 'board' | 'real' | 'synthetic' }> = [
+const CASES: Array<{ name: string; curtain: CurtainState; env: 'board' | 'real' }> = [
   { name: 'live board', curtain: { kind: 'none' }, env: 'board' },
-  { name: 'real counter window', curtain: { kind: 'ack', to: 0, synthetic: false }, env: 'real' },
-  { name: 'synthetic ack', curtain: { kind: 'ack', to: 0, synthetic: true }, env: 'synthetic' },
+  { name: 'counter window', curtain: { kind: 'ack', to: 0 }, env: 'real' },
 ];
 
 async function resumeInto(c: (typeof CASES)[number], viewer: PlayerId = 0): Promise<HTMLDivElement> {
@@ -176,7 +175,7 @@ describe('Resume shows only the gate until the viewer passes it', () => {
     });
   }
 
-  it('the gate markup is identical for the board, a real window and a synthetic ack (R14)', async () => {
+  it('the gate markup is identical for the board and a counter window', async () => {
     const html: string[] = [];
     for (const c of CASES) {
       const el = await resumeInto(c);
@@ -187,7 +186,6 @@ describe('Resume shows only the gate until the viewer passes it', () => {
       game.goHome();
     }
     expect(html[1]).toBe(html[0]);
-    expect(html[2]).toBe(html[0]);
   });
 
   it('the other viewer: the gate names Blake and the same holds', async () => {

@@ -5,7 +5,7 @@
 //
 // Everything here reads the CURRENT holder's own envelope, at the moment a
 // test calls it, and only while that holder is legitimately looking
-// (curtain `none` or a real counter window). Behind any other curtain every
+// (curtain `none` or the counter window). Behind any other curtain every
 // accessor returns empty.
 
 import { boardAffordances, boardTargetKey, groupAffordances } from './affordances';
@@ -49,8 +49,7 @@ declare global {
 /** The envelope a test may read, or null behind a curtain. */
 function looking(curtain: CurtainState, envelope: Envelope | null): Envelope | null {
   if (envelope === null) return null;
-  if (curtain.kind === 'none') return envelope;
-  if (curtain.kind === 'ack' && !curtain.synthetic) return envelope;
+  if (curtain.kind === 'none' || curtain.kind === 'ack') return envelope;
   return null;
 }
 
@@ -58,7 +57,7 @@ function looking(curtain: CurtainState, envelope: Envelope | null): Envelope | n
  * What the UI makes reachable: the board's map at `none` (the staging
  * pipeline plus, since P2 W15, the SevenRevealPanel, DiscardPicker and
  * ScrapBrowser pick mode), the CounterPrompt's counter and decline slots in
- * a real counter window, and nothing anywhere else.
+ * the counter window, and nothing anywhere else.
  */
 export function reachableAffordances(curtain: CurtainState, envelope: Envelope | null): Record<string, number[]> {
   const env = looking(curtain, envelope);
