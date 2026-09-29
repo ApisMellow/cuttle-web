@@ -19,9 +19,11 @@
     staged: ReadonlySet<string>;
     ontap: (key: string) => void;
     theme: CardTheme;
+    /** Player names by id (the stolen-card screen-reader name). */
+    names?: readonly [string, string];
   }
 
-  let { opponent, opponentId, pointTotal, goal, highlighted, staged, ontap, theme }: OpponentZoneProps = $props();
+  let { opponent, opponentId, pointTotal, goal, highlighted, staged, ontap, theme, names }: OpponentZoneProps = $props();
 </script>
 
 <div class="opponent-zone" data-testid="opponent-zone">
@@ -36,6 +38,7 @@
     {staged}
     {ontap}
     {theme}
+    {names}
   />
 </div>
 

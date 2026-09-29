@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { NAME_MAX_LENGTH, SETTINGS_KEY, SettingsStore } from '../../src/lib/stores/settings.svelte';
+import { DEFAULT_THEME_ID } from '../../src/lib/theme/default';
 
 afterEach(() => {
   localStorage.clear();
@@ -8,11 +9,23 @@ afterEach(() => {
 });
 
 describe('settings store (SPEC §5.6 rule 5, §5.7)', () => {
-  it('defaults to vector theme, motion on, hold reveal when storage is empty', () => {
+  it('defaults to the Mythic theme, motion on, hold reveal when storage is empty', () => {
     const store = new SettingsStore();
-    expect(store.themeId).toBe('vector');
+    expect(DEFAULT_THEME_ID).toBe('mythic');
+    expect(store.themeId).toBe(DEFAULT_THEME_ID);
     expect(store.reducedMotion).toBe(false);
     expect(store.revealPreference).toBe('hold');
+  });
+
+  it('Mythic default: saving other settings never pins a theme; only a pick is saved', () => {
+    const store = new SettingsStore();
+    store.setLastNames('Alice', 'Blake');
+    store.setReducedMotion(true);
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY) as string).themeId).toBeUndefined();
+    store.setThemeId('vector');
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY) as string).themeId).toBe('vector');
+    store.setLastNames('Alice', 'Cara');
+    expect(new SettingsStore().themeId).toBe('vector');
   });
 
   it('persists under its own key, separate from the game snapshot key', () => {
@@ -53,7 +66,7 @@ describe('settings store (SPEC §5.6 rule 5, §5.7)', () => {
 
     expect(() => new SettingsStore()).not.toThrow();
     const store = new SettingsStore();
-    expect(store.themeId).toBe('vector');
+    expect(store.themeId).toBe(DEFAULT_THEME_ID);
     expect(store.reducedMotion).toBe(false);
     expect(store.revealPreference).toBe('hold');
   });
@@ -62,13 +75,13 @@ describe('settings store (SPEC §5.6 rule 5, §5.7)', () => {
     localStorage.setItem(SETTINGS_KEY, 'not json{{{');
     expect(() => new SettingsStore()).not.toThrow();
     const store = new SettingsStore();
-    expect(store.themeId).toBe('vector');
+    expect(store.themeId).toBe(DEFAULT_THEME_ID);
   });
 
   it('falls back to defaults when the stored value is not an object', () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify('vector'));
     const store = new SettingsStore();
-    expect(store.themeId).toBe('vector');
+    expect(store.themeId).toBe(DEFAULT_THEME_ID);
   });
 
   it('does not crash and keeps in-memory state when localStorage.setItem throws', () => {

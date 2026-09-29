@@ -9,6 +9,8 @@
   // highlighted or staged, the line gives way to the zone's own label. The
   // line's box is always present, so the strip's height never depends on
   // `lastMoveText`; the strip's height comes from the Deck and Scrap slots.
+  import type { Snippet } from 'svelte';
+
   import type { Card } from '../bridge/schema';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -29,6 +31,11 @@
     lastMoveText?: string;
     ontap: (key: string) => void;
     theme?: CardTheme;
+    /**
+     * r16: drawn over the strip, centred on it (GameScreen's ambiguity
+     * chooser). The strip keeps its own size underneath, so nothing moves.
+     */
+    overlay?: Snippet;
   }
 
   let {
@@ -44,6 +51,7 @@
     lastMoveText,
     ontap,
     theme = getTheme(DEFAULT_THEME_ID),
+    overlay,
   }: CenterZoneProps = $props();
 
   const lineText = $derived(oneOffHighlighted || oneOffStaged ? '' : (lastMoveText ?? ''));
@@ -70,6 +78,9 @@
     </DropZones>
   </div>
   <ScrapPile cards={scrap} highlighted={scrapHighlighted} staged={scrapStaged} ontap={() => ontap('scrap')} {theme} />
+  {#if overlay}
+    <div class="center-zone__overlay">{@render overlay()}</div>
+  {/if}
 </div>
 
 <style>
@@ -82,6 +93,7 @@
      (DeckPile, ScrapPile), so the strip no longer pays a text line under
      each hand-size card. */
   .center-zone {
+    position: relative;
     display: flex;
     flex: none;
     align-items: center;
@@ -92,6 +104,22 @@
     margin-block: auto;
     padding: var(--cu-gap-center, 10px) var(--cu-gutter-board, 10px);
     overflow: visible;
+  }
+
+  /* r16 (playtest friction 5): the chooser sits on the middle of the
+     table, between the two sides, over the deck / one-off / scrap strip.
+     The card it plays (in the hand) and the card it targets (the other
+     side's points) both stay in view, and so do your own rows. Centred on
+     the strip, board gutters either side, above the sticky hand's layer;
+     if it is a little taller than the strip it spills evenly into the air
+     around it (design.md §6), never into the page. */
+  .center-zone__overlay {
+    position: absolute;
+    top: 50%;
+    right: var(--cu-gutter-board, 10px);
+    left: var(--cu-gutter-board, 10px);
+    z-index: 3;
+    transform: translateY(-50%);
   }
 
   /* The flex middle slot: it stretches to the strip's height, so the

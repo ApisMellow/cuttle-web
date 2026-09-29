@@ -14,14 +14,21 @@
   // Placement (design.md §6): it takes the hand zone's slot, the same height
   // budget, while the choice is open. No hand card has a legal play in this
   // phase (apply.go:25-26 enumerates SevenPick moves only).
+  //
+  // r16 (playtest friction 4): the player still sees their own hand while
+  // choosing, as a row of `mini` faces beside the revealed cards. It is a
+  // picture, not a control: no buttons, no testids (the hand has no legal
+  // move here). It is the viewer's own `you.hand`, so it shows nothing new.
   import type { Card } from '../bridge/schema';
   import '../styles/card-geometry.css';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
+  import { DEFAULT_THEME_ID, cardSpokenName, getTheme } from '../theme';
   import type { CardTheme, CardVisualState } from '../theme/types';
 
   interface SevenRevealPanelProps {
     /** `view.sevenRevealed` (1 or 2 cards). */
     cards: Card[];
+    /** The viewer's own `you.hand`, shown small and read-only while they choose. */
+    hand?: Card[];
     /** `StagingStore.selectedReveal`. */
     selected: number | null;
     /** `StagingStore.staged` (`seven:<i>` keys). */
@@ -30,7 +37,7 @@
     theme?: CardTheme;
   }
 
-  let { cards, selected, staged, ontap, theme = getTheme(DEFAULT_THEME_ID) }: SevenRevealPanelProps = $props();
+  let { cards, hand = [], selected, staged, ontap, theme = getTheme(DEFAULT_THEME_ID) }: SevenRevealPanelProps = $props();
 
   function stateOf(i: number): CardVisualState {
     if (staged.has(`seven:${i}`)) return 'staged';
@@ -40,10 +47,6 @@
 </script>
 
 <div class="seven-reveal" data-testid="seven-reveal" role="group" aria-label="Top of the deck">
-  <div class="seven-reveal__text">
-    <p class="seven-reveal__title">Top of the deck</p>
-    <p class="seven-reveal__hint">{cards.length === 1 ? 'Play this card' : 'Pick one to play'}</p>
-  </div>
   <div class="seven-reveal__cards">
     {#each cards as card, i (i)}
       <button
@@ -52,11 +55,25 @@
         data-testid={`seven-card-${i}`}
         data-staged={staged.has(`seven:${i}`) ? 'true' : 'false'}
         aria-pressed={selected === i}
+        aria-label={cardSpokenName(card)}
         onclick={() => ontap(`seven:${i}`)}
       >
         <theme.Face {card} size="hand" state={stateOf(i)} />
       </button>
     {/each}
+  </div>
+  <div class="seven-reveal__side">
+    <p class="seven-reveal__title">Top of the deck</p>
+    <p class="seven-reveal__hint">{cards.length === 1 ? 'Play this card' : 'Pick one to play'}</p>
+    {#if hand.length > 0}
+      <div class="seven-reveal__hand" data-seven-hand role="group" aria-label="Your hand" style={`--hand-count: ${hand.length}`}>
+        {#each hand as card, i (i)}
+          <span class="seven-reveal__mini" role="img" aria-label={cardSpokenName(card)}>
+            <theme.Face {card} size="mini" />
+          </span>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -64,33 +81,63 @@
   .seven-reveal {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: var(--cu-space-4, 16px);
+    gap: var(--cu-space-3, 12px);
     box-sizing: border-box;
-    /* W22: inside PlayerZone's pinned hand slot. Revealed cards don't
-       lift, so the panel reaches up into most of the slot's 12px lift room
-       and the slot keeps the hand's height (no reflow when a 7 resolves). */
-    margin-top: -8px;
-    padding: var(--cu-space-1, 4px) var(--cu-space-3, 12px);
+    /* W22: inside PlayerZone's pinned hand slot, at the hand's height, so
+       nothing reflows when a 7 resolves. r16: the panel no longer reaches
+       up into the slot's 12px lift room; the "can see your hand" pill
+       lives there and used to sit on top of the revealed cards. */
+    padding: 1px var(--cu-space-3, 12px);
     background: var(--cu-ink-raised, #30263a);
     border-radius: var(--cu-radius-well, 10px);
   }
 
-  .seven-reveal__text {
+  .seven-reveal__side {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
   }
 
   .seven-reveal__title {
     margin: 0;
     color: var(--cu-pearl, #eee8f1);
-    font-size: var(--cu-text-md, 16px);
+    font-size: var(--cu-text-sm, 14px);
     font-weight: 700;
+    line-height: 1.2;
   }
 
   .seven-reveal__hint {
     margin: 0;
     color: var(--cu-muted, #b4a8be);
-    font-size: var(--cu-text-sm, 14px);
+    font-size: var(--cu-text-xs, 12px);
+    line-height: 1.2;
+  }
+
+  /* r16: your hand, small and read-only, fanned to fit the column that is
+     left (same overlap formula as PlayerHand, with the mini width). */
+  .seven-reveal__hand {
+    container-type: inline-size;
+    display: flex;
+    margin-top: 2px;
+  }
+
+  .seven-reveal__mini {
+    display: block;
+    flex: none;
+    width: var(--cuttle-card-width-mini);
+    aspect-ratio: var(--cuttle-card-aspect);
+    overflow: hidden;
+    border-radius: 7%;
+    box-shadow: -1px 0 3px rgb(0 0 0 / 35%);
+  }
+
+  .seven-reveal__mini + .seven-reveal__mini {
+    margin-left: min(
+      4px,
+      calc((100cqi - var(--cuttle-card-width-mini) - 1px) / max(1, var(--hand-count) - 1) - var(--cuttle-card-width-mini))
+    );
   }
 
   .seven-reveal__cards {

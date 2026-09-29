@@ -11,6 +11,9 @@
   import type { Card, PlayerId } from '../bridge/schema';
   import { inPlayBadge } from '../cardText';
   import '../styles/card-geometry.css';
+  // r16 (a11y): each card button is named in words ("King of Hearts, Goal
+  // 14"), the same in every theme, badge included. Permanents are face up.
+  import { cardSpokenName } from '../theme';
   import type { CardTheme, CardVisualState } from '../theme/types';
   import DropZones from './DropZones.svelte';
 
@@ -69,14 +72,15 @@
         class={['permanent-row__card', { 'permanent-row__card--sideways': sideways }]}
         data-testid={`perm-${rowId}-${index}`}
         data-orientation={sideways ? 'sideways' : 'upright'}
+        aria-label={[cardSpokenName(card), sideways ? 'glasses' : null, badge].filter((part) => part !== null).join(', ')}
         onclick={() => ontap(key)}
       >
         <theme.Face {card} size="field" state={stateFor(key)} variant={sideways ? 'glasses' : 'standard'} />
         {#if badge !== null}
           <!-- Card labels: what this permanent is doing right now, at the
                card's foot, clear of the upper-left corner index. Part of
-               the button's accessible name, after the face's own text
-               (the vector face reads "K♥", so the name is "K♥ Goal 14"). -->
+               the button's accessible name (r16: "King of Hearts, Goal 14",
+               from the aria-label above). -->
           <span class="permanent-row__badge" data-card-label="badge">{badge}</span>
         {/if}
       </button>

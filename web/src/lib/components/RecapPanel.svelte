@@ -22,6 +22,7 @@
 
   import type { AppliedMove, PlayerId } from '../bridge/schema';
   import { formatRecapLines, recapCards } from '../recap';
+  import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
   import { game } from '../stores/game.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -64,10 +65,36 @@
   function expand(): void {
     expanded = true;
   }
+
+  // r16 (desktop keyboard; review B1): focus starts on the heading, not
+  // <body> and not a button, so no key press from the screen before can
+  // dismiss this; Tab reaches the buttons. A button click produced by a
+  // key that went down before this screen mounted (or an auto-repeat) is
+  // ignored (lib/keyGuard.ts).
+  let heading: HTMLHeadingElement | undefined = $state();
+  let guard: KeyActivationGuard | null = null;
+  $effect(() => {
+    heading?.focus({ preventScroll: true });
+  });
+  $effect(() => {
+    const g = keyActivationGuard();
+    guard = g;
+    return () => {
+      g.dispose();
+      if (guard === g) guard = null;
+    };
+  });
+
+  function guarded(fn: () => void): () => void {
+    return () => {
+      if (guard !== null && !guard.allows()) return;
+      fn();
+    };
+  }
 </script>
 
 <div class="recap" data-testid="recap">
-  <h2 class="recap__heading">While you were away</h2>
+  <h2 class="recap__heading" tabindex="-1" bind:this={heading}>While you were away</h2>
 
   {#if viewer === null}
     <p class="recap__empty">Nothing to show.</p>
@@ -86,11 +113,11 @@
 
   <div class="recap__footer">
     {#if hiddenCount > 0 && !expanded}
-      <button type="button" class="recap__expand" data-testid="recap-expand" onclick={expand}>
+      <button type="button" class="recap__expand" data-testid="recap-expand" onclick={guarded(expand)}>
         +{hiddenCount} earlier
       </button>
     {/if}
-    <button type="button" class="recap__dismiss" data-testid="recap-dismiss" onclick={onadvance}>
+    <button type="button" class="recap__dismiss" data-testid="recap-dismiss" onclick={guarded(onadvance)}>
       See the board
     </button>
   </div>
@@ -109,6 +136,11 @@
     background: var(--cu-ink, #241c2b);
     color: var(--cu-pearl, #eee8f1);
     font-family: var(--cu-font-ui, sans-serif);
+  }
+
+  /* A focus landing spot (r16), not a control. */
+  .recap__heading:focus {
+    outline: none;
   }
 
   .recap__heading {

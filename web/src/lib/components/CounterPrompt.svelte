@@ -24,6 +24,10 @@
   // timer; nothing auto-advances.
   import '../styles/card-geometry.css';
 
+  import { tick } from 'svelte';
+
+  import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
+
   import type { AppliedMove, PlayerId } from '../bridge/schema';
   // Amended 2026-09-28: option and staged text go through `plainMoveText`
   // ("Counter with 2♣: stop their card."), never raw engine text. Same on
@@ -70,6 +74,7 @@
   function stage(option: ChooserCandidate): void {
     if (acted) return;
     staged = option;
+    focusSoon('[data-testid="staging-confirm"]');
   }
 
   function confirmCounter(): void {
@@ -80,11 +85,48 @@
 
   function cancelCounter(): void {
     staged = null;
+    focusSoon('[data-testid^="counter-option-"]');
   }
+
+  // r16 (desktop keyboard; review B1): focus never falls to <body> here,
+  // and never lands on a control by itself: on arrival it goes to the
+  // heading (Tab reaches the options and "Let it resolve"), identically on
+  // the real and synthetic paths (R14). A click produced by a key that went
+  // down before this screen mounted, or by an auto-repeat, is ignored
+  // (lib/keyGuard.ts), so a key held or mashed on the reveal can't resolve
+  // or counter. Staging a counter moves focus to Confirm; Cancel brings it
+  // back to the first option.
+  let root: HTMLDivElement | undefined = $state();
+  let heading: HTMLHeadingElement | undefined = $state();
+  let guard: KeyActivationGuard | null = null;
+
+  function focusSoon(selector: string): void {
+    void tick().then(() => root?.querySelector<HTMLElement>(selector)?.focus());
+  }
+
+  function guarded(fn: () => void): () => void {
+    return () => {
+      if (guard !== null && !guard.allows()) return;
+      fn();
+    };
+  }
+
+  $effect(() => {
+    heading?.focus({ preventScroll: true });
+  });
+
+  $effect(() => {
+    const g = keyActivationGuard();
+    guard = g;
+    return () => {
+      g.dispose();
+      if (guard === g) guard = null;
+    };
+  });
 </script>
 
-<div class="counter-prompt" data-testid="counter-prompt">
-  <h2 class="counter-prompt__heading">Your response</h2>
+<div class="counter-prompt" data-testid="counter-prompt" bind:this={root}>
+  <h2 class="counter-prompt__heading" tabindex="-1" bind:this={heading}>Your response</h2>
 
   <ul class="counter-prompt__list">
     {#each lines as line (line.seq)}
@@ -99,14 +141,16 @@
 
   <div class="counter-prompt__options">
     {#if staged !== null}
-      <StagingBar description={plainMoveText(staged.description)} onconfirm={confirmCounter} oncancel={cancelCounter} />
+      <!-- r16 re-review B2 (R12): focus moves to Confirm when a counter is
+           staged, so a held Enter's auto-repeats must not confirm it. -->
+      <StagingBar description={plainMoveText(staged.description)} onconfirm={guarded(confirmCounter)} oncancel={guarded(cancelCounter)} />
     {:else}
       {#each options as option (option.index)}
         <button
           type="button"
           class="counter-prompt__option"
           data-testid={`counter-option-${option.index}`}
-          onclick={() => stage(option)}
+          onclick={guarded(() => stage(option))}
         >
           {plainMoveText(option.description)}
         </button>
@@ -123,7 +167,7 @@
       class="counter-prompt__resolve"
       data-testid="counter-resolve"
       disabled={staged !== null}
-      onclick={resolve}
+      onclick={guarded(resolve)}
     >
       Let it resolve
     </button>
@@ -135,6 +179,11 @@
   .counter-prompt {
     position: fixed;
     inset: 0;
+    /* r16 (desktop): the board's 560 px column, centred, like every other
+       game screen's content; a phone is narrower than the cap. The page
+       behind it is the same ink, so nothing else changes. */
+    max-width: var(--cu-board-max, 560px);
+    margin-inline: auto;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -144,6 +193,11 @@
     color: var(--cu-pearl, #eee8f1);
     font-family: var(--cu-font-ui, sans-serif);
     overflow: hidden;
+  }
+
+  /* A focus landing spot (r16), not a control. */
+  .counter-prompt__heading:focus {
+    outline: none;
   }
 
   .counter-prompt__heading {

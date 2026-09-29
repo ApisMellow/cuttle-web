@@ -27,6 +27,8 @@
     handTray?: Snippet;
     /** W24: the opponent's name while they have glasses in play (Board reads the bridge's `you.watched`); else null. */
     watchedBy?: string | null;
+    /** Player names by id (the stolen-card screen-reader name). */
+    names?: readonly [string, string];
   }
 
   let {
@@ -42,6 +44,7 @@
     theme,
     handTray,
     watchedBy = null,
+    names,
   }: PlayerZoneProps = $props();
 
   // R10: the marker's text is the hand group's description, so a screen
@@ -63,6 +66,7 @@
     {staged}
     {ontap}
     {theme}
+    {names}
   />
   <PermanentRow
     rowId={viewerId}

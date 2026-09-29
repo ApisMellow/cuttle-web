@@ -46,10 +46,21 @@
   }
 
   const prompt = isPhone() ? 'Pass the phone to' : 'Pass to';
+
+  // On mount only: this instance stays up across handoff -> reveal, and a
+  // player who has Tabbed to the pill keeps their focus.
+  let textEl: HTMLDivElement | undefined = $state();
+  $effect(() => {
+    textEl?.focus({ preventScroll: true });
+  });
 </script>
 
 <div class="gate" data-testid="curtain-gate">
-  <div class="gate__text">
+  <!-- r16 review B1: focus lands on this text when the curtain comes up —
+       never on a control, so the previous player's key presses can't
+       activate anything. One Tab reaches the "I'm NAME" pill. Same DOM for
+       every HandoffReason. -->
+  <div class="gate__text" tabindex="-1" bind:this={textEl}>
     <p class="gate__prompt">{prompt}</p>
     <p class="gate__name">{name}</p>
     <p class="gate__label">{label}</p>
@@ -65,6 +76,11 @@
     height: 100%;
     text-align: center;
     font-family: var(--cu-font-ui, sans-serif);
+  }
+
+  /* Focused programmatically as a landing spot, never as a control. */
+  .gate__text:focus {
+    outline: none;
   }
 
   .gate__text {
