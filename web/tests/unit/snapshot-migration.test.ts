@@ -5,7 +5,7 @@
 //
 // Two kinds of v1 input, both through the real WASM bridge:
 //   1. A genuine v1 engine snapshot, produced by the base commit's bridge
-//      (bce9fb2) and committed at internal/wasm/testdata/snapshot-v1-bce9fb2.json
+//      (bce9fb2) and committed at internal/game/testdata/snapshot-v1-bce9fb2.json
 //      (seed "2", dealer 0: Blake's 5, Alice's decline, Alice's draw), wrapped
 //      in the v1 TS Snapshot the store wrote then (same shape as v2, v: 1).
 //   2. Live saves captured at every curtain kind, then written back in v1
@@ -24,7 +24,7 @@ import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
 import { Kind, fakeStorage, passResumeGate } from './game-test-support';
 
-const FIXTURE = join(__dirname, '..', '..', '..', 'internal', 'wasm', 'testdata', 'snapshot-v1-bce9fb2.json');
+const FIXTURE = join(__dirname, '..', '..', '..', 'internal', 'game', 'testdata', 'snapshot-v1-bce9fb2.json');
 
 function stripDrawn(entries: unknown): unknown {
   if (!Array.isArray(entries)) return entries;

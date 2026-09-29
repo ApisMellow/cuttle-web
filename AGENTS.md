@@ -18,7 +18,7 @@ attached evidence.
 
 - `go test ./...` — the Go gate. The repo is **test-first**: test files
   exist before implementations; golden scenarios (e.g. seed-42 deal in
-  `internal/wasm/deal_test.go`) are authoritative, not judgment calls.
+  `internal/game/deal_test.go`) are authoritative, not judgment calls.
 - `./scripts/build-wasm.sh` — builds the WASM bridge and reports raw/gzip
   size. Budget: ≤ 1.5 MB gzipped, enforced by `test:smoke` (R18).
 - `verify:` enums in `requirements.yaml` map to test layers (SPEC §7);
@@ -38,7 +38,7 @@ attached evidence.
   `Rank.String()`).
 - `pending.ScrapIndex` must be omitted from the view entirely — it leaks
   the acting player's intent (SPEC §3.2).
-- `dealStream = 0x9E3779B97F4A7C15` in `internal/wasm/deal.go` must NEVER
+- `dealStream = 0x9E3779B97F4A7C15` in `internal/game/deal.go` must NEVER
   vary; scenario reproducibility depends on the exact PCG stream.
 
 ## Build artifacts and gitignore gotchas
@@ -106,7 +106,7 @@ defects. The brief says which tier an item is.
 |---|---|
 | Full gate | `<worktree>/scripts/ci.sh` |
 | One vitest file | `npm --prefix <worktree>/web run test:unit -- tests/unit/<file>` (path relative to `web/`) |
-| One Go test | `go -C <worktree> test ./internal/wasm/ -run <Name>` |
+| One Go test | `go -C <worktree> test ./internal/game/ -run <Name>` |
 | Rebuild the wasm | `<worktree>/scripts/build-wasm.sh` |
 | Locate the engine | `go -C <worktree> list -m -f '{{.Dir}}' github.com/ApisMellow/cuttle` |
 | Install deps | `npm --prefix <worktree>/web ci` |
@@ -172,12 +172,23 @@ that makes your list complete.
 
 ### WASM bridge: beyond the landmines above
 
+- **Layout (two-phone W1, 2026-09-29).** All bridge logic and its tests
+  live in `internal/game` (package `game`): `bridge.go`, `envelope.go`,
+  `view.go`, `deal.go`, `drawn.go`, `target.go`, `testdata/`.
+  `internal/wasm` is only the `syscall/js` shim (`main.go`, `js && wasm`)
+  plus the empty host stub `main_host.go`. Change behaviour in
+  `internal/game`; the shim holds no contract logic.
+- **Golden transcript.** `internal/game/golden_test.go` hashes every
+  bridge call's JSON output over 64 seeded games against
+  `testdata/golden/bridge-transcript.json`. A refactor that claims no
+  behaviour change must leave it green. Regenerate with `-update-golden`
+  only when the brief orders a wire change, and say so in the hand-back.
 - **`AppliedMove.targetCard`** (SPEC §2.7) comes from the PRE-state, and
   the key is always present (`null` when untargeted). A rank-2 one-off
   aimed at a Jack-stacked point names the **top Jack**, the card the engine
   scraps. Scuttle, Jack steal and 9 name the point card, stacked or not. A
   SevenPick uses its `SubMove`'s target.
-- **`AppliedMove.UnmarshalJSON`** (`internal/wasm/envelope.go`) rejects a
+- **`AppliedMove.UnmarshalJSON`** (`internal/game/envelope.go`) rejects a
   missing `targetCard` key and unknown fields. An outer
   `DisallowUnknownFields` doesn't reach into a custom `UnmarshalJSON`, so
   every custom decoder needs its own.
@@ -331,7 +342,7 @@ Hard rejects. Each came up in rounds 1–2.
 - A new SPEC §7.3 scenario (`web/tests/scenarios/*.yaml`) ships with the
   requirement it exercises, with an `expect` on every step. No placeholders.
 - Go property tests walk a fixed seed range with `playRandom`
-  (`internal/wasm/bridge_test.go`) and fail if the property was never
+  (`internal/game/bridge_test.go`) and fail if the property was never
   exercised. One fresh bridge per `t.Run`.
 
 ### Done means

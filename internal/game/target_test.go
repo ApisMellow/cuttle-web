@@ -1,4 +1,4 @@
-package main
+package game
 
 // SPEC §2.7 (amended 2026-09-27) — AppliedMove.targetCard: the card a move
 // targeted, read from the PRE-state. R20.2 needs this so the §4.6 recap can
@@ -264,7 +264,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 					{Hand: []card.Card{c(card.Three, card.Clubs)}},
 					{Hand: []card.Card{c(card.Six, card.Hearts)}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Ten, card.Hearts)}},
 			},
 			description: "7: play 10♥ as point card",
@@ -277,7 +277,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 					{Hand: []card.Card{c(card.Three, card.Clubs)}},
 					{Hand: []card.Card{c(card.Six, card.Hearts)}, Points: []engine.PointEntry{{Card: c(card.Seven, card.Hearts), Owner: engine.P2}}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Diamonds), Revealed: []card.Card{c(card.Nine, card.Clubs)}},
 			},
 			description: "7: scuttle opponent's 7♥ with 9♣",
@@ -290,7 +290,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 					{Hand: []card.Card{c(card.Three, card.Clubs)}},
 					{Hand: []card.Card{c(card.Six, card.Hearts)}, Points: []engine.PointEntry{{Card: c(card.Ten, card.Hearts), Owner: engine.P2}}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Diamonds), Revealed: []card.Card{c(card.Jack, card.Clubs)}},
 			},
 			description: "7: play J♣ (steal opponent point)",
@@ -303,7 +303,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 					{Hand: []card.Card{c(card.Three, card.Clubs)}},
 					{Hand: []card.Card{c(card.Six, card.Hearts)}, Points: []engine.PointEntry{{Card: c(card.Ten, card.Diamonds), Owner: engine.P2}}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Diamonds), Revealed: []card.Card{c(card.Nine, card.Clubs)}},
 			},
 			description: "7: play 9♣ as one-off",
@@ -323,7 +323,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 						JackOwners: []engine.PlayerID{engine.P1, engine.P2},
 					}}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Diamonds), Revealed: []card.Card{c(card.Two, card.Spades)}},
 			},
 			description: "7: play 2♠ as one-off",
@@ -338,7 +338,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 					{Hand: []card.Card{c(card.Three, card.Clubs)}},
 					{Hand: []card.Card{c(card.Six, card.Hearts)}},
 				},
-				Active:  engine.P1, Phase: engine.PhaseSevenChoosing,
+				Active: engine.P1, Phase: engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Jack, card.Diamonds), c(card.Jack, card.Spades)}},
 			},
 			description: "7: no legal play — scrap J♦",
@@ -348,7 +348,7 @@ func TestSPEC2_7_TargetCardPerMoveKind(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newBridge()
+			b := NewBridge()
 			env := okEnvelope(t, b.Restore(snapshotOf(t, tc.state), 0.0))
 			idx := indexOfDescription(t, env.Descriptions, tc.description)
 			after := okEnvelope(t, b.Apply(float64(idx)))
@@ -427,7 +427,7 @@ func inAnyHand(st engine.GameState, cd card.Card) bool {
 func TestSPEC2_7_TargetCardNamesOnlyBoardCards(t *testing.T) {
 	checked := 0
 	for seed := uint64(200); seed < 260; seed++ {
-		b := newBridge()
+		b := NewBridge()
 		var pre engine.GameState
 		havePre := false
 		playRandom(t, b, seed, func(Envelope, string) {
@@ -480,11 +480,11 @@ func TestSPEC2_9_RestoreTargetCard(t *testing.T) {
 
 	// Accepted: explicit null (an untargeted move).
 	nullEntry := `{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":null,"drawn":null,"description":"draw a card","seq":1}`
-	okEnvelope(t, newBridge().Restore(withHistory(nullEntry), 0.0))
+	okEnvelope(t, NewBridge().Restore(withHistory(nullEntry), 0.0))
 
 	// Accepted: a real, valid card.
 	cardEntry := `{"index":0,"by":0,"kind":3,"subKind":null,"card":{"Rank":9,"Suit":0},"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"scuttle opponent's 5♥ with 9♣","seq":1}`
-	restored := okEnvelope(t, newBridge().Restore(withHistory(cardEntry), 0.0))
+	restored := okEnvelope(t, NewBridge().Restore(withHistory(cardEntry), 0.0))
 	if restored.History[0].TargetCard == nil || *restored.History[0].TargetCard != (card.Card{Rank: card.Five, Suit: card.Hearts}) {
 		t.Fatalf("restored targetCard = %v, want 5♥", restored.History[0].TargetCard)
 	}
@@ -534,11 +534,11 @@ func TestSPEC2_9_RestoreTargetCardKindConsistency(t *testing.T) {
 	before := b.Snapshot()
 
 	cases := map[string]string{
-		"Scuttle with null targetCard": `{"index":0,"by":0,"kind":3,"subKind":null,"card":{"Rank":9,"Suit":0},"targetCard":null,"drawn":null,"description":"scuttle opponent's 5♥ with 9♣","seq":1}`,
-		"Jack steal with null targetCard": `{"index":0,"by":0,"kind":2,"subKind":null,"card":{"Rank":11,"Suit":0},"targetCard":null,"drawn":null,"description":"play J♣ (steal opponent point)","seq":1}`,
+		"Scuttle with null targetCard":                      `{"index":0,"by":0,"kind":3,"subKind":null,"card":{"Rank":9,"Suit":0},"targetCard":null,"drawn":null,"description":"scuttle opponent's 5♥ with 9♣","seq":1}`,
+		"Jack steal with null targetCard":                   `{"index":0,"by":0,"kind":2,"subKind":null,"card":{"Rank":11,"Suit":0},"targetCard":null,"drawn":null,"description":"play J♣ (steal opponent point)","seq":1}`,
 		"non-Jack PlayPermanent with a non-null targetCard": `{"index":0,"by":0,"kind":2,"subKind":null,"card":{"Rank":12,"Suit":0},"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"play Q♣ as permanent","seq":1}`,
-		"Draw with a non-null targetCard": `{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"draw a card","seq":1}`,
-		"Pass with a non-null targetCard": `{"index":0,"by":0,"kind":9,"subKind":null,"card":null,"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"pass","seq":1}`,
+		"Draw with a non-null targetCard":                   `{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"draw a card","seq":1}`,
+		"Pass with a non-null targetCard":                   `{"index":0,"by":0,"kind":9,"subKind":null,"card":null,"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"pass","seq":1}`,
 	}
 	for name, entry := range cases {
 		errCode(t, b.Restore(withHistory(entry), 0.0), "BAD_REQUEST")
@@ -549,13 +549,13 @@ func TestSPEC2_9_RestoreTargetCardKindConsistency(t *testing.T) {
 
 	// Accepted: OneOff and SevenPick may go either way.
 	oneOffNull := `{"index":0,"by":0,"kind":4,"subKind":null,"card":{"Rank":1,"Suit":2},"targetCard":null,"drawn":null,"description":"play A♥ as one-off","seq":1}`
-	okEnvelope(t, newBridge().Restore(withHistory(oneOffNull), 0.0))
+	okEnvelope(t, NewBridge().Restore(withHistory(oneOffNull), 0.0))
 	oneOffTargeted := `{"index":0,"by":0,"kind":4,"subKind":null,"card":{"Rank":9,"Suit":0},"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"play 9♣ as one-off","seq":1}`
-	okEnvelope(t, newBridge().Restore(withHistory(oneOffTargeted), 0.0))
+	okEnvelope(t, NewBridge().Restore(withHistory(oneOffTargeted), 0.0))
 	sevenPickNull := `{"index":0,"by":0,"kind":7,"subKind":1,"card":{"Rank":10,"Suit":2},"targetCard":null,"drawn":null,"description":"7: play 10♥ as point card","seq":1}`
-	okEnvelope(t, newBridge().Restore(withHistory(sevenPickNull), 0.0))
+	okEnvelope(t, NewBridge().Restore(withHistory(sevenPickNull), 0.0))
 	sevenPickTargeted := `{"index":0,"by":0,"kind":7,"subKind":3,"card":{"Rank":9,"Suit":0},"targetCard":{"Rank":5,"Suit":2},"drawn":null,"description":"7: scuttle opponent's 5♥ with 9♣","seq":1}`
-	okEnvelope(t, newBridge().Restore(withHistory(sevenPickTargeted), 0.0))
+	okEnvelope(t, NewBridge().Restore(withHistory(sevenPickTargeted), 0.0))
 }
 
 // Sanity check on the wire-level JSON shape directly (bypassing the bridge),

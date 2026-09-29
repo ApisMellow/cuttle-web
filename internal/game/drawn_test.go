@@ -1,4 +1,4 @@
-package main
+package game
 
 // SPEC §2.7 (amended 2026-09-28) — AppliedMove.drawn: how many cards a 5
 // drew, set on the entry whose apply resolved the 5 (its own entry, or the
@@ -66,7 +66,7 @@ func TestSPEC2_7_DrawnSetWhenFiveResolvesImmediately(t *testing.T) {
 				Deck:    deckOf(tc.deck),
 				Active:  engine.P1,
 			}
-			b := newBridge()
+			b := NewBridge()
 			env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 			wire := b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off")))
 			after := okEnvelope(t, wire)
@@ -96,7 +96,7 @@ func TestSPEC2_7_DrawnSetOnTheDeclineThatResolvesAFive(t *testing.T) {
 		Deck:   deckOf(4),
 		Active: engine.P1,
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	played := okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
 	if played.State.Phase != engine.PhaseAwaitingCounter {
@@ -130,7 +130,7 @@ func TestSPEC2_7_DrawnFollowsCounterChainParity(t *testing.T) {
 	}
 
 	t.Run("cancelled", func(t *testing.T) {
-		b := newBridge()
+		b := NewBridge()
 		env := okEnvelope(t, b.Restore(snapshotOf(t, base([]card.Card{c(card.Three, card.Clubs)})), 0.0))
 		okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
 		window := okEnvelope(t, b.View(1.0))
@@ -144,7 +144,7 @@ func TestSPEC2_7_DrawnFollowsCounterChainParity(t *testing.T) {
 	})
 
 	t.Run("countered back", func(t *testing.T) {
-		b := newBridge()
+		b := NewBridge()
 		env := okEnvelope(t, b.Restore(snapshotOf(t, base([]card.Card{c(card.Two, card.Hearts)})), 0.0))
 		okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
 		window := okEnvelope(t, b.View(1.0))
@@ -187,7 +187,7 @@ func TestSPEC2_7_DrawnForSevenRevealedFive(t *testing.T) {
 				Phase:   engine.PhaseSevenChoosing,
 				Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: tc.revealed},
 			}
-			b := newBridge()
+			b := NewBridge()
 			env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 			after := okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "7: play 5♥ as one-off"))))
 			if got := drawnOf(t, *after.LastMove); got != tc.want {
@@ -204,7 +204,7 @@ func TestSPEC2_7_DrawnForSevenRevealedFive(t *testing.T) {
 func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
 	seen, deferred := 0, 0
 	for seed := uint64(1); seed <= 160; seed++ {
-		b := newBridge()
+		b := NewBridge()
 		okEnvelope(t, b.NewGame(`{"seed":"`+itoa(seed)+`","dealer":0}`))
 		env := playRandom(t, b, seed, func(env Envelope, wire string) {})
 		var snap snapshotWire
@@ -245,7 +245,7 @@ func TestSPEC2_9_RestoreDrawn(t *testing.T) {
 	fiveThenDecline := strings.Replace(five, `"drawn":2`, `"drawn":null`, 1) +
 		`,{"index":0,"by":1,"kind":6,"subKind":null,"card":null,"targetCard":null,"drawn":2,"description":"decline to counter","seq":2}`
 	restore := func(entry string) string {
-		return newBridge().Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[`+entry+`]`, 1), 0.0)
+		return NewBridge().Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[`+entry+`]`, 1), 0.0)
 	}
 	if m := decodeGeneric(t, restore(five)); m["ok"] != true {
 		t.Fatalf("a 5 entry with drawn 2 must restore: %v", m)
@@ -291,7 +291,7 @@ func TestSPEC5_7_RestoreMigratesV1Snapshot(t *testing.T) {
 		t.Fatal("precondition: the fixture is a v1 snapshot with no drawn keys")
 	}
 	for _, viewer := range []float64{0, 1} {
-		b := newBridge()
+		b := NewBridge()
 		wire := b.Restore(string(raw), viewer)
 		env := okEnvelope(t, wire)
 		if len(env.History) != 3 {
@@ -308,7 +308,7 @@ func TestSPEC5_7_RestoreMigratesV1Snapshot(t *testing.T) {
 		if snap["v"].(float64) != 2 {
 			t.Fatalf("snapshot after a v1 restore is v%v, want 2", snap["v"])
 		}
-		again := okEnvelope(t, newBridge().Restore(b.Snapshot(), viewer))
+		again := okEnvelope(t, NewBridge().Restore(b.Snapshot(), viewer))
 		if !reflect.DeepEqual(again.History, env.History) {
 			t.Fatal("v2 re-restore changed history")
 		}
@@ -323,12 +323,12 @@ func TestSPEC5_7_RestoreRejectsBadV1AndUnknownVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	withDrawn := strings.Replace(string(raw), `"seq":1`, `"seq":1,"drawn":null`, 1)
-	errCode(t, newBridge().Restore(withDrawn, 0.0), "BAD_REQUEST")
+	errCode(t, NewBridge().Restore(withDrawn, 0.0), "BAD_REQUEST")
 	v3 := strings.Replace(string(raw), `"v":1`, `"v":3`, 1)
-	errCode(t, newBridge().Restore(v3, 0.0), "BAD_REQUEST")
+	errCode(t, NewBridge().Restore(v3, 0.0), "BAD_REQUEST")
 	// A v2 snapshot missing drawn is not upgraded.
 	v2NoDrawn := strings.Replace(string(raw), `"v":1`, `"v":2`, 1)
-	errCode(t, newBridge().Restore(v2NoDrawn, 0.0), "BAD_REQUEST")
+	errCode(t, NewBridge().Restore(v2NoDrawn, 0.0), "BAD_REQUEST")
 }
 
 // Chains of two and four counters (review B1): the count lands only on the
@@ -369,7 +369,7 @@ func TestSPEC2_7_DrawnOnLongCounterChains(t *testing.T) {
 				Deck:    deckOf(4),
 				Active:  engine.P1,
 			}
-			b := newBridge()
+			b := NewBridge()
 			okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 			var after Envelope
 			for i, s := range tc.steps {
@@ -392,7 +392,7 @@ func TestSPEC2_7_DrawnOnLongCounterChains(t *testing.T) {
 			for _, h := range after.History[:last] {
 				wantNullDrawn(t, h)
 			}
-			again := okEnvelope(t, newBridge().Restore(b.Snapshot(), 0.0))
+			again := okEnvelope(t, NewBridge().Restore(b.Snapshot(), 0.0))
 			if got := drawnOf(t, again.History[last]); got != 2 {
 				t.Fatalf("restored drawn = %d, want 2", got)
 			}

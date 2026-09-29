@@ -1,6 +1,6 @@
 ---
 name: cuttle-bridge-dev
-description: Cuttle Web Go/WASM bridge developer. Use for loop work items in internal/wasm (envelope, view redaction, dealing, restore validation), the TypeScript bridge boundary in web/src/lib/bridge, and the smoke and scenario harness (web/tests/smoke, web/tests/scenario, web/tests/scenarios). Implements test-first in the absolute worktree path its brief names. Runs no git.
+description: Cuttle Web Go/WASM bridge developer. Use for loop work items in internal/game and the internal/wasm shim (envelope, view redaction, dealing, restore validation), the TypeScript bridge boundary in web/src/lib/bridge, and the smoke and scenario harness (web/tests/smoke, web/tests/scenario, web/tests/scenarios). Implements test-first in the absolute worktree path its brief names. Runs no git.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
@@ -34,7 +34,7 @@ forms in the playbook's "Paths and Bash hygiene" table.
 
 | Area | Paths |
 |---|---|
-| Go bridge | `internal/wasm/`: `main.go`, `main_host.go`, `bridge.go`, `envelope.go`, `view.go`, `deal.go`, `target.go`, and their tests |
+| Go bridge | `internal/game/`: `bridge.go`, `envelope.go`, `view.go`, `deal.go`, `drawn.go`, `target.go`, their tests and `testdata/`. `internal/wasm/`: the `syscall/js` shim `main.go` and the host stub `main_host.go` |
 | TS boundary | `web/src/lib/bridge/`: `wasm.ts`, `engine.ts`, `schema.ts` |
 | Harness | `web/tests/smoke/`, `web/tests/scenario/`, `web/tests/scenarios/` |
 
@@ -105,10 +105,10 @@ a known hidden card.
 
 ## Property tests
 
-- Walk a fixed seed range with `playRandom` (`internal/wasm/bridge_test.go`;
+- Walk a fixed seed range with `playRandom` (`internal/game/bridge_test.go`;
   `target_test.go` shows the pattern) and assert at every ply.
 - Count qualifying plies and fail at zero. Report range, plies, qualifying.
-- `web/tests/smoke/corpus.json` and `dealStream` in `deal.go` never change
+- `web/tests/smoke/corpus.json` and `dealStream` in `internal/game/deal.go` never change
   without a brief. The seed-42 golden deal stays byte-identical.
 
 ## Fixtures

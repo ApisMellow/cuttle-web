@@ -1,4 +1,9 @@
-package main
+// Package game holds the bridge's game logic: the held session, the §2.7
+// envelope, the §3.2 view redaction, the deal, and snapshot/restore. It
+// has no syscall/js dependency, so it builds and tests on the host and can
+// be imported by more than one front end: the WASM shim in internal/wasm
+// today, and the two-phone server later (docs/two-phone-plan.md §4).
+package game
 
 import (
 	"bytes"
@@ -17,12 +22,12 @@ import (
 
 // Bridge holds the one game the WASM module owns (SPEC §2.4: "Bridge owns
 // the state"). Every exported method takes already-converted arguments and
-// returns a JSON string, so the whole surface is host-testable; main.go only
-// adapts syscall/js values to these calls.
+// returns a JSON string, so the whole surface is host-testable; the shim in
+// internal/wasm/main.go only adapts syscall/js values to these calls.
 //
-// Argument convention (set by main.go's argument conversion): a JS string
+// Argument convention (set by the shim's argument conversion): a JS string
 // arrives as string, a JS number as float64, undefined/null/missing as nil,
-// a boolean as bool, and anything else as unsupportedArg.
+// a boolean as bool, and anything else as UnsupportedArg.
 type Bridge struct {
 	game   *session
 	random func() (uint64, error)
@@ -37,11 +42,13 @@ type session struct {
 	dealer  engine.PlayerID
 }
 
-// unsupportedArg stands in for a JS value the bridge never accepts
+// UnsupportedArg stands in for a JS value the bridge never accepts
 // (object, function, symbol, bigint).
-type unsupportedArg struct{ Kind string }
+type UnsupportedArg struct{ Kind string }
 
-func newBridge() *Bridge {
+// NewBridge returns a Bridge with no game held; seeds and dealers left
+// unspecified by NewGame are drawn from crypto/rand.
+func NewBridge() *Bridge {
 	return &Bridge{random: cryptoUint64}
 }
 
@@ -107,8 +114,10 @@ func (b *Bridge) NewGame(arg any) string {
 			dealer = engine.PlayerID(r & 1)
 		}
 		next := &session{state: dealNewGame(seed, dealer), history: []AppliedMove{}, seed: seed, dealer: dealer}
-		// The first actor's view: whoever starts the game is the first
-		// player, so there is no opening curtain (ApisMellow, 2026-09-26).
+		// The first actor's view (SPEC §2.4, amended 2026-09-28). The
+		// player who tapped "New game" need not be the first actor, so the
+		// UI drops this envelope unread, raises an opening curtain to the
+		// first actor (§4.2) and fetches their view after the reveal gate.
 		return b.commit(next, next.state.Active)
 	})
 }
