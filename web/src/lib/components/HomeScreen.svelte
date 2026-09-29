@@ -25,7 +25,7 @@
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
-  import { DEFAULT_THEME_ID, listThemeChoices } from '../theme';
+  import { listThemeChoices, vectorTheme } from '../theme';
   import RulesButton from './RulesButton.svelte';
 
   let name0 = $state('');
@@ -126,11 +126,11 @@
   // PRD §10 A-6: the card-style picker. A look preference only: it lives in
   // the settings store (its own storage key), never in the game snapshot.
   // Catalog themes appear once the tiny catalog has loaded; a saved choice
-  // that isn't listed (offline, removed theme) shows as the default, and
-  // the board falls back to it anyway (SPEC §5.6 rule 4).
+  // that isn't listed (offline, removed theme) shows as Classic, which is
+  // what the board falls back to anyway (SPEC §5.6 rule 4).
   const themeChoices = $derived(listThemeChoices());
   const selectedTheme = $derived(
-    themeChoices.some((choice) => choice.id === settings.themeId) ? settings.themeId : DEFAULT_THEME_ID,
+    themeChoices.some((choice) => choice.id === settings.themeId) ? settings.themeId : vectorTheme.id,
   );
 </script>
 

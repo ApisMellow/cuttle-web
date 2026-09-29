@@ -405,3 +405,35 @@ describe('RecapPanel prop changes on one mounted instance (OQ-13 pattern)', () =
     expect(lines(host).length).toBe(0);
   });
 });
+
+describe('RecapPanel keyboard (r16 review B1)', () => {
+  it('focus starts on the heading, and an auto-repeated Enter cannot dismiss it', () => {
+    const seen: number[] = [];
+    const el = render(base([WIRE.draw], { onadvance: () => seen.push(1) }));
+    expect(document.activeElement).toBe(el.querySelector('.recap__heading'));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
+    dismissButton(el).click();
+    flushSync();
+    expect(seen).toEqual([]);
+  });
+
+  it('re-review N1: an auto-repeated Enter cannot expand "+N earlier" either', () => {
+    const nine = [
+      WIRE.draw,
+      WIRE.pass,
+      WIRE.playPoint,
+      WIRE.permanent,
+      WIRE.jackSteal,
+      WIRE.scuttle,
+      WIRE.oneOff,
+      WIRE.oneOffTargeted,
+      WIRE.counter,
+    ].map((e, i) => ({ ...e, seq: i + 1 }));
+    const el = render(base(nine));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
+    expandButton(el)?.click();
+    flushSync();
+    expect(lines(el)).toHaveLength(6);
+    expect(expandButton(el)).not.toBeNull();
+  });
+});

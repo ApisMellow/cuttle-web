@@ -74,7 +74,7 @@ function readStoredSettings(): Partial<StoredSettings> {
   return result;
 }
 
-function writeStoredSettings(settings: StoredSettings): void {
+function writeStoredSettings(settings: Omit<StoredSettings, 'themeId'> & { themeId: string | undefined }): void {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
@@ -85,6 +85,10 @@ function writeStoredSettings(settings: StoredSettings): void {
 
 export class SettingsStore {
   #initial = readStoredSettings();
+  // Mythic default (2026-09-29): `themeId` is saved only once a player has
+  // picked a style (or a saved one was read). Saving names alone never pins
+  // whichever style is the default.
+  #themeChosen = this.#initial.themeId !== undefined;
 
   themeId = $state<string>(this.#initial.themeId ?? DEFAULTS.themeId);
   reducedMotion = $state<boolean>(this.#initial.reducedMotion ?? DEFAULTS.reducedMotion);
@@ -93,7 +97,7 @@ export class SettingsStore {
 
   #persist(): void {
     writeStoredSettings({
-      themeId: this.themeId,
+      themeId: this.#themeChosen ? this.themeId : undefined,
       reducedMotion: this.reducedMotion,
       revealPreference: this.revealPreference,
       lastNames: this.lastNames,
@@ -102,6 +106,7 @@ export class SettingsStore {
 
   /** SPEC §5.6 rule 5: the theme-toggle menu control calls this. */
   setThemeId(id: string): void {
+    this.#themeChosen = true;
     this.themeId = id;
     this.#persist();
   }

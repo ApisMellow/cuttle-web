@@ -46,6 +46,13 @@ export { DEFAULT_THEME_ID };
  */
 export { clearImageFailures };
 
+/**
+ * A card's accessible name ("King of Hearts"), the same in every theme.
+ * Containers put it on a card button's `aria-label`; never call it for a
+ * card the viewer can't see (a back has no name).
+ */
+export { cardSpokenName } from './names';
+
 /** SPEC §5.6 rule 4: zero external assets, always available, the fallback. */
 export const vectorTheme: CardTheme = {
   id: 'vector',

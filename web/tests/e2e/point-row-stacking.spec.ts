@@ -31,6 +31,10 @@ type Harness = typeof import('./harness/mount-board');
 //      only as the stack's `aria-label` ("stolen, N Jacks") for screen
 //      readers.
 //
+//   r16 (2026-09-29 playtest, friction 3): the card's button names the
+//   whole stack ("6 of Diamonds, 3 Jacks on it, top Jack of Spades"). The
+//   board still shows no count (owner ruling, same day).
+//
 // docs/design.md §6/§7, as currently written, still describes the W17
 // cascade (full-size Jacks stacking downward, several deep) — this is a
 // SPEC tension flagged in this item's hand-back, not resolved here; the
@@ -421,8 +425,11 @@ for (const { name, width, height } of BREAKPOINTS) {
           });
           const jackRect = (host.querySelector('.point-row__jack') as HTMLElement).getBoundingClientRect();
           const edges = [...host.querySelectorAll<HTMLElement>('.point-row__jack-edge')];
-          const stackLabel = host.querySelector('.point-row__jack-stack')?.getAttribute('aria-label') ?? null;
+          // r16: the whole stack is named on the card's button; the board
+          // itself shows no count (owner ruling, 2026-09-29).
+          const stackLabel = host.querySelector('[data-testid="point-0-0"]')?.getAttribute('aria-label') ?? null;
           return {
+            stackText: host.querySelector('.point-row__jack-stack')?.textContent ?? '',
             edgeCount: edges.length,
             // Every edge sticks out past the Jack's own box on the
             // bottom-right — never covers the top-left corner.
@@ -442,15 +449,16 @@ for (const { name, width, height } of BREAKPOINTS) {
       }, HARNESS_URL);
 
       expect(result.one.edgeCount).toBe(0);
-      expect(result.one.stackLabel).toBeNull();
+      expect(result.one.stackLabel).toBe('6 of Diamonds, Jack of Clubs on it');
 
       for (const r of [result.two, result.three, result.four]) {
         expect(r.edgeCount).toBe(2);
         expect(r.allBeyondBottomRight).toBe(true);
+        expect(r.stackText).not.toMatch(/\d/);
       }
-      expect(result.two.stackLabel).toBe('stolen, 2 Jacks');
-      expect(result.three.stackLabel).toBe('stolen, 3 Jacks');
-      expect(result.four.stackLabel).toBe('stolen, 4 Jacks');
+      expect(result.two.stackLabel).toBe('6 of Diamonds, 2 Jacks on it, top Jack of Hearts');
+      expect(result.three.stackLabel).toBe('6 of Diamonds, 3 Jacks on it, top Jack of Spades');
+      expect(result.four.stackLabel).toBe('6 of Diamonds, 4 Jacks on it, top Jack of Spades');
     });
   });
 }

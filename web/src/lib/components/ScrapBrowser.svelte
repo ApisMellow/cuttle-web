@@ -9,10 +9,17 @@
   //   the move index back for staging. Cancel abandons the 3.
   //
   // Presentational only: the integrator owns open/closed and staging.
+  //
+  // r16 (2026-09-29 playtest, friction 5): the sheet drops from the TOP of
+  // the column, no taller than about half the screen, so your own Points
+  // and Permanents rows and your hand (the 3 you are playing) stay in view
+  // below it. The card grid scrolls inside the sheet; its button stays put.
+  // Every scrap card is named for a screen reader ("King of Hearts"): the
+  // scrap is public (SPEC §3.2).
   import type { Card } from '../bridge/schema';
   import type { ScrapPickCandidate } from '../stores/staging.svelte';
   import '../styles/card-geometry.css';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
+  import { DEFAULT_THEME_ID, cardSpokenName, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
 
   interface ScrapBrowserProps {
@@ -56,7 +63,9 @@
       <ul class="scrap-browser__grid">
         {#each browseOrder as item (item.scrapIndex)}
           <li class="scrap-browser__card">
-            <theme.Face card={item.card} size="field" />
+            <span class="scrap-browser__face" role="img" aria-label={cardSpokenName(item.card)}>
+              <theme.Face card={item.card} size="field" />
+            </span>
           </li>
         {/each}
       </ul>
@@ -73,6 +82,7 @@
             type="button"
             class="scrap-browser__card scrap-browser__card--pick"
             data-testid={`scrap-pick-${item.scrapIndex}`}
+            aria-label={cardSpokenName(item.card)}
             onclick={() => onpick?.(item.index)}
           >
             <theme.Face card={item.card} size="field" state="highlighted" />
@@ -91,15 +101,20 @@
     position: fixed;
     inset: 0;
     z-index: 20;
-    background: rgb(26 20 32 / 0.72);
+    /* r16: lighter than before, so the rows it leaves uncovered still read. */
+    background: rgb(26 20 32 / 0.45);
   }
 
-  /* design.md §5, §11: a bottom sheet — ink-raised, top corners only at
-     --cu-radius-sheet, --cu-gutter-sheet padding, inside the board column. */
+  /* design.md §5, §11, amended r16: a sheet dropping from the TOP of the
+     board column (it was a bottom sheet and hid your own Points row) —
+     ink-raised, bottom corners only at --cu-radius-sheet, --cu-gutter-sheet
+     padding. At most 48% of the visible height, which ends above your own
+     Points row at 393x852 and 430x932 (a Jack on your side included); the
+     card grid scrolls inside it. */
   .scrap-browser {
     position: fixed;
     inset-inline: 0;
-    bottom: 0;
+    top: 0;
     z-index: 21;
     box-sizing: border-box;
     display: flex;
@@ -107,15 +122,15 @@
     gap: var(--cu-space-3, 12px);
     width: 100%;
     max-width: var(--cu-board-max, 560px);
-    max-height: calc(100dvh - var(--cu-safe-top, 0px) - 24px);
+    max-height: calc(48dvh + var(--cu-safe-top, 0px));
     margin: 0 auto;
-    padding: var(--cu-gutter-sheet, 16px) var(--cu-gutter-sheet, 16px)
-      calc(var(--cu-gutter-sheet, 16px) + var(--cu-safe-bottom, 0px));
-    overflow-x: hidden;
-    overflow-y: auto;
+    padding: calc(var(--cu-gutter-sheet, 16px) + var(--cu-safe-top, 0px)) var(--cu-gutter-sheet, 16px)
+      var(--cu-gutter-sheet, 16px);
+    overflow: hidden;
     background: var(--cu-ink-raised, #30263a);
     color: var(--cu-pearl, #eee8f1);
-    border-radius: var(--cu-radius-sheet, 18px) var(--cu-radius-sheet, 18px) 0 0;
+    border-radius: 0 0 var(--cu-radius-sheet, 18px) var(--cu-radius-sheet, 18px);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 40%);
   }
 
   .scrap-browser__title {
@@ -133,11 +148,23 @@
 
   .scrap-browser__grid {
     display: flex;
+    flex: 0 1 auto;
     flex-wrap: wrap;
     gap: var(--cu-space-2, 8px);
+    min-height: 0;
     margin: 0;
-    padding: 0;
+    /* Room for a highlighted card's ring and a focus outline. */
+    padding: 4px;
+    overflow-x: hidden;
+    overflow-y: auto;
     list-style: none;
+  }
+
+  .scrap-browser__title,
+  .scrap-browser__hint,
+  .scrap-browser__empty,
+  .scrap-browser__close {
+    flex: none;
   }
 
   /* SPEC §5.6 rule 2: the container owns the box. */
@@ -148,6 +175,12 @@
     aspect-ratio: var(--cuttle-card-aspect);
     overflow: hidden;
     border-radius: 8%;
+  }
+
+  .scrap-browser__face {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .scrap-browser__card--pick {

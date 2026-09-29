@@ -26,6 +26,7 @@ interface RenderProps {
   highlighted?: ReadonlySet<string>;
   staged?: ReadonlySet<string>;
   ontap: (key: string) => void;
+  names?: readonly [string, string];
 }
 
 function render(props: RenderProps): HTMLDivElement {
@@ -332,39 +333,82 @@ describe('PointRow (SPEC §5.2)', () => {
     }
   });
 
-  it('carries the Jack count only as the stack\'s aria-label ("stolen, N Jacks") — none for a single Jack (W18)', () => {
-    const single = render({
+  it('r16: names the whole stack on the card button, with player names, never raw ids', () => {
+    const names = ['Alice', 'Blake'] as const;
+    const plain = render({
       rowId: 0,
-      entries: [entry({ Owner: 0, Controller: 0, JackStack: [{ Rank: 11, Suit: 0 }], JackOwners: [0] })],
-      pointTotal: 4,
+      entries: [entry({ Owner: 0, Controller: 0, Card: { Rank: 10, Suit: 2 } })],
+      pointTotal: 10,
       label: 'Points',
       ontap: () => {},
+      names,
     });
-    expect(
-      single.querySelector('[data-testid="point-0-0"] .point-row__jack-stack')?.getAttribute('aria-label'),
-    ).toBeNull();
+    expect(plain.querySelector('[data-testid="point-0-0"]')?.getAttribute('aria-label')).toBe('10 of Hearts');
 
+    // Blake's 10♥, stolen by Alice (row 0) with one Jack.
+    const single = render({
+      rowId: 0,
+      entries: [entry({ Owner: 1, Controller: 0, Card: { Rank: 10, Suit: 2 }, JackStack: [{ Rank: 11, Suit: 3 }], JackOwners: [0] })],
+      pointTotal: 10,
+      label: 'Points',
+      ontap: () => {},
+      names,
+    });
+    const singleButton = single.querySelector('[data-testid="point-0-0"]');
+    expect(singleButton?.getAttribute('aria-label')).toBe('10 of Hearts, stolen from Blake, Jack of Spades on it');
+
+    // Stolen, stolen back, stolen again: three Jacks, Blake's card in Alice's row.
     const triple = render({
+      rowId: 0,
+      entries: [
+        entry({
+          Owner: 1,
+          Controller: 0,
+          Card: { Rank: 10, Suit: 2 },
+          JackStack: [
+            { Rank: 11, Suit: 0 },
+            { Rank: 11, Suit: 1 },
+            { Rank: 11, Suit: 3 },
+          ],
+          JackOwners: [0, 1, 0],
+        }),
+      ],
+      pointTotal: 10,
+      label: 'Points',
+      ontap: () => {},
+      names,
+    });
+    const button = triple.querySelector('[data-testid="point-0-0"]');
+    expect(button?.getAttribute('aria-label')).toBe('10 of Hearts, stolen from Blake, 3 Jacks on it, top Jack of Spades');
+    // No count on the board itself (owner ruling): the depth is only in the name.
+    expect(button?.querySelector('.point-row__jack-stack')?.textContent).not.toMatch(/\d/);
+    // No raw player id anywhere a screen reader or the page can read.
+    expect(button?.outerHTML).not.toMatch(/player \d/);
+  });
+
+  it('r16: an even stack (stolen back) is home: no "stolen", still counted', () => {
+    const el = render({
       rowId: 0,
       entries: [
         entry({
           Owner: 0,
           Controller: 0,
+          Card: { Rank: 9, Suit: 0 },
           JackStack: [
             { Rank: 11, Suit: 0 },
             { Rank: 11, Suit: 2 },
-            { Rank: 11, Suit: 3 },
           ],
-          JackOwners: [0, 0, 0],
+          JackOwners: [1, 0],
         }),
       ],
-      pointTotal: 4,
+      pointTotal: 9,
       label: 'Points',
       ontap: () => {},
+      names: ['Alice', 'Blake'],
     });
-    expect(
-      triple.querySelector('[data-testid="point-0-0"] .point-row__jack-stack')?.getAttribute('aria-label'),
-    ).toBe('stolen, 3 Jacks');
+    expect(el.querySelector('[data-testid="point-0-0"]')?.getAttribute('aria-label')).toBe(
+      '9 of Clubs, 2 Jacks on it, top Jack of Hearts',
+    );
   });
 
   it('with no dropZoneKey, renders a plain row and no zone testid; with one, wraps in a DropZones with that testid', () => {

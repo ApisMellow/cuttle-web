@@ -27,9 +27,11 @@ import PointRow from '../../../src/lib/components/PointRow.svelte';
 import StagingBar from '../../../src/lib/components/StagingBar.svelte';
 import { cardName } from '../../../src/lib/cardText';
 import { plainMoveText, type NineReturn, type OptionContext } from '../../../src/lib/recap';
-import { DEFAULT_THEME_ID, getTheme } from '../../../src/lib/theme';
+import { vectorTheme } from '../../../src/lib/theme';
 
-const theme = getTheme(DEFAULT_THEME_ID);
+// The geometry specs measure Classic's corner index, so the harness pins
+// Classic (Mythic is the app default since 2026-09-29).
+const theme = vectorTheme;
 const mounted: Array<{ instance: unknown; host: HTMLElement }> = [];
 
 function freshHost(): HTMLElement {

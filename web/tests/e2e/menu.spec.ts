@@ -151,6 +151,8 @@ test('R17.2: Rules from the menu at a recap and at a real counter window leave t
   await page.getByTestId('menu-rules').click();
   await expect(page.getByTestId('rules-sheet')).toBeVisible();
   await page.getByTestId('rules-close').click();
+  // r16: back to the menu, then close it.
+  await page.getByTestId('menu-close').click();
   await expect(page.getByTestId('recap')).toBeVisible();
   expect(await hook(page, (h) => h.curtain())).toBe('recap');
   expect(await save(page)).toBe(atRecap);
@@ -170,6 +172,11 @@ test('R17.2: Rules from the menu at a recap and at a real counter window leave t
   await expect(page.getByTestId('game-screen')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('rules-sheet')).toHaveCount(0);
+  // r16: closing Rules comes back to the menu, on its Rules item.
+  await expect(page.getByTestId('game-menu')).toBeVisible();
+  await expect(page.getByTestId('menu-rules')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('game-menu')).toHaveCount(0);
   await expect(page.getByTestId('menu-button')).toBeFocused();
 
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
@@ -181,6 +188,9 @@ test('R17.2: Rules from the menu at a recap and at a real counter window leave t
 });
 
 test('R23.2: the menu swaps Classic for Mythic mid-game, nothing moves, and the save is untouched', async ({ page }) => {
+  // Mythic is the default (2026-09-29): start this game in Classic.
+  await page.goto('/');
+  await page.getByTestId('theme-option-vector').click();
   await startGoldenGame(page);
   const classic = await boxes(page);
   const saved = await save(page);

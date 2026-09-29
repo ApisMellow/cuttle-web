@@ -25,7 +25,7 @@
   // ring belongs on this card" and neither outranks the other.
   import type { Card } from '../bridge/schema';
   import '../styles/card-geometry.css';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
+  import { DEFAULT_THEME_ID, cardSpokenName, getTheme } from '../theme';
   import type { CardTheme, CardVisualState } from '../theme/types';
 
   interface HandCardProps {
@@ -75,6 +75,14 @@
             : 'normal',
   );
 
+  // r16 (a11y): every theme gives the button the same name, "King of
+  // Hearts", plus its marker ("frozen", "staged"). A bitmap face's image is
+  // alt="" and a vector face's "K♥" reads poorly, so the name never comes
+  // from the face. This is the viewer's own card, so naming it leaks nothing.
+  const accessibleName = $derived(
+    isFrozen ? `${cardSpokenName(card)}, frozen` : staged ? `${cardSpokenName(card)}, staged` : cardSpokenName(card),
+  );
+
   function handleClick(): void {
     onselect?.(handIndex);
   }
@@ -93,6 +101,7 @@
   data-staged={staged ? 'true' : 'false'}
   data-dimmed={dimmed ? 'true' : 'false'}
   aria-pressed={selected}
+  aria-label={accessibleName}
   onclick={handleClick}
 >
   <theme.Face {card} size="hand" state={visualState} />

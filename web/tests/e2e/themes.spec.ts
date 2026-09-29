@@ -62,15 +62,23 @@ test.beforeEach(async ({ page }) => {
 test('the home screen offers Classic and Mythic; the pick persists across a reload and never enters the save', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('theme-option-vector')).toContainText('Classic');
-  await expect(page.getByTestId('theme-option-vector').locator('input')).toBeChecked();
+  // Mythic is the default (2026-09-29); Classic is one tap away.
+  await expect(page.getByTestId('theme-option-mythic').locator('input')).toBeChecked();
   for (const id of ['vector', 'mythic']) {
     const box = await page.getByTestId(`theme-option-${id}`).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   }
-  // Only the tiny catalog has loaded: no manifest, no image yet.
+  // The default theme's manifest loads at boot; no face image before a card is shown.
+  await expect
+    .poll(() => page.evaluate(() => performance.getEntriesByType('resource').some((e) => e.name.endsWith('/themes/mythic/manifest.json'))))
+    .toBe(true);
   const early = await page.evaluate(() => performance.getEntriesByType('resource').map((e) => e.name));
-  expect(early.some((u) => u.includes('/themes/mythic/'))).toBe(false);
+  expect(early.some((u) => u.includes('/themes/mythic/faces'))).toBe(false);
 
+  // Classic persists across a reload, then back to Mythic.
+  await pickTheme(page, 'vector');
+  await page.reload();
+  await expect(page.getByTestId('theme-option-vector').locator('input')).toBeChecked();
   await pickTheme(page, 'mythic');
   await page.reload();
   await expect(page.getByTestId('theme-option-mythic').locator('input')).toBeChecked();
@@ -119,6 +127,7 @@ test('a face image that fails to load falls back to the vector face for that car
 
 test('swapping Classic for Mythic never moves or resizes anything on the board', async ({ page }) => {
   await page.goto('/');
+  await pickTheme(page, 'vector'); // Mythic is the default; start in Classic
   await startGoldenGame(page);
   const classic = await boardBoxes(page);
   expect(await page.locator('.bitmap-card-face').count()).toBe(0);

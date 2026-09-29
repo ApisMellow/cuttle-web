@@ -41,9 +41,16 @@
   // §3.3 rule 2: `pointTotal` is the caller's `scoreboard.you.points` /
   // `scoreboard.opponent.points` verbatim — this component never sums
   // `entries` itself.
-  import type { PlayerId, PointEntry } from '../bridge/schema';
+  //
+  // r16 (playtest friction 3): the board still shows no count (owner
+  // ruling, 2026-09-29: extra Jacks are only the thin edge). The card's
+  // button carries one accessible
+  // name for the whole stack, with player names, never raw ids ("10 of
+  // Hearts, stolen from Alice, 3 Jacks on it, top Jack of Spades").
+  import type { Card, PlayerId, PointEntry } from '../bridge/schema';
   import { inPlayBadge } from '../cardText';
   import '../styles/card-geometry.css';
+  import { cardSpokenName } from '../theme';
   import type { CardTheme, CardVisualState } from '../theme/types';
   import DropZones from './DropZones.svelte';
 
@@ -60,10 +67,42 @@
     staged: ReadonlySet<string>;
     ontap: (key: string) => void;
     theme: CardTheme;
+    /** Player names by id, for the stolen-card name ("stolen from Alice"). */
+    names?: readonly [string, string];
   }
 
-  let { rowId, entries, pointTotal, label, dropZoneKey, dropZoneLabel, highlighted, staged, ontap, theme }: PointRowProps =
-    $props();
+  let {
+    rowId,
+    entries,
+    pointTotal,
+    label,
+    dropZoneKey,
+    dropZoneLabel,
+    highlighted,
+    staged,
+    ontap,
+    theme,
+    names,
+  }: PointRowProps = $props();
+
+  /**
+   * The point card's button name: the card, who it was stolen from, and the
+   * whole Jack stack. Every card named here is face up on the table.
+   */
+  function accessibleName(entry: PointEntry): string {
+    const parts = [cardSpokenName(entry.Card)];
+    const stolen = entry.Controller !== entry.Owner;
+    if (stolen) {
+      const owner = names?.[entry.Owner];
+      parts.push(owner !== undefined && owner.trim() !== '' ? `stolen from ${owner}` : 'stolen');
+    }
+    const count = entry.JackStack.length;
+    if (count > 0) {
+      const top: Card = entry.JackStack[count - 1];
+      parts.push(count === 1 ? `${cardSpokenName(top)} on it` : `${count} Jacks on it, top ${cardSpokenName(top)}`);
+    }
+    return parts.join(', ');
+  }
 
   function keyFor(index: number): string {
     return `point:${rowId}:${index}`;
@@ -102,6 +141,7 @@
           type="button"
           class="point-row__card"
           data-testid={`point-${rowId}-${index}`}
+          aria-label={accessibleName(entry)}
           onclick={() => ontap(key)}
         >
           <span class="point-row__face"><theme.Face card={entry.Card} size="field" state={stateFor(key)} /></span>
@@ -114,12 +154,9 @@
                  thickness") peeking past the shown Jack's own right/bottom
                  edge; no count digits render anywhere. `aria-label` carries
                  the count for screen readers, since the sliver cue alone
-                 doesn't. -->
-            <span
-              class="point-row__jack-stack"
-              data-jack-count={jackCount}
-              aria-label={jackCount > 1 ? `stolen, ${jackCount} Jacks` : undefined}
-            >
+                 doesn't. r16: the button's own aria-label names the whole
+                 stack now, so this wrapper carries none. -->
+            <span class="point-row__jack-stack" data-jack-count={jackCount}>
               {#if jackCount > 1}
                 <span class="point-row__jack-edge point-row__jack-edge--2" aria-hidden="true"></span>
                 <span class="point-row__jack-edge point-row__jack-edge--1" aria-hidden="true"></span>
@@ -134,9 +171,7 @@
             </span>
           {/if}
           {#if entry.Controller !== entry.Owner}
-            <span class="point-row__owner-marker" data-owner-marker data-owner={entry.Owner}>
-              <span class="point-row__sr-only">on loan from player {entry.Owner}</span>
-            </span>
+            <span class="point-row__owner-marker" data-owner-marker data-owner={entry.Owner} aria-hidden="true"></span>
           {/if}
         </button>
       </div>
@@ -390,15 +425,6 @@
     background: var(--cu-ink, #241c2b);
     box-shadow: 0 0 0 1.5px var(--cu-paper, #faf8f4);
     pointer-events: none;
-  }
-
-  .point-row__sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 
   .point-row__empty {

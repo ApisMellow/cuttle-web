@@ -10,7 +10,7 @@
   // (docs/design.md §6; revise 1 ruling).
   import type { Card } from '../bridge/schema';
   import '../styles/card-geometry.css';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
+  import { DEFAULT_THEME_ID, cardSpokenName, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
 
   interface ScrapPileProps {
@@ -25,10 +25,15 @@
 
   const topCard = $derived(cards.length > 0 ? cards[cards.length - 1] : null);
   const state = $derived(staged ? 'staged' : highlighted ? 'highlighted' : 'normal');
+  const label = $derived(
+    `Scrap, ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}${topCard === null ? '' : `, ${cardSpokenName(topCard)} on top`}`,
+  );
 </script>
 
 <div class="scrap-pile">
-  <button type="button" class="scrap-pile__well" data-testid="scrap-pile" data-state={state} onclick={ontap}>
+  <!-- r16 (a11y): "Scrap, 3 cards, King of Hearts on top". The scrap is
+       public to both players (SPEC §3.2), so naming its top card is safe. -->
+  <button type="button" class="scrap-pile__well" data-testid="scrap-pile" data-state={state} aria-label={label} onclick={ontap}>
     {#if topCard}
       <theme.Face card={topCard} size="hand" state={state} />
     {:else}

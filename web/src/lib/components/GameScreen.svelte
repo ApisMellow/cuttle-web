@@ -50,6 +50,7 @@
   import { settings } from '../stores/settings.svelte';
   import { StagingStore, type StagingEnv } from '../stores/staging.svelte';
   import { resolveBoardTap, type TargetKey } from '../targetKey';
+  import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
   import { installTestHook } from '../testHook';
   import { clearImageFailures, getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
@@ -221,6 +222,8 @@
   // target rather than wrapping through the rest of the page. A pointer
   // click never moves focus. Escape clears a selection or a staged move.
   let keyboardActivation = false;
+  /** r16: whether the last input was a key (vs a pointer); gates the focus rescue below. */
+  let lastInputKeyboard = false;
   let screenEl: HTMLDivElement | undefined = $state();
 
   function testIdForKey(key: TargetKey): string {
@@ -245,21 +248,48 @@
 
   function onWindowKeydown(event: KeyboardEvent): void {
     keyboardActivation = event.key === 'Enter' || event.key === ' ';
-    // Issue #24: a second deck press commits a staged draw, so a held key
-    // must not count as one. Auto-repeat keydowns on the deck never
-    // activate it (Enter clicks on every keydown; Space only on keyup).
-    if (keyboardActivation && event.repeat && event.target instanceof Element && event.target.closest('[data-testid="deck-pile"]')) {
-      event.preventDefault();
-      return;
-    }
+    lastInputKeyboard = true;
+    // Issue #24 (a second deck press commits a staged draw, so a held key
+    // must not count as one) is covered by `freshKey()` in onBoardTap: an
+    // auto-repeated key never activates any board target, the deck included.
     if (event.key !== 'Escape' || board === null) return;
     if (staging.state === 'staged' || staging.chooser !== null || staging.scrapPick !== null) staging.cancel();
     else staging.clearSelection();
   }
 
+  // r16 re-review B2 (R12): a held key must never walk select -> target ->
+  // stage -> Confirm. Focus moves to the next control after each keyboard
+  // step, and the browser clicks the focused button on every auto-repeat,
+  // so every board tap and every staging control ignores a click produced
+  // by an auto-repeated key (lib/keyGuard.ts). Pointer clicks are untouched.
+  let keyGuard: KeyActivationGuard | null = null;
+  $effect(() => {
+    const g = keyActivationGuard();
+    keyGuard = g;
+    return () => {
+      g.dispose();
+      if (keyGuard === g) keyGuard = null;
+    };
+  });
+
+  function freshKey(): boolean {
+    return keyGuard === null || keyGuard.allows();
+  }
+
+  /** Wraps a control's handler so an auto-repeated key can't fire it. */
+  function fresh<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
+    return (...args: A) => {
+      if (freshKey()) fn(...args);
+    };
+  }
+
   function onBoardTap(key: TargetKey): void {
     const viewer = board?.state.viewer;
     if (viewer === undefined || board === null) return;
+    if (!freshKey()) {
+      keyboardActivation = false;
+      return;
+    }
     const fromKeyboard = keyboardActivation;
     keyboardActivation = false;
     notice = null;
@@ -274,8 +304,70 @@
     else if (wasSelected !== null && !lit) notice = targetReason(wasSelected, key, board.state);
     if (fromKeyboard && staging.state === 'selected' && staging.chooser === null && staging.scrapPick === null) {
       focusFirstTarget();
+    } else if (fromKeyboard) {
+      // r16: a key press that staged a move (or opened the chooser or the
+      // 3's pick) goes straight to Confirm (or the first option), not seven
+      // Tabs away.
+      void tick().then(() => focusBest());
     }
   }
+
+  // r16 (desktop keyboard): whatever unmounts the focused element (a
+  // curtain lifting, the chooser or the scrap sheet closing, Cancel or
+  // Confirm leaving the bar) used to drop focus to <body>. When that
+  // happens on the live board, focus goes to the next sensible control:
+  // Confirm when a move is staged, the chooser's or the scrap pick's first
+  // option, the first lit target while a card is selected, else the first
+  // card to play (the 7's reveal, then the hand), then Pass, then the deck.
+  // Focus that is anywhere else (the menu, a card) is left alone.
+  function bestFocusTarget(): HTMLElement | null {
+    const find = (selector: string) => document.querySelector<HTMLElement>(selector);
+    if (staging.stagedDescription !== null) return find('[data-testid="staging-confirm"]');
+    if (staging.chooser !== null) return find('[data-testid^="ambiguity-chooser-option-"]');
+    if (staging.scrapPick !== null) return find('[data-testid^="scrap-pick-"]');
+    if (browsingScrap) return find('[data-testid="scrap-browser-close"]');
+    if (staging.state === 'selected') {
+      for (const key of staging.highlighted) {
+        const el = screenEl?.querySelector<HTMLElement>(`[data-testid="${testIdForKey(key)}"]`);
+        if (el) return el;
+      }
+    }
+    for (const selector of [
+      '[data-testid="seven-card-0"]',
+      '[data-testid^="hand-card-"][data-dimmed="false"]',
+      '[data-testid^="hand-card-"]',
+      '[data-testid="pass"]',
+      '[data-testid="deck-pile"]',
+    ]) {
+      const el = screenEl?.querySelector<HTMLElement>(selector);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function focusBest(): void {
+    bestFocusTarget()?.focus();
+  }
+
+  // No `board === null` guard (review N1): every control `bestFocusTarget`
+  // can return lives in the board branch, and staging and the scrap sheet
+  // reset at every curtain, so behind a curtain it finds nothing to focus.
+  $effect(() => {
+    void board;
+    void staging.state;
+    void staging.stagedIndex;
+    void staging.chooser;
+    void staging.scrapPick;
+    void browsingScrap;
+    void game.seq;
+    void tick().then(() => {
+      // Keyboard players only: a touch or mouse player has no focus to
+      // lose, and moving it would scroll the board under their finger.
+      if (!lastInputKeyboard) return;
+      const active = document.activeElement;
+      if (active === null || active === document.body) focusBest();
+    });
+  });
 
   function tapStaging(key: TargetKey, viewer: PlayerId): void {
     // R6: with nothing selected, the scrap pile opens the browser. When the
@@ -375,7 +467,13 @@
   });
 </script>
 
-<svelte:window onkeydown={onWindowKeydown} onpointerdown={() => (keyboardActivation = false)} />
+<svelte:window
+  onkeydown={onWindowKeydown}
+  onpointerdown={() => {
+    keyboardActivation = false;
+    lastInputKeyboard = false;
+  }}
+/>
 
 <div data-testid="game-screen" class="game-screen" bind:this={screenEl}>
   <h1 class="game-screen__sr-only">{session.names[0]} vs {session.names[1]}</h1>
@@ -429,12 +527,26 @@
       {theme}
       handTray={revealed === null ? undefined : sevenTray}
       menu={menuButtonSnippet}
+      centerOverlay={staging.chooser === null ? undefined : chooserSheet}
     />
+
+    {#snippet chooserSheet()}
+      <!-- r16: on the centre strip, not over the hand (design.md §6). -->
+      {#if staging.chooser !== null}
+        <AmbiguityChooser
+          candidates={staging.chooser.candidates}
+          onchoose={fresh((index: number) => staging.choose(index))}
+          oncancel={fresh(() => staging.cancel())}
+          describe={(candidate) => optionText(candidate.index, candidate.description)}
+        />
+      {/if}
+    {/snippet}
 
     {#snippet sevenTray()}
       {#if revealed !== null}
         <SevenRevealPanel
           cards={revealed}
+          hand={board?.state.you.hand ?? []}
           selected={staging.selectedReveal}
           staged={staging.staged}
           ontap={(key) => onBoardTap(key)}
@@ -449,10 +561,10 @@
           description={optionText(staging.stagedIndex, staging.stagedDescription)}
           title={stagedTitle}
           disabled={staging.inert}
-          onconfirm={() => {
+          onconfirm={fresh(() => {
             staging.confirm().catch(report);
-          }}
-          oncancel={() => staging.cancel()}
+          })}
+          oncancel={fresh(() => staging.cancel())}
         />
       {:else if staging.discard !== null}
         <DiscardPicker need={staging.discard.need} picked={staging.discard.picked.length} />
@@ -464,7 +576,7 @@
           <span class="game-screen__hint-effect" data-card-label="effect">{hint.effect}</span>
         </p>
       {:else if staging.passAvailable}
-        <button type="button" class="game-screen__pass" data-testid="pass" onclick={() => staging.tap('pass')}>
+        <button type="button" class="game-screen__pass" data-testid="pass" onclick={fresh(() => staging.tap('pass'))}>
           Pass
         </button>
       {:else if notice !== null}
@@ -478,21 +590,12 @@
         mode="pick"
         cards={board.state.scrap}
         picks={staging.scrapPick.candidates}
-        onpick={(index) => staging.pickScrap(index)}
-        onclose={() => staging.cancel()}
+        onpick={fresh((index: number) => staging.pickScrap(index))}
+        onclose={fresh(() => staging.cancel())}
         {theme}
       />
     {:else if browsingScrap}
       <ScrapBrowser mode="browse" cards={board.state.scrap} onclose={() => (browsingScrap = false)} {theme} />
-    {/if}
-
-    {#if staging.chooser !== null}
-      <AmbiguityChooser
-        candidates={staging.chooser.candidates}
-        onchoose={(index) => staging.choose(index)}
-        oncancel={() => staging.cancel()}
-        describe={(candidate) => optionText(candidate.index, candidate.description)}
-      />
     {/if}
 
     {#if inspectCard !== null}
@@ -511,7 +614,6 @@
     anchor={board === null || drawReveal !== null ? 'screen' : 'column'}
     names={session.names}
     onclose={closeMenu}
-    focusopener={() => menuButton?.focus()}
     onhome={menuHome}
     onnewgame={menuNewGame}
   />
