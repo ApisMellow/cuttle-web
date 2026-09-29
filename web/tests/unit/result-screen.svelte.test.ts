@@ -96,7 +96,7 @@ describe('ResultScreen tally line (R3.1)', () => {
       onRematch: () => {},
     });
     const tally = el.querySelector('[data-testid="tally"]');
-    expect(tally?.textContent?.trim()).toBe('Alice 3 – Blake 1');
+    expect(tally?.textContent?.trim()).toBe('Match: Alice 3 – Blake 1');
   });
 
   it('reflects a 0-0 tally on the very first game', () => {
@@ -107,7 +107,7 @@ describe('ResultScreen tally line (R3.1)', () => {
       onRematch: () => {},
     });
     const tally = el.querySelector('[data-testid="tally"]');
-    expect(tally?.textContent?.trim()).toBe('Player 1 0 – Player 2 0');
+    expect(tally?.textContent?.trim()).toBe('Match: Player 1 0 – Player 2 0');
   });
 });
 

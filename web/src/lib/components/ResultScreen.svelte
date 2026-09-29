@@ -51,7 +51,7 @@
     <p class="result-screen__move">{winningMove}</p>
   {/if}
   <p data-testid="tally" class="result-screen__tally">
-    {names[0]} {tally[0]} – {names[1]} {tally[1]}
+    Match: {names[0]} {tally[0]} – {names[1]} {tally[1]}
   </p>
   {#if scores}
     <p data-testid="final-scores" class="result-screen__scores">
