@@ -139,7 +139,7 @@ requirements:
       - "e2e-test: \"New game\" from the menu during an in-progress game shows a confirm dialog naming the in-progress game; cancelling leaves the game untouched; confirming clears the snapshot (PRD R4, SPEC §5.7 last bullet)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; the abandon-confirm dialog was built and folded in to also cover the error screen's 'New game' path (round-03.md), proving the confirm mechanism is wired and tested. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13). | e2e 2026-09-28: web/tests/e2e/app-shell.spec.ts 'R4.3' passes through HomeScreen after a reload (Cancel keeps the game, Confirm clears it, the dialog names 'Alice vs Blake'). The acceptance's menu path during a live game has no e2e yet, so status stays implemented."
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle; the abandon-confirm dialog was built and folded in to also cover the error screen's 'New game' path (round-03.md), proving the confirm mechanism is wired and tested. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (W13). | e2e 2026-09-28: web/tests/e2e/app-shell.spec.ts 'R4.3' passes through HomeScreen after a reload (Cancel keeps the game, Confirm clears it, the dialog names 'Alice vs Blake'). The acceptance's menu path during a live game has no e2e yet, so status stays implemented. | IMPLEMENTED 2026-09-29 (in-game menu, loop/r12-menu, pending review): the menu path now exists and has e2e — web/tests/e2e/menu.spec.ts 'R4.3: New game from the menu asks first, naming the game; Cancel keeps it, Abandon deals a new one' (dialog names 'Alice vs Blake', Cancel leaves the save byte-identical, Abandon replaces it with a fresh game's); vitest web/tests/unit/game-menu.svelte.test.ts 'Home and New game'. Gate 9/9 in the worktree (vitest 70 files/1158 tests, e2e 53/53, no retries). Stays implemented until post-integration."
     fails: 0
 
   - id: R4.4
@@ -566,8 +566,8 @@ requirements:
     acceptance:
       - "e2e-test: opening RulesScreen from the menu during PhaseAwaitingCounter (mid-decision, past the reveal gate) does not unmount GameScreen, does not stamp lastSeenSeq, and does not dismiss a pending recap; closing it returns to the exact prior curtain/board state (SPEC §5.5)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (in-game menu, loop/r12-menu, pending review): e2e web/tests/e2e/menu.spec.ts 'R17.2: Rules from the menu at a recap and at a real counter window leave the curtain, the save and lastSeenSeq alone' (golden deal, Alice holds 2♥ at Blake's 5♥ one-off; Rules opened at the recap leaves it up, at the real ack leaves the prompt and its counter options, the game screen mounted, curtain, seq, lastSeenSeq and the whole save byte-identical; Escape closes it and returns focus to the menu button). vitest web/tests/unit/game-menu.svelte.test.ts 'Rules from the menu (R17.2)'. The sheet is the hand-written RulesSheet (R17.1 still open). Revise 1 (strict review): menu invariance across every HandoffReason and both ack paths (byte-identical outerHTML), the New game confirm reset on close, and Home -> Resume at a synthetic ack and at result, all in the unit suites above."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -804,7 +804,7 @@ requirements:
     status: implemented
     evidence: "IMPLEMENTED round-08 (themes, loop/r08-themes, pending review, not yet merged): e2e web/tests/e2e/themes.spec.ts 'the home screen offers Classic and Mythic; the pick persists across a reload and never enters the save' (options ≥ 44 px, only the catalog loaded before a pick, choice survives reload, the game save names no theme); vitest web/tests/unit/home-theme-picker.test.ts (picker hidden with one style, Classic checked by default, choice stored under the settings key, an unlisted saved choice shows Classic); vitest web/tests/unit/theme-save-resume.test.ts (the save is identical under both styles bar the timestamp, and resumes the same under either)."
     fails: 0
-    notes: "Ruling 2026-09-28 (round-08 themes): the control is a 'Card style' picker on the home screen, not a menu, because no in-game menu exists yet; changing style mid-game is Home, pick, Resume. SPEC §5.6 rule 5 ruling records it. The acceptance's 'menu control' is met by the home-screen control until a menu exists."
+    notes: "Ruling 2026-09-28 (round-08 themes): the control is a 'Card style' picker on the home screen, not a menu, because no in-game menu exists yet; changing style mid-game is Home, pick, Resume. SPEC §5.6 rule 5 ruling records it. The acceptance's 'menu control' is met by the home-screen control until a menu exists. | 2026-09-29 (loop/r12-menu): the in-game menu now carries the Card style group too (SPEC §5.6 rule 5 amended); e2e web/tests/e2e/menu.spec.ts 'R23.2: the menu swaps Classic for Mythic mid-game, nothing moves, and the save is untouched' (every [data-testid] box identical after the swap, Mythic faces shown, save byte-identical, choice persists across reload and resumes in Mythic)."
 
   - id: R23.3
     prd: R23
