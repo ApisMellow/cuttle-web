@@ -4,7 +4,7 @@
   // `handoff` and `reveal` kinds. It stays mounted across handoff -> reveal
   // so a ring press that started in handoff carries over into the hold.
   //
-  // Content: "Pass the phone to NAME", the neutral label, the hold ring and
+  // Content: "Pass the phone to NAME" ("Pass to NAME" off a phone), the neutral label, the hold ring and
   // the two-step pill (RevealGate). Nothing else.
   //
   // Redaction: this component never sees a HandoffReason. Curtain passes
@@ -31,11 +31,26 @@
   }
 
   let { name, player, label, stage, epoch = 0, revealPreference, onadvance }: HandoffPanelProps = $props();
+
+  // Amended 2026-09-28 (playtest friction, SPEC §4.5): "Pass the phone to"
+  // only on a phone — a coarse pointer on a small screen, either way up.
+  // Anywhere else (a laptop, a desktop, a tablet) the wording is
+  // device-neutral: "Pass to". It depends on the device alone, never on
+  // game state or the HandoffReason, so it can't vary between turns.
+  // Without matchMedia (jsdom, very old browsers) it keeps the phone wording.
+  const PHONE_QUERY = '(pointer: coarse) and (max-width: 767px), (pointer: coarse) and (max-height: 767px)';
+
+  function isPhone(): boolean {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    return window.matchMedia(PHONE_QUERY).matches;
+  }
+
+  const prompt = isPhone() ? 'Pass the phone to' : 'Pass to';
 </script>
 
 <div class="gate" data-testid="curtain-gate">
   <div class="gate__text">
-    <p class="gate__prompt">Pass the phone to</p>
+    <p class="gate__prompt">{prompt}</p>
     <p class="gate__name">{name}</p>
     <p class="gate__label">{label}</p>
   </div>

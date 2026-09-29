@@ -45,6 +45,7 @@ function appliedMove(overrides: Record<string, unknown> = {}): Record<string, un
     seq: 1,
     subKind: null,
     targetCard: null,
+    drawn: null,
     ...overrides,
   };
 }
@@ -175,6 +176,24 @@ describe('parseBridgeResult', () => {
     wrongType.history = [withWrongType as never];
     wrongType.seq = 1;
     expect(() => parseBridgeResult(JSON.stringify(wrongType))).toThrow(/targetCard/);
+  });
+
+  it('SPEC §2.7 (amended 2026-09-28): AppliedMove.drawn is always present as a key, a count or null', () => {
+    const withDrawn = (value: unknown, drop = false): ReturnType<typeof envelope> => {
+      const env = envelope();
+      const entry = appliedMove({ kind: 4, drawn: value });
+      if (drop) delete entry.drawn;
+      env.lastMove = entry as never;
+      env.history = [entry as never];
+      env.seq = 1;
+      return env;
+    };
+    expect(() => parseBridgeResult(JSON.stringify(withDrawn(null, true)))).toThrow(/drawn/);
+    expect(() => parseBridgeResult(JSON.stringify(withDrawn('2')))).toThrow(/drawn/);
+    const parsedNull = parseBridgeResult(JSON.stringify(withDrawn(null)));
+    expect(parsedNull.ok && parsedNull.lastMove?.drawn).toBeNull();
+    const parsedTwo = parseBridgeResult(JSON.stringify(withDrawn(2)));
+    expect(parsedTwo.ok && parsedTwo.history[0].drawn).toBe(2);
   });
 
   it('SPEC §2.7: legalMoves.length must equal descriptions.length', () => {

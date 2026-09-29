@@ -6,14 +6,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PlayerId } from '../../src/lib/bridge/schema';
-import { type Snapshot, decodeSnapshot, encodeSnapshot } from '../../src/lib/stores/snapshot';
+import { SNAPSHOT_VERSION, type Snapshot, decodeSnapshot, encodeSnapshot } from '../../src/lib/stores/snapshot';
 import { appliedMove } from './game-test-support';
 
 function validSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
-    v: 1,
+    v: 2,
     savedAt: '2026-09-27T00:00:00.000Z',
-    engineState: '{"ok":true,"v":1,"state":{},"history":[],"seed":"42","dealer":0}',
+    engineState: '{"ok":true,"v":2,"state":{},"history":[],"seed":"42","dealer":0}',
     history: [],
     lastSeenSeq: { 0: 0, 1: 0 } as Record<PlayerId, number>,
     viewer: 0,
@@ -32,17 +32,39 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     expect(result).toEqual({ ok: true, snapshot: snap });
   });
 
-  it('R4.4: a snapshot with v !== 1 decodes as version-mismatch, not thrown', () => {
-    const raw = JSON.stringify({ ...validSnapshot(), v: 2 });
+  it('R4.4: a snapshot with v !== 2 decodes as version-mismatch, not thrown', () => {
+    const raw = JSON.stringify({ ...validSnapshot(), v: 3 });
     expect(() => decodeSnapshot(raw)).not.toThrow();
     const result = decodeSnapshot(raw);
-    expect(result).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=2' });
+    expect(result).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=3' });
   });
 
-  it('R4.4: v !== 1 is classified even when the rest of the shape is also missing (no migration attempted)', () => {
-    // A record with an old/foreign shape that also happens to fail the v=1
-    // structural check must still report version-mismatch, not 'malformed' —
-    // SPEC §5.7 "no migration code in v1; a bump means the old game is gone."
+  it('SPEC §5.7 (ruling 2026-09-28): v is 2; a v1 save migrates, gaining drawn: null on every history and recap entry', () => {
+    expect(SNAPSHOT_VERSION).toBe(2);
+    const entry = appliedMove({ by: 1, kind: 4, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
+    const v1Entry: Record<string, unknown> = { ...entry };
+    delete v1Entry.drawn;
+    const v1 = { ...validSnapshot(), v: 1, viewer: 0, history: [v1Entry], curtain: { kind: 'recap', to: 0, entries: [v1Entry] } };
+    const result = decodeSnapshot(JSON.stringify(v1));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.v).toBe(2);
+    expect(result.snapshot.history).toEqual([{ ...entry, drawn: null }]);
+    expect(result.snapshot.curtain).toEqual({ kind: 'recap', to: 0, entries: [{ ...entry, drawn: null }] });
+    // The opaque engine state is passed through untouched (the bridge migrates it).
+    expect(result.snapshot.engineState).toBe(v1.engineState);
+  });
+
+  it('SPEC §5.7: a "v1" whose entry already carries drawn is not a real v1 save — malformed', () => {
+    const entry = appliedMove({ by: 1, kind: 0, seq: 1 });
+    const result = decodeSnapshot(JSON.stringify({ ...validSnapshot(), v: 1, history: [entry] }));
+    expect(result).toMatchObject({ ok: false, reason: 'malformed' });
+  });
+
+  it('R4.4: a v outside {1, 2} is classified even when the rest of the shape is also missing (no migration attempted)', () => {
+    // Only v1 migrates (SPEC §5.7, ruling 2026-09-28). Any other version with
+    // an old/foreign shape that also fails the structural check must still
+    // report version-mismatch, not 'malformed'.
     const raw = JSON.stringify({ v: 0, somethingElseEntirely: true });
     expect(decodeSnapshot(raw)).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=0' });
   });

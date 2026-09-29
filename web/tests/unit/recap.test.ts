@@ -20,6 +20,7 @@ function move(partial: {
   subKind?: AppliedMove['subKind'];
   card?: AppliedMove['card'];
   targetCard?: AppliedMove['targetCard'];
+  drawn?: AppliedMove['drawn'];
   seq?: number;
 }): AppliedMove {
   return {
@@ -30,6 +31,7 @@ function move(partial: {
     seq: partial.seq ?? 1,
     subKind: partial.subKind ?? null,
     targetCard: partial.targetCard ?? null,
+    drawn: partial.drawn ?? null,
   };
 }
 

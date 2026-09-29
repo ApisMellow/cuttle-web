@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { plainMoveText } from '../../src/lib/recap';
+
 // P2 W15 — the three pickers end to end, by tapping the UI (R6.1, R15.1,
 // R15.3, R16.3). The test hook only seeds the deal (seed "17", dealer P1, so
 // Blake acts first) and looks up move indices; every move is played through
@@ -138,7 +140,7 @@ for (const { width, height } of [
 
     // 1. Blake plays the 4. Alice discards two cards on her own hand.
     const four = await playOneOff(page, /^play 4. as one-off$/);
-    await expect(page.getByTestId('staging-bar')).toContainText(four.description);
+    await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(four.description));
     await page.getByTestId('staging-confirm').click();
     await passThePhone(page, 'Alice', 'Your response');
     await letItResolve(page);
@@ -169,7 +171,7 @@ for (const { width, height } of [
 
     // 2. Alice plays the 7: round trip to Blake and back, then the reveal.
     const seven = await playOneOff(page, /^play 7. as one-off$/);
-    await expect(page.getByTestId('staging-bar')).toContainText(seven.description);
+    await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(seven.description));
     await page.getByTestId('staging-confirm').click();
     await passThePhone(page, 'Blake', 'Your response');
     await expect(page.locator('[data-testid^="seven-"]')).toHaveCount(0);
@@ -185,7 +187,7 @@ for (const { width, height } of [
     await page.getByTestId(`seven-card-${pick.revealIndex}`).click();
     await expect(page.getByTestId('zone-points')).toHaveAttribute('data-state', 'highlighted');
     await page.getByTestId('zone-points').click();
-    await expect(page.getByTestId('staging-bar')).toContainText(pick.description);
+    await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(pick.description));
     await expectFits(page);
     await page.getByTestId('staging-confirm').click();
 
@@ -228,7 +230,7 @@ for (const { width, height } of [
     const take = threes[threes.length - 1];
     await page.getByTestId(`scrap-pick-${take.scrapIndex}`).click();
     await expect(page.getByTestId('scrap-browser')).toHaveCount(0);
-    await expect(page.getByTestId('staging-bar')).toContainText(/^play 3. as one-off — take .+ from the scrap/);
+    await expect(page.getByTestId('staging-bar')).toContainText(/^Play 3. as a one-off: take .+ from the scrap\./);
     const seqBeforeThree = await hook(page, (h) => h.seq());
     await page.getByTestId('staging-confirm').click();
     await passThePhone(page, 'Alice', 'Your response');

@@ -25,7 +25,10 @@
   import '../styles/card-geometry.css';
 
   import type { AppliedMove, PlayerId } from '../bridge/schema';
-  import { formatRecapLine, recapCards } from '../recap';
+  // Amended 2026-09-28: option and staged text go through `plainMoveText`
+  // ("Counter with 2♣: stop their card."), never raw engine text. Same on
+  // both paths; the synthetic ack simply has no options.
+  import { formatRecapLine, plainMoveText, recapCards } from '../recap';
   import type { ChooserCandidate } from '../stores/staging.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -60,10 +63,6 @@
     onresolve();
   }
 
-  /** W25: the engine's description, sentence-cased for the staging bar ("Counter with 2♣"). */
-  function sentenceCase(text: string): string {
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }
 
   function stage(option: ChooserCandidate): void {
     if (acted) return;
@@ -97,7 +96,7 @@
 
   <div class="counter-prompt__options">
     {#if staged !== null}
-      <StagingBar description={sentenceCase(staged.description)} onconfirm={confirmCounter} oncancel={cancelCounter} />
+      <StagingBar description={plainMoveText(staged.description)} onconfirm={confirmCounter} oncancel={cancelCounter} />
     {:else}
       {#each options as option (option.index)}
         <button
@@ -106,7 +105,7 @@
           data-testid={`counter-option-${option.index}`}
           onclick={() => stage(option)}
         >
-          {option.description}
+          {plainMoveText(option.description)}
         </button>
       {/each}
     {/if}

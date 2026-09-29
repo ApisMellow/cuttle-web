@@ -225,7 +225,7 @@ describe('GameScreen at curtain none (the live board)', () => {
     await click(el, 'hand-card-0');
     expect(q(el, 'staging-bar')).toBeNull();
     await click(el, 'zone-points');
-    expect(q(el, 'staging-bar')?.textContent).toContain('play ace as point card');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as point card');
     expect(bridge.apply).not.toHaveBeenCalled();
 
     const confirm = q(el, 'staging-confirm')!;
@@ -240,7 +240,7 @@ describe('GameScreen at curtain none (the live board)', () => {
   it('Deck tap stages Draw; Cancel clears it', async () => {
     const el = await start();
     await click(el, 'deck-pile');
-    expect(q(el, 'staging-bar')?.textContent).toContain('draw a card');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Draw a card.');
     await click(el, 'staging-cancel');
     expect(q(el, 'staging-bar')).toBeNull();
   });
@@ -249,7 +249,7 @@ describe('GameScreen at curtain none (the live board)', () => {
     const el = await start();
     await click(el, 'hand-card-0');
     await click(el, 'point-0-0');
-    expect(q(el, 'staging-bar')?.textContent).toContain('play ace as point card');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as point card');
   });
 
   it('R9.4: a tap on an unlit card clears the selection and stages nothing', async () => {
@@ -269,7 +269,34 @@ describe('GameScreen at curtain none (the live board)', () => {
     expect(q(el, 'ambiguity-chooser-option-5')).not.toBeNull();
     await click(el, 'ambiguity-chooser-option-5');
     expect(q(el, 'ambiguity-chooser')).toBeNull();
-    expect(q(el, 'staging-bar')?.textContent).toContain('play nine as one-off on seven');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play nine as one-off on seven');
+  });
+
+  it('review B2: a 9 on a point card they stole from you says it comes back to you, in the chooser and the staging bar', async () => {
+    const descriptions = [...P0_DESCRIPTIONS];
+    descriptions[4] = "scuttle opponent's 7♦ with 9♥";
+    descriptions[5] = 'play 9♥ as one-off';
+    const stolen: PointEntry = { Card: { Rank: 7, Suit: 1 }, Owner: 0, JackStack: [{ Rank: 11, Suit: 3 }], JackOwners: [1], Controller: 1 };
+    const state = p0View({ opponent: { handCount: 4, hand: null, points: [stolen], permanents: [] } });
+    const el = await start(envelope({ state, legalMoves: P0_MOVES, descriptions }));
+    await click(el, 'hand-card-1');
+    await click(el, 'point-1-0');
+    expect(q(el, 'ambiguity-chooser-option-5')?.textContent?.trim()).toBe(
+      'Play 9♥ as a one-off: the card they stole comes back to your hand.',
+    );
+    await click(el, 'ambiguity-chooser-option-5');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play 9♥ as a one-off: the card they stole comes back to your hand.');
+  });
+
+  it('review B2: a 9 on their own point card says it goes back to them and they can’t play it next turn', async () => {
+    const descriptions = [...P0_DESCRIPTIONS];
+    descriptions[5] = 'play 9♥ as one-off';
+    const el = await start(envelope({ state: p0View(), legalMoves: P0_MOVES, descriptions }));
+    await click(el, 'hand-card-1');
+    await click(el, 'point-1-0');
+    expect(q(el, 'ambiguity-chooser-option-5')?.textContent?.trim()).toBe(
+      'Play 9♥ as a one-off: that card goes back to their hand, and they can’t play it next turn.',
+    );
   });
 
   it('R10.2: the Pass pill renders only when Pass is the sole legal move, and stages Pass', async () => {
@@ -280,7 +307,7 @@ describe('GameScreen at curtain none (the live board)', () => {
     const el2 = await start(p0Opening([mv({ Kind: Kind.Pass })], ['pass']));
     expect(q(el2, 'pass')).not.toBeNull();
     await click(el2, 'pass');
-    expect(q(el2, 'staging-bar')?.textContent).toContain('pass');
+    expect(q(el2, 'staging-bar')?.textContent).toContain('Pass.');
   });
 
   it('SPEC §6.5: window.__cuttleTestHook.affordances() matches the derived map; removed on unmount', async () => {
@@ -664,7 +691,7 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
     return el.querySelector('.center-zone__last-move')?.textContent ?? null;
   }
 
-  it('R20.1: the viewer’s own last visible move renders verbatim, not through the §4.6 formatter', async () => {
+  it('R20.1 (amended 2026-09-28): the viewer’s own last visible move reads as a sentence, never raw engine text', async () => {
     // Reversed from the file default (Alice, Blake) so this deliberately exercises a
     // different name pair than resetSingletons(), not a coincidental match.
     session.setNames('Blake', 'Alice');
@@ -673,7 +700,7 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
     const el = await start(
       envelope({ state, history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
     );
-    expect(lastMoveLine(el)).toBe('play 4♣ as one-off');
+    expect(lastMoveLine(el)).toBe('You played 4♣ as a one-off.');
   });
 
   it('SPEC §4.6: the opponent’s last visible move renders as the per-viewer recap line', async () => {
@@ -687,6 +714,24 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
     );
     expect(lastMoveLine(el)).toBe('Alice played 4♣ as a one-off.');
   });
+
+  it('amended 2026-09-28 (R14, strict): a resolved 5 says how many it drew, the same after a real decline and a synthetic ack', async () => {
+    const FIVE = { Rank: 5, Suit: 2 } as const;
+    const fiveBy1 = (drawn: number | null) =>
+      appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: FIVE, description: 'play 5♥ as one-off', drawn });
+    const real = [fiveBy1(null), appliedMove({ by: 0, kind: Kind.Decline, seq: 2, description: 'decline to counter', drawn: 2 })];
+    const synthetic = [fiveBy1(2)];
+    const lines: (string | null)[] = [];
+    for (const history of [real, synthetic]) {
+      cleanup();
+      resetSingletons();
+      const state = playerView({ viewer: 0, active: 0, phase: Phase.Normal });
+      const el = await start(envelope({ state, history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }));
+      lines.push(lastMoveLine(el));
+    }
+    expect(lines[0]).toBe('Blake played 5♥ as a one-off and drew 2 cards.');
+    expect(lines[1]).toBe(lines[0]);
+  });
 });
 
 describe('W25 deck tap and blank-space deselect', () => {
@@ -695,7 +740,7 @@ describe('W25 deck tap and blank-space deselect', () => {
     await click(el, 'hand-card-0');
     expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('true');
     await click(el, 'deck-pile');
-    expect(q(el, 'staging-bar')?.textContent).toContain('draw a card');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Draw a card.');
     expect(bridge.apply).not.toHaveBeenCalled();
   });
 

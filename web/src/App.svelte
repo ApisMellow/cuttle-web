@@ -28,6 +28,7 @@
   import HomeScreen from './lib/components/HomeScreen.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
+  import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
   import { session } from './lib/stores/session.svelte';
   import { settings } from './lib/stores/settings.svelte';
@@ -170,14 +171,28 @@
     const opp = view.scoreboard.opponent.points;
     return view.viewer === 0 ? { 0: you, 1: opp } : { 0: opp, 1: you };
   }
+
+  // Amended 2026-09-28: the result screen's winning-move line. Public data
+  // only: the history's last visible entry (cards played face up) and the
+  // winner's final points and goal, read verbatim off the scoreboard.
+  function winningMove(view: NonNullable<typeof game.view>): string {
+    if (view.winner === null) return '';
+    const side = view.winner === view.viewer ? view.scoreboard.you : view.scoreboard.opponent;
+    return winningMoveLine(game.history, view.winner, session.names, side.points, side.threshold);
+  }
 </script>
 
 <main data-testid="app-shell">
   {#if screen === 'loading'}
-    <p data-testid="engine-status" class="status-screen">Loading engine…</p>
+    <p data-testid="engine-status" class="status-screen">Loading the game…</p>
   {:else if screen === 'boot-failed'}
+    <!-- Amended 2026-09-28 (playtest friction): plain wording first; the
+         technical reason stays, small and muted, for a bug report. -->
     <div data-testid="engine-status" class="status-screen status-screen--error">
-      <p>Engine failed to load{engineError ? `: ${engineError}` : ''}.</p>
+      <p>The game couldn’t start. Reload the page to try again.</p>
+      {#if engineError}
+        <p class="status-screen__code">Details: {engineError}</p>
+      {/if}
     </div>
   {:else if screen === 'error'}
     <!-- N4: the error CODE and generic copy only. A bridge `message` can
@@ -213,6 +228,7 @@
       scores={finalScores(game.view)}
       onRematch={handleRematch}
       onHome={() => game.goHome()}
+      winningMove={winningMove(game.view)}
     />
   {:else}
     <GameScreen />

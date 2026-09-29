@@ -183,6 +183,11 @@ func (b *Bridge) Apply(arg any) string {
 			Description: description,
 			Seq:         len(b.game.history) + 1,
 		})
+		// SPEC §2.7 drawn: a 5 that resolved in this apply records its
+		// count on this entry (append-only; see resolvedFiveDraw).
+		if drawn, ok := resolvedFiveDraw(pre, move, post); ok {
+			history[len(history)-1].Drawn = &drawn
+		}
 		// The mover's view, not the incoming actor's: a mutating call never
 		// loads the hand of a player who is not holding the phone. The UI
 		// fetches the new actor's envelope with view() after the reveal.
@@ -213,7 +218,8 @@ func (b *Bridge) View(arg any) string {
 // __cuttleSnapshot() / __cuttleRestore(snapshotJson)
 // ---------------------------------------------------------------------------
 
-const snapshotVersion = 1
+// 2 since AppliedMove gained `drawn` (SPEC §2.7, §5.7, amended 2026-09-28).
+const snapshotVersion = 2
 
 // snapshotWire is the full, unredacted SnapshotJson (§2.4, §3.4). `state` is
 // the raw engine.GameState in encoding/json form; it is opaque to TypeScript
@@ -268,12 +274,17 @@ func (b *Bridge) Restore(arg, viewerArg any) string {
 			return errorJSON(codeBadRequest, "restore expects viewerId 0 or 1", nil)
 		}
 		viewer := engine.PlayerID(v)
+		// SPEC §5.7 (ruling 2026-09-28): a v1 save is upgraded, not discarded.
+		raw, err := migrateSnapshotV1(raw)
+		if err != nil {
+			return errorJSON(codeBadRequest, "malformed v1 snapshot: "+err.Error(), nil)
+		}
 		var snap restoreWire
 		if err := decodeStrict(raw, &snap); err != nil {
 			return errorJSON(codeBadRequest, "malformed snapshot: "+err.Error(), nil)
 		}
 		if snap.V == nil || *snap.V != snapshotVersion {
-			return errorJSON(codeBadRequest, fmt.Sprintf("snapshot version must be %d", snapshotVersion), nil)
+			return errorJSON(codeBadRequest, fmt.Sprintf("snapshot version must be 1 or %d", snapshotVersion), nil)
 		}
 		if snap.State == nil || snap.History == nil || snap.Seed == nil || snap.Dealer == nil {
 			return errorJSON(codeBadRequest, "snapshot requires state, history, seed and dealer", nil)
@@ -477,6 +488,23 @@ func validateHistory(history []AppliedMove) error {
 		// board" — never null for those two shapes). OneOff and SevenPick
 		// legitimately go either way (untargeted ranks, and a dead-end
 		// SevenPick, are null).
+		// drawn (SPEC §2.7): only on the entry that resolved a 5 — the 5's
+		// own one-off entry, or a Decline/Counter answering a chain that a 5
+		// opened — and 0..2, the most a 5 draws (engine/apply.go
+		// resolveOneOffWith, case Five).
+		if h.Drawn != nil {
+			resolvesFive := isFiveEntry(h)
+			if h.Kind == engine.MoveDecline || h.Kind == engine.MoveCounter {
+				o := chainOrigin(history, i)
+				resolvesFive = o >= 0 && isFiveEntry(history[o])
+			}
+			if !resolvesFive {
+				return fmt.Errorf("history[%d].drawn is set on an entry that did not resolve a 5", i)
+			}
+			if *h.Drawn < 0 || *h.Drawn > 2 {
+				return fmt.Errorf("history[%d].drawn = %d, want 0..2", i, *h.Drawn)
+			}
+		}
 		switch h.Kind {
 		case engine.MoveScuttle:
 			if h.TargetCard == nil {

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { plainMoveText } from '../../src/lib/recap';
+
 // P2 W13 — the first end-to-end playable path, at the phone viewport
 // (390x844, playwright.config.ts). A new game through HomeScreen, redealt
 // through the test hook to the SPEC §2.6 golden deal (seed "42", dealer P2)
@@ -101,7 +103,7 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   await page.getByTestId(`hand-card-${twoForPoints.handIndex}`).click();
   expect(await hook(page, (h) => h.seq())).toBe(0);
   await page.getByTestId('zone-points').click();
-  await expect(page.getByTestId('staging-bar')).toContainText(twoForPoints.description);
+  await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(twoForPoints.description));
   expect(await hook(page, (h) => h.seq())).toBe(0);
   await page.getByTestId('staging-confirm').click();
 
@@ -121,7 +123,7 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   expect(fiveOneOff.targetKey).toBe('zone:oneoff');
   await page.getByTestId(`hand-card-${fiveOneOff.handIndex}`).click();
   await page.getByTestId('zone-oneoff').click();
-  await expect(page.getByTestId('staging-bar')).toContainText(fiveOneOff.description);
+  await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(fiveOneOff.description));
   await page.getByTestId('staging-confirm').click();
 
   // 4. Alice acknowledges. The handoff label is the neutral "Your response".
@@ -149,7 +151,7 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
 
   // 5. Alice draws; the phone goes back to Blake.
   await page.getByTestId('deck-pile').click();
-  await expect(page.getByTestId('staging-bar')).toContainText('draw a card');
+  await expect(page.getByTestId('staging-bar')).toContainText('Draw a card.');
   await page.getByTestId('staging-confirm').click();
   await passThePhone(page, 'Blake', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Alice drew a card');

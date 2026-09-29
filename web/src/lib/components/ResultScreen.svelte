@@ -26,9 +26,15 @@
     onRematch: () => void;
     /** W25: back to the home screen. */
     onHome?: () => void;
+    /**
+     * Amended 2026-09-28: one line naming the winning move, built by the app
+     * layer with `winningMoveLine` (lib/recap.ts) from public history and the
+     * final scoreboard. '' or omitted: no line (a stalemate).
+     */
+    winningMove?: string;
   }
 
-  let { state, names, tally, scores, onRematch, onHome }: ResultScreenProps = $props();
+  let { state, names, tally, scores, onRematch, onHome, winningMove = '' }: ResultScreenProps = $props();
 
   const headline = $derived(
     state.winner !== null
@@ -41,6 +47,9 @@
 
 <div data-testid="result-screen" class="result-screen">
   <h1 class="result-screen__headline">{headline}</h1>
+  {#if winningMove !== ''}
+    <p class="result-screen__move">{winningMove}</p>
+  {/if}
   <p data-testid="tally" class="result-screen__tally">
     {names[0]} {tally[0]} – {names[1]} {tally[1]}
   </p>
@@ -81,6 +90,15 @@
   .result-screen__headline {
     font-size: var(--cu-text-xl);
     margin: 0;
+  }
+
+  .result-screen__move {
+    max-width: 32em;
+    margin: 0;
+    font-size: var(--cu-text-md);
+    line-height: var(--cu-leading-body);
+    color: var(--cu-pearl);
+    overflow-wrap: anywhere;
   }
 
   .result-screen__tally {

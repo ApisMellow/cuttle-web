@@ -77,7 +77,7 @@ function newGameButton(el: HTMLElement): HTMLButtonElement {
 }
 
 const VALID_SNAPSHOT: Snapshot = {
-  v: 1,
+  v: 2,
   savedAt: '2026-09-27T00:00:00.000Z',
   engineState: '{}',
   history: [],
@@ -155,7 +155,7 @@ describe('HomeScreen abandon-confirm (R4.3)', () => {
 
 describe('HomeScreen discarded-snapshot notice (R4.4 — "already verified at store level; now make it visible")', () => {
   it('shows the version-mismatch notice and no Resume button', () => {
-    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ v: 2, bogus: true }));
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ v: 3, bogus: true }));
     const el = render();
     expect(resumeButton(el)).toBeNull();
     expect(el.textContent).toContain('Your saved game was from an older version and could not be restored.');

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { plainMoveText } from '../../src/lib/recap';
+
 // W25 item 6 (desktop keyboard): every lit target is reachable with Tab and
 // activates with Enter or Space, with a visible focus ring. Reached through
 // the real UI; the hook only seeds the golden deal (SPEC §2.6, seed 42,
@@ -57,7 +59,7 @@ test('a hand card selected with Enter, then the lit Points zone reached by Tab a
   const ring = await page.getByTestId('zone-points').evaluate((el) => getComputedStyle(el).outlineStyle);
   expect(ring).not.toBe('none');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('staging-bar')).toContainText(two.description);
+  await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(two.description));
 });
 
 test('the lit One-off zone is reached by Tab and activates with Space', async ({ page }) => {
@@ -72,7 +74,7 @@ test('the lit One-off zone is reached by Tab and activates with Space', async ({
   await expect.poll(() => activeTestId(page)).toMatch(/^zone-/);
   if ((await activeTestId(page)) !== 'zone-oneoff') expect(await tabTo(page, 'zone-oneoff', 6)).toBeGreaterThan(0);
   await page.keyboard.press('Space');
-  await expect(page.getByTestId('staging-bar')).toContainText(ace.description);
+  await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(ace.description));
 });
 
 test('mouse hover lifts a hand card', async ({ page }) => {
