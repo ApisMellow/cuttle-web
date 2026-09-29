@@ -184,7 +184,7 @@ All functions take and return **JSON strings** (A2). None take or return objects
 
 `__cuttleApply` takes an **index into the legal-move list of the current state** (A3). The bridge recomputes `engine.LegalMoves(state)` and bounds-checks the index. An out-of-range index is an error, not a panic. Illegal moves are unrepresentable because the client can only name a position in a list the engine produced.
 
-**Which viewer each call returns** *(amended 2026-09-26)*. `__cuttleApply` returns the envelope for the **pre-apply `Active`** (the mover). After the curtain reveal the UI fetches the incoming actor's envelope with `__cuttleView(newActor)` (§3.3 rule 4). `__cuttleNewGame` returns the envelope for the first actor (`state.Active` after the deal). Whoever starts the game is the first player, so there is no opening curtain. `__cuttleRestore(snapshotJson, viewerId)` returns the envelope for `viewerId`; TS passes its persisted `Snapshot.viewer` (§5.7) and puts the persisted curtain back up before rendering (R4.2). A `viewerId` that isn't exactly 0 or 1 is `BAD_REQUEST`, and the held state is unchanged. `__cuttleLegalMoves` and `__cuttleDescribe` return the envelope for `state.Active`, and `__cuttleView(p)` returns `p`'s. No mutating call returns the view of a player who is not holding the phone.
+**Which viewer each call returns** *(amended 2026-09-26)*. `__cuttleApply` returns the envelope for the **pre-apply `Active`** (the mover). After the curtain reveal the UI fetches the incoming actor's envelope with `__cuttleView(newActor)` (§3.3 rule 4). `__cuttleNewGame` returns the envelope for the first actor (`state.Active` after the deal). *(Amended 2026-09-28, W25 playtest fixes, merged `b8238db`.)* The player who taps "New game" is not necessarily the first actor, so the game store drops that envelope unread, raises an opening curtain to the first actor (§4.2), and fetches their view with `__cuttleView(first)` once they pass the reveal gate. This replaces the earlier rule that whoever starts the game is the first player and gets no opening curtain. `__cuttleRestore(snapshotJson, viewerId)` returns the envelope for `viewerId`; TS passes its persisted `Snapshot.viewer` (§5.7) and puts the persisted curtain back up before rendering (R4.2). A `viewerId` that isn't exactly 0 or 1 is `BAD_REQUEST`, and the held state is unchanged. `__cuttleLegalMoves` and `__cuttleDescribe` return the envelope for `state.Active`, and `__cuttleView(p)` returns `p`'s. No mutating call returns the view of a player who is not holding the phone.
 
 ### 2.5 Enum values, pinned from source
 
@@ -548,7 +548,9 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
 | `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
 
-**`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra and gets no indication beyond the glasses-8 visibly sitting in the opponent's permanents row — which is correct, since a permanent on the board is public.
+**`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra in the view.
+
+**The being-watched marker** *(added 2026-09-28, W24 glasses 8, merged `1fbe15f`)*. While the opponent has glasses, the viewer's own hand carries a marker saying so: a goggles icon and "`NAME` can see your hand", on an ochre-edged pill sitting on the top edge of the hand slot, right-aligned (`role="status"`, no testid, not a tap target). `Board` derives it from `view.opponent.permanents` containing any rank-8 card, which is public board state, so the marker adds no information the view does not already carry, and nothing reads a hand to produce it. **Design decision (ApisMellow, 2026-09-28):** being watched must be obvious. Players find the opponent's goggles annoying, so the marker has to be unmistakable at a glance, not a subtle cue.
 
 **`opponent.hand` uses `null` vs `[]` meaningfully.** `null` = "you may not see this hand." `[]` = "you can see it and it is empty." This is the one deliberate exception to the normalize-nil-to-empty rule of §2.8(b), and it must be preserved through every layer; collapsing it would make an empty opponent hand indistinguishable from a hidden one and would render a face-up empty hand under glasses as though the glasses had stopped working.
 
@@ -619,6 +621,10 @@ handoff  →  reveal  →  [recap]  →  [ack | counter-prompt]  →  live view
 
 `recap` is skipped when there is nothing new (`entries.length === 0`). `ack` and the counter prompt are mutually exclusive and both are skipped when the incoming player has no one-off to acknowledge. Everything else is unconditional.
 
+**The opening curtain** *(added 2026-09-28, W25 playtest fixes, merged `b8238db`)*. A new game starts behind the curtain, addressed to the first actor: `handoff` (`to: first`, `reason: 'turn'`, so the label is "Your turn") → `reveal` → live view. There is no move behind it, so the curtain machine runs it with a context whose `move` is `null` and whose `pre` and `post` are both the first actor's `CurtainView`; with no move there is no synthetic ack, and the history holds nothing new, so no recap. The deal's envelope is not kept (§2.4), and `history` is stored with every `index` stripped, as for any curtain.
+
+**Turn header.** On the live board the `ScoreBar` names whose turn it is: the viewer's side reads "`NAME`, your turn" (bold, ochre), and when it is the opponent's turn their side reads "`NAME`’s turn". Both come from public data only: the names and `view.active`. The viewer's side shows the viewer's name, not "You".
+
 ### 4.3 R14 — the synthetic acknowledgment
 
 **The engine auto-resolves a counterable one-off when the opponent holds no unfrozen 2.** `Apply` checks `hasLegalCounter(out.Players[opp])` (`engine/apply.go:329`, helper at `:467-474`) and calls `resolveOneOffWith` in the same call (`:340`) — no pending state, no phase change, no decision point. The engine offers the opponent nothing to acknowledge. R14's acknowledgment curtain is therefore **entirely synthesized by the client**, exactly as the PRD's spec note anticipated.
@@ -657,6 +663,8 @@ Three facts make this total:
 | Controls | "Let it resolve" + one button per legal 2 | **"Let it resolve" only** |
 | On confirm | `apply(indexOf MoveDecline)` | no bridge call — advance the local curtain machine |
 | Minimum dwell | none beyond the reveal gate | **identical** — no artificial delay, no extra animation |
+
+**Staging a counter locks "Let it resolve"** *(added 2026-09-28, W25 playtest fixes, merged `b8238db`)*. Tapping a counter option stages it (R12): the options give way to a staging bar with the move's description in sentence case ("Counter with 2♣") and Confirm / Cancel. While a counter is staged, "Let it resolve" is disabled (the `disabled` attribute, dimmed to 35% opacity) and a tap on it does nothing. Cancel re-enables it. Unstaged, the button carries no `disabled` attribute. The synthetic ack has no options, so it can never reach the staged state, and its DOM stays identical to an unstaged real window.
 
 The acting player observes exactly the same thing in both cases: the phone goes to the opponent, comes back (or doesn't, if the turn passed), and the one-off resolved. The two cases are indistinguishable because the only difference is the presence of a button the acting player cannot see.
 
@@ -794,7 +802,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   │   ├── RevealGate.svelte     # press-and-hold + two-step fallback (§4.5)
 │   │   └── RecapPanel.svelte     # R20 (§4.6)
 │   ├── Board.svelte
-│   │   ├── ScoreBar.svelte       # R5: both totals + thresholds, always visible
+│   │   ├── ScoreBar.svelte       # R5: both totals + thresholds, always visible; names whose turn it is (§4.2)
 │   │   ├── OpponentZone.svelte
 │   │   │   ├── OpponentHand.svelte   # backs + count; face-up under glasses-8 (R7)
 │   │   │   ├── PointRow.svelte       # shared with PlayerZone
@@ -805,6 +813,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   │   ├── PlayerZone.svelte
 │   │   │   ├── PointRow.svelte
 │   │   │   ├── PermanentRow.svelte
+│   │   │   ├── watched marker       # while the opponent has glasses (§3.2)
 │   │   │   └── handTray slot        # PlayerHand.svelte, or SevenRevealPanel while the 7's choice is open
 │   │   │       └── HandCard.svelte   # dim when no legal play (R9); FrozenBadge (R8)
 │   │   └── DropZones.svelte          # "Points" / "Permanents" / "One-off" targets
@@ -815,13 +824,19 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   ├── SevenRevealPanel.svelte   # R16 — mounted here, gated on viewer === active; RENDERS in Board's `handTray` slot, not here (see below)
 │   ├── ScrapBrowser.svelte       # R6 — browse mode and pick mode
 │   └── StuckState.svelte         # §2.10 — E-1/E-2 diagnostic + scenario export
-├── ResultScreen.svelte           # R2/R3: win or stalemate, tally, Rematch
+├── ResultScreen.svelte           # R2/R3: win or stalemate, tally, final score, Rematch, Home
 └── RulesScreen.svelte            # R17 — overlay, never unmounts the game
 ```
 
 `PointRow.svelte` renders a `PointEntry` including its `JackStack`: only the top (newest) Jack is drawn, full card size, offset downward only, so the point card's upper-left corner index stays visible above it; extra Jacks are not drawn separately, and at 2 or more a thin "deck thickness" edge (two card-back slivers past the Jack's bottom-right corner) shows there's more than one. No count number and no player colour render on the stack; the count is exposed only via the aria-label ("stolen, N Jacks"), and only the top Jack is a legal tap target — including as the target of a 2 or a 9. Buried Jacks are never targetable and never answer a tap (the engine only ever offers the top Jack). An ownership badge is driven by `Controller` (§2.8(f)) when the controller differs from the owner. A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, ApisMellow — supersedes "fanned above" and the multi-Jack cascade; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
 
 **`SevenRevealPanel` mounting vs. rendering.** GameScreen mounts `SevenRevealPanel`, gated on `viewer === active` — that gate is where R16's privacy boundary lives and it stays in GameScreen, not in Board. The panel itself renders through Board's `handTray` slot, the same slot `PlayerHand` occupies, so while the 7's choice is open the reveal panel takes the hand's place in the layout instead of appearing as a separate overlay; the slot reverts to `PlayerHand` once the sub-move resolves.
+
+**W25 playtest fixes** *(2026-09-28, merged `b8238db`)*:
+
+- **ResultScreen** shows, under the tally, "Final score: `NAME` N – `NAME` N" (`data-testid="final-scores"`), and a Home button (`result-home`) beside Rematch. `App.svelte` reads the final points verbatim off the viewer-relative `scoreboard` and maps them to seats (§3.3 rule 2); nothing is recomputed. Home calls `game.goHome()` (§5.3). The screen still renders neither hand.
+- **OpponentHand** pluralises its count: "1 card", "5 cards".
+- **HomeScreen** fills the name fields once, at mount: from the saved game's `names` when a snapshot exists (so names survive a reload while a game is saved, §5.7), otherwise from the session's names when someone set them this session. The defaults "Player 1" / "Player 2" leave the field blank so the placeholder shows. After mount the fields belong to the user.
 
 ### 5.3 State design
 
@@ -848,7 +863,9 @@ class GameStore {
 *(Amended 2026-09-27, round 2.)* There is **no public viewer switch**. `setViewer(p)` was removed because it could expose the non-holder's view without a curtain (§2.4, §3.3 rule 4). The viewer changes only inside the curtain machine's transitions. `viewer` is nullable and is `null` while the curtain withholds the board. `refresh()` takes no argument and is allowed only at curtain `none` or a real counter window.
 
 - **`curtain.svelte.ts`** — the §4.2 machine. Pure: `next(pre, appliedMove, post) -> CurtainState`. Its purity is what makes the transition table of §4.4 unit-testable without WASM (§7.1).
-- **`staging.svelte.ts`** — R9/R12 selection pipeline (§6). Holds `selectedHandIndex`, `stagedMoveIndex`, `candidateMoveIndices`, `highlightedTargets`. Cleared on every `apply` and on every viewer change.
+- **`staging.svelte.ts`** — R9/R12 selection pipeline (§6). Holds `selectedHandIndex`, `stagedMoveIndex`, `candidateMoveIndices`, `highlightedTargets`. Cleared on every `apply` and on every viewer change. `clearSelection()` *(W25, merged `b8238db`)* returns a selected card to idle; it does nothing while a move is staged, while the ambiguity chooser or the 3's scrap pick is open, or at a discard position (§6.1).
+
+*(Amended 2026-09-28, W25 playtest fixes, merged `b8238db`.)* `newGame()` raises the opening curtain (§4.2) with `envelope` and `viewer` both `null`; the first actor's view is fetched only after their reveal. `goHome()` is allowed only at curtain `result`: it drops the envelope, the viewer and the pending curtain context, and returns to the home screen. The finished game is already persisted, so Home can still Resume it to see the result. Any other curtain kind throws.
 - **`session.svelte.ts`** — R3 tally, player names, `lastDealer`, `lastSeed`. **Memory only; never persisted** (PRD §4: "the win tally lives only for the browser session"; R3: "does not survive a page reload").
 - **`settings.svelte.ts`** — card theme (§5.6), reduced motion, hold-vs-two-step reveal preference. Persisted separately from game state.
 
@@ -900,13 +917,16 @@ export interface CardFaceProps {
   card: Card;
   size: 'hand' | 'field' | 'mini';
   state?: 'normal' | 'dimmed' | 'highlighted' | 'staged' | 'frozen';
+  variant?: 'standard' | 'glasses'; // defaults to 'standard'; reflected as data-variant
 }
 ```
+
+**`variant`** *(added 2026-09-28, W24 glasses 8, merged `1fbe15f`)*. `'standard'` is the ordinary rank-and-suit face. `'glasses'` is an 8 in play as a permanent (R7): `PermanentRow` passes it for every 8 in the row, since the permanents row holds only Queens, Kings and glasses-8s. The container lays that card on its side: the box itself is landscape (one card-height wide, one card-width tall), with no CSS transform, so layout, clipping and hit-testing see the same rectangle, and the element, testid and `perm:` key are unchanged (`data-orientation="sideways"`). The theme paints the glasses face for a landscape box. In the vector theme it is one full-bleed SVG: goggles on a stained-glass ground tinted by suit (hearts red, diamonds amber, clubs green, spades blue-black), no rank, and a small suit pip in the top-left corner as the only identity mark, with `aria-label` "Glasses, `suit`". A theme with no glasses art falls back to its standard face.
 
 Rules that keep the seam real:
 
 1. **Nothing outside `lib/theme/` renders a rank or suit glyph.** Every card pixel in the app comes from `<CardFace>` or `<CardBack>`. A component that draws its own "7♥" has broken the seam; code review rejects it.
-2. **Layout is the theme's business; geometry is not.** The aspect ratio (one token, `--cuttle-card-aspect`, about 1.3 height to width — amended 2026-09-28, ApisMellow, from 2.5:3.5; `docs/design.md` §5) and the three size tokens are fixed by the app in CSS custom properties. Every card at every size shows its rank and suit as an upper-left corner index (`docs/design.md` §7). A theme paints inside a box it does not get to resize, so swapping themes never reflows the board.
+2. **Layout is the theme's business; geometry is not.** The aspect ratio (one token, `--cuttle-card-aspect`, about 1.3 height to width — amended 2026-09-28, ApisMellow, from 2.5:3.5; `docs/design.md` §5) and the three size tokens are fixed by the app in CSS custom properties. Every card at every size shows its rank and suit as an upper-left corner index (`docs/design.md` §7), except the `glasses` variant above. A theme paints inside a box it does not get to resize, so swapping themes never reflows the board.
 3. **State styling is the theme's responsibility to honour, not to invent.** `state` is passed in; the theme renders it. Highlight/dim/stage semantics belong to §6 and must look consistent across themes.
 4. **`vector` is always available and is the fallback.** It has zero external assets, so it works on first paint, offline, and before any art is cached. If a theme's `available()` returns false — assets not yet precached, decode failure, or the user is on a metered connection — the app falls back to `vector` silently, per card, without a layout shift.
 5. **Toggle** lives in the menu, persisted in `settings.svelte.ts`, and is a `screenshot-judge` item so the judge can compare both skins at phone viewport (R23). **The default theme at ship time is ApisMellow's call** (R23) — the app reads it from a single constant, `DEFAULT_THEME_ID` in `lib/theme/default.ts`, re-exported by `lib/theme/index.ts`, so flipping the default is a one-line change and not a refactor. `settings.svelte.ts` imports `default.ts` directly, which keeps components out of the store's import graph. *(amended 2026-09-27, orchestrator, from the round-2 W8 review)*
@@ -941,6 +961,8 @@ interface Snapshot {
 - **`engineState` is opaque to TypeScript.** It is produced by `__cuttleSnapshot()` and handed back to `__cuttleRestore()` as the first argument, verbatim. No TS code reads inside it — that would be the redaction bypass of §3.3(1) through the back door.
 - **`viewer` is passed to restore, not inferred.** `__cuttleRestore(engineState, viewer)` (§2.4) takes the persisted `viewer` field as its second argument and returns that player's envelope. *(amended 2026-09-26)*
 - **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
+- **The opening curtain is persisted too** *(amended 2026-09-28, W25 playtest fixes, merged `b8238db`; no `v` bump, the shape is unchanged)*. `newGame()` writes the snapshot with `viewer` = the first actor and `curtain` = the opening `handoff`. The decoder normally rejects a curtain other than `none` over an empty `history`; it now allows `handoff` with reason `turn` and `reveal` there, since those are the opening deal's. On restore, a curtain with no move behind it is treated as the opening deal's (§4.2).
+- **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, which are memory-only, so a reload with no saved game shows blank fields.
 - **Version mismatch (`v !== 1`) discards the snapshot** and returns to the home screen with a brief notice. No migration code in v1; a bump means the old game is gone. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
 - **The session tally is not persisted** (R3, PRD §4). It lives in `session.svelte.ts` and dies with the tab. A restored game restores the game only.
 - "New game" from the menu requires a confirm before clearing (R4), and the confirm names the in-progress game.
@@ -1010,6 +1032,13 @@ R12 is absolute: **no single tap ever applies a move.** Every commit is `select 
 - Tapping a different hand card while `selected` re-selects. Tapping a **non-highlighted** area while `selected` clears to `idle` and never stages anything (R9's explicit non-goal).
 - Cards with no legal play render **dimmed but still inspectable** (R9) — tapping one opens a card-detail popover and does not enter `selected`. The popover shows only the tapped card from the viewer's own hand, never hidden information (no opponent card, no deck card, nothing from another viewer's history) *(2026-09-28: privacy bound restated while the popover is built)*.
 - While `applying`, the whole board is inert. A second Confirm tap must be impossible.
+
+*(Added 2026-09-28, W25 playtest fixes, merged `b8238db`.)*
+
+- **Deck tap while a card is selected draws.** The deck is never a selected card's target, so the tap clears the selection and is then handled as a deck tap from idle: when Draw is legal it stages the draw in the same tap, and when it isn't the tap only clears the selection. Only Confirm applies it (R12).
+- **Tapping blank space clears a selection.** A tap on the board that doesn't land on a button, link, input or `role="button"` element, including a tap on the score bar, calls `staging.clearSelection()` (§5.3): a selected card goes back to idle. A staged move keeps waiting for Confirm or Cancel, the chooser and the scrap pick keep their own Cancel, and discard picks are left alone. This is a pointer convenience; the board ignores it while inert.
+- **Desktop mouse.** On devices that really hover (`@media (hover: hover)`), a hand card lifts `--cu-lift-hover` (−4 px, less than the selected lift) under the pointer. Dimmed, selected and staged cards don't hover-lift, and a touch tap never leaves a card raised.
+- **Desktop keyboard.** Every target is its own `<button>`, including the Points, Permanents and One-off drop zones. When Enter or Space selects a hand card, focus moves to the first lit target, so the next Tab or Enter lands on a target (for example the Points or One-off zone). A pointer click never moves focus. Escape cancels a staged move, the chooser or the scrap pick, and otherwise clears a selection. Focused board targets (deck, scrap, drop zones, point and permanent cards, the 7's revealed cards) show a 3 px `--cu-pearl` ring drawn inset (`outline-offset: -3px`), so a clipping row or well can't hide it. Hand cards keep their 2 px outset ring.
 
 ### 6.2 Deriving affordances from the legal-move list
 

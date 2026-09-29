@@ -72,7 +72,7 @@ requirements:
       - "e2e-test: ResultScreen shows distinct copy for a named winner (fixture `win-with-kings`) versus a stalemate outcome (fixture `stalemate`)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle (round-03.md); reviewer probe mounted the real App and confirmed the tally counts once and stalemates are excluded from it, which exercises ResultScreen's win-vs-stalemate copy split. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W12 shell, loop/r03-shell, merged loop/integration @ 21aa9af): accepted after 1 revise cycle (round-03.md); reviewer probe mounted the real App and confirmed the tally counts once and stalemates are excluded from it, which exercises ResultScreen's win-vs-stalemate copy split. Gate 9/9 (516 unit, 8 e2e). Post-integration full-corpus e2e deferred to round-4 (GameScreen/board integration, W13). | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): ResultScreen adds a 'Final score' line and a Home button (vitest web/tests/unit/result-screen.svelte.test.ts 'W25: Home button and final scores'). SPEC §5.2 amended."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -208,7 +208,7 @@ requirements:
       - "e2e-test: fixture `glasses-eight` — once the active player holds an unfrozen 8 in Permanents, opponent.hand becomes non-null and renders face-up on the glasses owner's screen only, never on the opponent's own screen (PRD R7, SPEC §3.2 viewerHasGlasses)"
     verify: [e2e-test]
     status: todo
-    evidence: ""
+    evidence: "PARTIAL 2026-09-28 (W24 glasses 8, merged loop/integration @ 1fbe15f, PR #10): vitest web/tests/unit/glasses-reveal.test.ts 'R7: the glasses-8 reveal, both directions, through the real bridge'; web/tests/unit/glasses-watched.svelte.test.ts (the watched marker appears if and only if the opponent has glasses); e2e web/tests/e2e/glasses-eight.spec.ts covers the sideways 8's tap target only. Open: the `glasses-eight` fixture e2e showing the hand face-up on the owner's screen only."
     fails: 0
 
   - id: R7.3
@@ -297,7 +297,7 @@ requirements:
       - "e2e-test: while 'selected', tapping a non-highlighted board area returns staging to 'idle' and stages nothing, with envelope.seq unchanged (PRD R9's explicit non-goal, SPEC §6.1)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W11 staging, loop/r03-staging, merged loop/integration @ 78d1663): accepted after 1 revise cycle, 9/9 gate, 539 unit tests (round-03.md). Post-integration e2e across the fixture corpus deferred to round-4 (GameScreen/board integration, W13). | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): a tap on empty board space or the score bar also clears a selection (StagingStore.clearSelection; vitest web/tests/unit/staging-w25.test.ts), and Escape clears it from the keyboard (e2e web/tests/e2e/keyboard.spec.ts 'Escape clears a keyboard selection'). SPEC §6.1 amended. Open: the acceptance e2e with envelope.seq unchanged."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -310,7 +310,7 @@ requirements:
       - "e2e-test: fixture `opening` step 0 — tapping DeckPile stages then, on confirm, applies MoveDraw; DeckPile renders visibly disabled when the deck is empty or the hand is at 8 (PRD R10, SPEC §6.3, apply.go:34)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): a `deckEnabled` prop drives DeckPile's disabled style (orchestrator ruling, round-03.md); staging/confirm/apply wiring is W11's `target:'deck'` key on the shared board↔staging contract. Accept after Opus re-review, 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e deferred to round-4 (GameScreen/board integration, W13)."
+    evidence: "IMPLEMENTED round-03 (W9 board, loop/r03-board, merged loop/integration @ 90bda7d): a `deckEnabled` prop drives DeckPile's disabled style (orchestrator ruling, round-03.md); staging/confirm/apply wiring is W11's `target:'deck'` key on the shared board↔staging contract. Accept after Opus re-review, 9/9 gate, 592 unit tests, 19 mutants killed, browser-measured. Post-integration e2e deferred to round-4 (GameScreen/board integration, W13). | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): a deck tap with a hand card selected clears the selection and stages Draw in the same tap when Draw is legal; only Confirm applies it (vitest web/tests/unit/staging-w25.test.ts). SPEC §6.1 amended."
     fails: 0
 
   - id: R10.2
@@ -457,7 +457,7 @@ requirements:
       - "unit-test: needsSyntheticAck() fires for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff) whenever post.phase !== PhaseAwaitingCounter, with no per-rank exclusion (SPEC §4.3 detection code)"
     verify: [e2e-test, unit-test]
     status: implemented
-    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`."
+    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`. | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): 'Let it resolve' is disabled only while a counter is staged, a state the synthetic ack cannot reach; vitest web/tests/unit/counter-prompt.svelte.test.ts 'PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)'. SPEC §4.3 amended."
     fails: 0
 
   - id: R14.3
