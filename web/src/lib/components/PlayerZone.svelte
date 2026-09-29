@@ -6,6 +6,7 @@
   import type { Snippet } from 'svelte';
 
   import type { PlayerId, PlayerView } from '../bridge/schema';
+  import type { HandDrag } from '../dragDrop';
   import type { CardTheme } from '../theme/types';
   import PermanentRow from './PermanentRow.svelte';
   import PlayerHand from './PlayerHand.svelte';
@@ -29,6 +30,8 @@
     watchedBy?: string | null;
     /** Player names by id (the stolen-card screen-reader name). */
     names?: readonly [string, string];
+    /** Issue #26: the hand card being dragged, passed straight to the hand. */
+    drag?: HandDrag | null;
   }
 
   let {
@@ -45,6 +48,7 @@
     handTray,
     watchedBy = null,
     names,
+    drag = null,
   }: PlayerZoneProps = $props();
 
   // R10: the marker's text is the hand group's description, so a screen
@@ -115,6 +119,7 @@
         {staged}
         dimmedHandIndices={dimmedHand}
         onselect={(handIndex) => ontap(`hand:${handIndex}`)}
+        {drag}
         {theme}
       />
     {/if}

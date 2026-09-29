@@ -1,0 +1,55 @@
+size: 1400x2184
+fps: 30
+engine: piper
+voice: en_US-lessac-medium
+
+scenes:
+  - id: title
+    card: Drag a card onto a zone
+    subtitle: Cuttle, issue 26
+    duration: 3
+
+  - id: before-setup
+    frames: out/frames/before-setup
+    rate: 10
+    narration: First, the build without the fix. Here is Alice's hand.
+
+  - id: before-drag
+    frames: out/frames/before-drag
+    rate: 10
+    narration: Alice drags the two of hearts to Points. Nothing follows her finger. The zone stays dark. Nothing is staged.
+
+  - id: after-setup
+    frames: out/frames/after-setup
+    rate: 10
+    narration: Now the build with the fix.
+
+  - id: after-illegal
+    frames: out/frames/after-illegal
+    rate: 10
+    narration: The card follows her finger. A two is never a permanent. Permanents stays dark. She lets go. The card snaps back.
+
+  - id: after-drag
+    frames: out/frames/after-drag
+    rate: 10
+    narration: Now she drags to Points. Points lights up. She lets go. The move is staged, waiting for Confirm.
+
+  - id: after-confirm
+    frames: out/frames/after-confirm
+    rate: 10
+    narration: Confirm plays it. The phone goes to Blake. The two of hearts is on the board.
+
+  - id: tap-setup
+    frames: out/frames/tap-setup
+    rate: 10
+    narration: Tapping still works. A fresh game.
+
+  - id: tap
+    frames: out/frames/tap
+    rate: 10
+    narration: Tap the card. Tap Points. Tap Confirm. Same result.
+
+  - id: done
+    frames: out/frames/done
+    rate: 10
+    narration: Drag or tap. Same move.
