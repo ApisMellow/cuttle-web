@@ -17,6 +17,10 @@ Binding for every presentational component from round 3 on. Tokens live in `web/
 - Every suit-contrast and state-visibility check runs against one table colour. Two tables double the judge surface and the contrast audit.
 - `manifest.theme_color` / `background_color` become `#241c2b` (currently `#0f1115`, §5.8).
 
+**Card styles are separate from the table (added 2026-09-28, round 8 themes).** The one dark table stays; what a player chooses is the deck. The home screen carries a **Card style** group under the two name fields: one pill per style (Classic, then Mythic), side by side, each at least `--cu-tap-min` tall, on `--cu-ink-raised` with a 1 px `--cu-ink-line` edge. The chosen pill takes a 1 px `--cu-ochre` edge plus a 1 px inset ochre ring, and its radio is ochre (`accent-color`); keyboard focus shows a 2 px `--cu-iris` outline. The legend reads "Card style" in `--cu-text-sm` muted. The group only appears once there is more than one style to pick. There is no in-game menu yet, so changing style mid-game means Home, pick, Resume (SPEC §5.6 rule 5 ruling). The vector deck is called **Classic** on screen.
+
+A bitmap style paints only inside the boxes the app already sizes (§5, SPEC §5.6 rule 2), so switching never moves anything. Any card it has no art for, or whose image fails, draws as Classic in the same box. Mythic has faces and glasses art but no back or playmat, so its backs are Classic and the table stays ink. A theme playmat, when one ships, is painted behind the board only, never behind a curtain. At `mini`, a bitmap face zooms to its own painted corner index (§7). **Known item to check on a real phone:** Mythic's painted index is smaller than Classic's, about a 10 px rank on a 60–66 px hand card.
+
 ## 3. Palette
 
 | Token | Hex | Use | Contrast |
@@ -208,11 +212,12 @@ All curtain screens are full-viewport `--cu-curtain` with a static chromatophore
 | `RecapPanel` | `--cu-ink`, `--cu-text-xl`, `--cu-text-md`, `--cuttle-card-width-mini` |
 | `AmbiguityChooser`, `ScrapBrowser` | `--cu-ink-raised`, `--cu-radius-sheet`, `--cu-tap-min` |
 | Vector theme `Face`/`Back` | `--cu-paper`, `--cu-suit-*`, `--cu-index-*`, `--cu-dim-scrim`, `--cu-iris`, `--cu-ochre`, `--cu-back-*` |
+| `HomeScreen` card-style picker | `--cu-ink-raised`, `--cu-ink-line`, `--cu-ochre` (chosen), `--cu-iris` (focus), `--cu-pearl`, `--cu-muted`, `--cu-tap-min`, `--cu-radius-control`, `--cu-text-sm`, `--cu-text-md` |
 
 The vector theme reads colour and index tokens but never the `--cuttle-card-*` geometry tokens (§5.6 rule 2).
 
 ## 12. Not decided here
 
-- Bitmap art, the table skin (`CardTheme.Table`), the card-back illustration, the court-card treatment and any mascot: R21–R23. Nothing above depends on them; an art theme must honour §7's state recipes over its own pixels.
+- Bitmap art, the table skin (`CardTheme.Table`), the card-back illustration, the court-card treatment and any mascot: R21–R23. Nothing above depends on them; an art theme must honour §7's state recipes over its own pixels. (Mythic faces added 2026-09-28, round 8 themes, see §2; the back, the playmat and any mascot are still open.)
 - App icon and splash.
 - Result-screen celebration beyond a static layout. (The static layout gained a "Final score" line and a quiet Home button beside Rematch, W25, merged `b8238db`.)
