@@ -267,11 +267,20 @@ export class StagingStore {
     this.#applyFn = apply;
   }
 
-  /** SPEC §6.1 — the single entry point for every board/deck/pass tap. */
-  tap(key: TargetKey): void {
+  /**
+   * SPEC §6.1 — the single entry point for every board/deck/pass tap.
+   * Returns `confirm()`'s promise when the tap commits a staged draw (issue
+   * #24), so the integrator can report a failure; otherwise `undefined`.
+   */
+  tap(key: TargetKey): Promise<void> | undefined {
     if (this.state === 'applying') return; // inert: the board is locked while applying (§6.1)
     const env = this.#getEnv();
     if (!env) return;
+
+    // Issue #24: tapping the deck again while its Draw is staged is the
+    // same as Confirm. Still two taps (R12), and still through confirm(),
+    // the only caller of apply. Any other staged move ignores the deck.
+    if (this.state === 'staged' && key === 'deck' && this.#stagedIsDraw(env)) return this.confirm();
 
     this.inspect = null; // any tap dismisses a prior detail popover
 
@@ -290,7 +299,12 @@ export class StagingStore {
       this.#handleTargetTap(key, env);
       return;
     }
-    // state === 'staged': only confirm()/cancel() act (SPEC §6.1 — Confirm/Cancel are the only controls once staged).
+    // state === 'staged': only confirm()/cancel() act (SPEC §6.1 — Confirm/Cancel are the only controls once staged),
+    // plus the deck re-tap above, which is a confirm().
+  }
+
+  #stagedIsDraw(env: StagingEnv): boolean {
+    return this.stagedIndex !== null && env.legalMoves[this.stagedIndex]?.Kind === MoveKind.Draw;
   }
 
   /** SPEC §6.4 — selects a candidate from the ambiguity chooser. Always lands on `staged`, never on `apply` directly. */
