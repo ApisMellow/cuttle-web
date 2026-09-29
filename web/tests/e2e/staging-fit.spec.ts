@@ -19,6 +19,22 @@ for (const [width, height] of [
     await page.setViewportSize({ width, height });
     await page.goto('/');
     await page.waitForSelector('body');
+    // The UI font ships with the app, so every platform measures the same
+    // glyphs. Measuring before it loads would test the system fallback.
+    const fontLoaded = await page.evaluate(async () => {
+      await Promise.all([
+        document.fonts.load('400 16px "Atkinson Hyperlegible Next"'),
+        document.fonts.load('700 16px "Atkinson Hyperlegible Next"'),
+      ]);
+      // check() is also true when no such family is declared at all, so
+      // require real loaded faces (regular and bold).
+      const loaded = [...document.fonts].filter(
+        (f) => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible Next' && f.status === 'loaded',
+      );
+      const weights = new Set(loaded.map((f) => f.weight));
+      return weights.has('400') && weights.has('700') && document.fonts.check('16px "Atkinson Hyperlegible Next"');
+    });
+    expect(fontLoaded, 'bundled UI font failed to load').toBe(true);
     const fits = await page.evaluate(async (harnessUrl) => {
       const H = (await import(harnessUrl)) as Harness;
       H.unmountAll();
