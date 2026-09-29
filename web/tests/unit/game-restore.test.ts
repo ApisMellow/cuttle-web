@@ -13,7 +13,7 @@ import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, play
 
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
-    v: 1,
+    v: 2,
     savedAt: '2026-09-27T00:00:00.000Z',
     engineState: '"opaque-blob"',
     history: [],
@@ -36,8 +36,8 @@ describe('R4.4: version-mismatched snapshot is discarded without a crash, no mig
     session = new SessionStore();
   });
 
-  it('v !== 1 -> home screen with a notice, engine.restore never called, no throw', async () => {
-    storage.setItem(SNAPSHOT_KEY, JSON.stringify({ ...baseSnapshot(), v: 2 }));
+  it('an unknown v (neither 2 nor the migratable 1) -> home screen with a notice, engine.restore never called, no throw', async () => {
+    storage.setItem(SNAPSHOT_KEY, JSON.stringify({ ...baseSnapshot(), v: 3 }));
     const engine = createFakeEngine();
     const store = new GameStore({ engine, storage, session });
 

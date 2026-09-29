@@ -32,7 +32,7 @@
 // "this one had no target" and the base line is returned unchanged, with
 // no rank-2/rank-9 knowledge encoded here (docs/assumptions.md).
 
-import type { AppliedMove, Card, Move, PlayerId } from './bridge/schema';
+import type { AppliedMove, Card, Move, PlayerId, PlayerView } from './bridge/schema';
 
 // A card token exactly as `card.Card.String()` renders it (card/card.go:14-
 // 47), used to render `entry.targetCard` into the same glyph form the
@@ -62,6 +62,14 @@ const KIND = {
 // 47): a rank glyph immediately followed by a suit glyph, e.g. "7♥",
 // "10♠", "J♣", "A♦". No separator, no spaces.
 const CARD = String.raw`(?:10|[2-9]|[AJQK])[♣♦♥♠]`;
+
+/** The rank part of a card token: "10♠" -> "10", "A♥" -> "A". */
+function rankOf(token: string): string {
+  return token.slice(0, -1);
+}
+
+/** The 5's effect clause in a recap line (SPEC §4.6, amended 2026-09-28). */
+const FIVE_INTENT = ' to draw 2 cards';
 
 function fail(entry: AppliedMove, reason: string): never {
   throw new Error(
@@ -151,6 +159,14 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       const m = text.match(new RegExp(`^play (${CARD}) as one-off$`));
       if (!m) fail(entry, 'OneOff description did not match the engine format');
       const base = `played ${m[1]} as a one-off`;
+      // Amended 2026-09-28 (playtest friction): a 5 says what it does. The
+      // recap and the counter prompt show the 5 BEFORE it resolves on the
+      // real counter-window path, so this is the card's effect ("to draw 2
+      // cards", RULES.md One-Offs), never the count it drew. The count
+      // (`entry.drawn`) is never read here: on the synthetic path it is
+      // already set, and reading it would make the two paths differ (R14).
+      // `lastMoveLine` reports the count once the board is back.
+      if (entry.targetCard === null && rankOf(m[1]) === '5') return `${base}${FIVE_INTENT}`;
       if (entry.targetCard === null) return base;
       return `${base}, targeting ${cardGlyph(entry.targetCard)}`;
     }
@@ -249,6 +265,232 @@ export function formatRecapLine(entry: AppliedMove, viewer: PlayerId, names: rea
   const targetPossessive = isSelf ? `${names[opponentOfActor]}'s` : 'your';
   const predicate = predicateFor(entry.kind, entry.description, entry.subKind, entry, { targetPossessive });
   return `${name} ${predicate}.`;
+}
+
+/** The same sentence in the third person for everyone (the result screen, seen by both players). */
+function formatNeutralLine(entry: AppliedMove, names: readonly [string, string]): string {
+  const opponentOfActor = (1 - entry.by) as PlayerId;
+  const predicate = predicateFor(entry.kind, entry.description, entry.subKind, entry, {
+    targetPossessive: `${names[opponentOfActor]}'s`,
+  });
+  return `${names[entry.by]} ${predicate}.`;
+}
+
+/** A one-off entry: a OneOff, or a SevenPick whose sub-move was a OneOff. */
+function isOneOffEntry(entry: AppliedMove): boolean {
+  return entry.kind === KIND.OneOff || (entry.kind === KIND.SevenPick && entry.subKind === KIND.OneOff);
+}
+
+/** The one-off a Counter or Decline at `history[i]` answers, walking back over Counters; -1 if none. */
+function chainOriginIndex(history: readonly AppliedMove[], i: number): number {
+  for (let j = i - 1; j >= 0; j--) {
+    if (history[j].kind === KIND.Counter) continue;
+    return isOneOffEntry(history[j]) ? j : -1;
+  }
+  return -1;
+}
+
+function drewText(count: number): string {
+  if (count === 0) return 'drew no cards';
+  return count === 1 ? 'drew 1 card' : `drew ${count} cards`;
+}
+
+/**
+ * SPEC §4.6 idle last-move line (R20.1; amended 2026-09-28): the board's
+ * centre line. The last `isRecapVisible` entry in `history` (never raw
+ * `lastMove`), as a sentence for this viewer — "You ..." for the viewer's
+ * own move, never the raw engine description.
+ *
+ * A 5 that has resolved adds its draw count, read from `drawn` (SPEC §2.7):
+ * "Alice played 5♥ as a one-off and drew 2 cards." The bridge puts `drawn`
+ * on the entry whose apply resolved the 5 — the 5 itself when nobody could
+ * counter (synthetic path), or the Decline/Counter that closed its chain
+ * (real path). Only entries from the last visible one onward are read, and
+ * those after it can only be Declines, so both paths read the same line
+ * here (R14). The board shows only after the counter prompt is gone, so on
+ * both paths the 5 has resolved by the time this line renders. A count
+ * only: history never names the drawn cards.
+ */
+export function lastMoveLine(history: readonly AppliedMove[], viewer: PlayerId, names: readonly [string, string]): string {
+  let i = history.length - 1;
+  while (i >= 0 && !isRecapVisible(history[i])) i--;
+  if (i < 0) return '';
+  let line: string;
+  try {
+    line = formatRecapLine(history[i], viewer, names);
+  } catch {
+    return '';
+  }
+  let resolver = -1;
+  for (let j = history.length - 1; j >= i; j--) {
+    if (history[j].drawn !== null) {
+      resolver = j;
+      break;
+    }
+  }
+  if (resolver < 0) return line;
+  const count = history[resolver].drawn as number;
+  const origin = isOneOffEntry(history[resolver]) ? resolver : chainOriginIndex(history, resolver);
+  if (origin < 0) return line;
+  if (origin === i && line.endsWith(`${FIVE_INTENT}.`)) {
+    return `${line.slice(0, -`${FIVE_INTENT}.`.length)} and ${drewText(count)}.`;
+  }
+  const drawer = history[origin].by;
+  return `${line} ${drawer === viewer ? 'You' : names[drawer]} ${drewText(count)}.`;
+}
+
+/**
+ * Result screen (R2, amended 2026-09-28): one line naming the winning move,
+ * third person (both players read it). `points` is the winner's final total
+ * and `threshold` their final goal, both read off the engine's scoreboard by
+ * the caller. The move is the last `isRecapVisible` history entry; every
+ * card it names was played face up (the §4.6 audit), so nothing hidden is
+ * named. '' for a stalemate or an empty history.
+ */
+export function winningMoveLine(
+  history: readonly AppliedMove[],
+  winner: PlayerId | null,
+  names: readonly [string, string],
+  points: number,
+  threshold?: number,
+): string {
+  if (winner === null) return '';
+  let i = history.length - 1;
+  while (i >= 0 && !isRecapVisible(history[i])) i--;
+  if (i < 0) return '';
+  const entry = history[i];
+  const who = names[winner];
+  if (entry.by === winner) {
+    const fromSeven = entry.kind === KIND.SevenPick;
+    const kind = fromSeven ? entry.subKind : entry.kind;
+    const text = fromSeven ? entry.description.replace(/^7: /, '') : entry.description;
+    const tail = fromSeven ? ', from the top of the deck.' : '.';
+    const point = text.match(new RegExp(`^play (${CARD}) as point card$`));
+    if (kind === KIND.PlayPoint && point) return `${who} won by reaching ${points} with the ${point[1]}${tail}`;
+    const jack = text.match(new RegExp(`^play (${CARD}) \\(steal opponent point\\)$`));
+    if (kind === KIND.PlayPermanent && jack && entry.targetCard !== null) {
+      return `${who} won by reaching ${points}, stealing the ${cardGlyph(entry.targetCard)} with the ${jack[1]}${tail}`;
+    }
+    const perm = text.match(new RegExp(`^play (${CARD}) as permanent$`));
+    if (kind === KIND.PlayPermanent && perm && rankOf(perm[1]) === 'K' && threshold !== undefined) {
+      return `${who} won by playing the ${perm[1]}, which lowered the goal to ${threshold}${tail}`;
+    }
+  }
+  try {
+    return `${who} won with ${points} points. Last move: ${formatNeutralLine(entry, names)}`;
+  } catch {
+    return `${who} won with ${points} points.`;
+  }
+}
+
+// One-off effects, in the player's own words, for the cheat-sheet-style
+// staging text. Sourced from the engine's RULES.md "One-Offs" table
+// (github.com/ApisMellow/cuttle@v0.2.0), shortened; nothing here decides
+// legality — the engine already offered the move.
+const ONE_OFF_EFFECT: Record<string, string> = {
+  A: 'scrap every point card',
+  '2': 'scrap the royal or glasses you picked',
+  '3': 'take a card from the scrap',
+  '4': 'they discard 2 cards',
+  '5': 'draw 2 cards',
+  '6': 'scrap every royal and glasses',
+  '7': 'see the top 2 cards and play one',
+  // engine/apply.go (v0.2.0) resolveOneOffWith, case Nine: the card goes to
+  // its OWNER's hand (a point card's original owner), so a card they stole
+  // from you comes back to you. The freeze only bites the opponent: their
+  // turn is next. `plainMoveText` narrows this when the caller knows which
+  // case applies (`NineReturn`).
+  '9': 'that card goes back to its owner’s hand (a card they stole from you comes back to you)',
+};
+
+/** Where a 9 one-off sends its target: 'theirs' (their card) or 'yours' (a card they stole from you). */
+export type NineReturn = 'theirs' | 'yours';
+
+const NINE_EFFECT: Record<NineReturn, string> = {
+  theirs: 'that card goes back to their hand, and they can’t play it next turn',
+  yours: 'the card they stole comes back to your hand',
+};
+
+/**
+ * Which way a 9 one-off (or a 7-revealed 9) sends its target, from public
+ * board state only: a permanent always goes to its player (the opponent); a
+ * point card goes to its original `Owner` (engine/apply.go v0.2.0,
+ * resolveOneOffWith case Nine: `returnTo = pe.Owner`). undefined for any
+ * other move, or a target no longer on the board.
+ */
+export function nineReturn(move: Move, view: Pick<PlayerView, 'viewer' | 'you' | 'opponent'>): NineReturn | undefined {
+  const inner = move.Kind === KIND.SevenPick ? move.SubMove : move;
+  const played = move.Kind === KIND.SevenPick ? move.Card : inner?.Card;
+  if (inner === null || inner === undefined || inner.Kind !== KIND.OneOff || played?.Rank !== 9 || inner.Target === null) {
+    return undefined;
+  }
+  const target = inner.Target;
+  if (target.Zone !== 0) return 'theirs';
+  const row = target.Owner === view.viewer ? view.you.points : view.opponent.points;
+  const entry = row[target.Index];
+  if (entry === undefined) return undefined;
+  return entry.Owner === view.viewer ? 'yours' : 'theirs';
+}
+
+const PERMANENT_EFFECT: Record<string, (token: string) => string> = {
+  Q: (t) => `Play ${t} as a permanent: it protects your other cards.`,
+  K: (t) => `Play ${t} as a permanent: you need fewer points to win.`,
+  '8': (t) => `Play ${t} as glasses: you see their hand.`,
+};
+
+function sentenceCase(text: string): string {
+  return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
+}
+
+/**
+ * Plain, player-facing wording for an engine description (SPEC §6.4,
+ * amended 2026-09-28): the staging bar, the ambiguity chooser and the
+ * counter buttons all show the viewer's OWN options, so the text is an
+ * instruction ("Play 7♥ for points.") with, where a card does something,
+ * one short clause saying what. It also accepts the composite staging
+ * strings built above (`scrapPickStagingText`, `scrapTakeStagingText`,
+ * `discardStagingText`). It parses the engine's pinned Describe format
+ * (engine/moves.go) like `formatRecapLine` does, but an unrecognised string
+ * passes through sentence-cased rather than throwing: this text sits on a
+ * control the player must still be able to use.
+ */
+export function plainMoveText(text: string, nine?: NineReturn): string {
+  const takeFromScrap = text.match(new RegExp(`^(.*?)(?: — take |, taking )(${CARD})(?: from the scrap)?$`, 's'));
+  if (takeFromScrap) {
+    const inner = takeFromScrap[1].replace(/^7: /, '');
+    const three = inner.match(new RegExp(`^play (${CARD}) as one-off$`));
+    if (three) return `Play ${three[1]} as a one-off: take ${takeFromScrap[2]} from the scrap.`;
+    return `${plainMoveText(takeFromScrap[1]).replace(/\.$/, '')}, taking ${takeFromScrap[2]}.`;
+  }
+  const t = text.replace(/^7: /, '');
+  if (t === 'draw a card') return 'Draw a card.';
+  if (t === 'pass') return 'Pass.';
+  if (t === 'decline to counter') return 'Let it resolve.';
+  let m = t.match(new RegExp(`^play (${CARD}) as point card$`));
+  if (m) return `Play ${m[1]} for points.`;
+  m = t.match(new RegExp(`^play (${CARD}) \\(steal opponent point\\)$`));
+  if (m) return `Play ${m[1]} to steal that point card.`;
+  m = t.match(new RegExp(`^play (${CARD}) as permanent$`));
+  if (m) return PERMANENT_EFFECT[rankOf(m[1])]?.(m[1]) ?? `Play ${m[1]} as a permanent.`;
+  m = t.match(new RegExp(`^scuttle opponent's (${CARD}) with (${CARD})$`));
+  if (m) return `Scuttle their ${m[1]} with ${m[2]}: both cards go to the scrap.`;
+  m = t.match(new RegExp(`^scuttle with (${CARD})$`));
+  if (m) return `Scuttle with ${m[1]}: both cards go to the scrap.`;
+  m = t.match(new RegExp(`^play (${CARD}) as one-off$`));
+  if (m) {
+    const rank = rankOf(m[1]);
+    const effect = rank === '9' && nine !== undefined ? NINE_EFFECT[nine] : ONE_OFF_EFFECT[rank];
+    return effect ? `Play ${m[1]} as a one-off: ${effect}.` : `Play ${m[1]} as a one-off.`;
+  }
+  m = t.match(new RegExp(`^counter with (${CARD})$`));
+  if (m) return `Counter with ${m[1]}: stop their card.`;
+  m = t.match(new RegExp(`^no legal play — scrap (${CARD})$`));
+  if (m) return `Scrap ${m[1]}: no revealed card can be played.`;
+  m = t.match(/^discard hand\[\d+\] and hand\[(\d+|-1)\]$/);
+  if (m) return m[1] === '-1' ? 'Discard 1 card.' : 'Discard 2 cards.';
+  m = t.match(new RegExp(`^Discard (${CARD})(?: and (${CARD}))?$`));
+  if (m) return `${t}.`;
+  return sentenceCase(text);
 }
 
 /**

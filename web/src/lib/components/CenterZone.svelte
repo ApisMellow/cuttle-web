@@ -3,8 +3,8 @@
   // strip: DeckPile, the one-off drop zone, ScrapPile.
   //
   // The middle slot (revise 1 ruling, design §6): when idle it shows the
-  // last move as ONE line of `--cu-text-sm` muted text, clamped with an
-  // ellipsis, at a fixed height. The line is not interactive and carries no
+  // last move in `--cu-text-sm` muted text, clamped to three lines (amended
+  // 2026-09-28; was one line), at a fixed height. The line is not interactive and carries no
   // testid (every testid must be a 44 px target). When the one-off zone is
   // highlighted or staged, the line gives way to the zone's own label. The
   // line's box is always present, so the strip's height never depends on
@@ -103,18 +103,26 @@
     align-self: stretch;
   }
 
+  /* Amended 2026-09-28 (playtest friction): up to three lines, clamped,
+     in a fixed-height box, so "Blake played 5♣ as a one-off and drew 2
+     cards." isn't cut off at 393 wide. The line box grows only up to three
+     lines, inside the strip's fixed-height middle slot (which centres it),
+     so the strip's height never depends on the text. */
   .center-zone__last-move {
+    display: -webkit-box;
     flex: 1;
     min-width: 0;
-    height: 20px;
+    max-height: calc(3 * 1.3em);
     margin: 0;
     padding-inline: var(--cu-space-2, 8px);
     overflow: hidden;
     font-size: var(--cu-text-sm, 14px);
-    line-height: 20px;
+    line-height: 1.3;
     color: var(--cu-muted, #b4a8be);
     text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow-wrap: anywhere;
   }
 </style>

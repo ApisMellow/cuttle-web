@@ -46,6 +46,13 @@ type MoveView struct {
 // dead-end SevenPick. Always a card that was on the board, so public to
 // both viewers — never redacted, unlike Index. The key is always emitted
 // (never omitted), which UnmarshalJSON below enforces on the restore path.
+//
+// Drawn is how many cards a 5 drew, on the entry whose apply resolved the
+// 5: the 5's own entry when nobody could counter, else the Decline or
+// Counter that closed its chain (history is append-only). The one who drew
+// is the 5's player. Null everywhere else, including a cancelled 5 (§2.7,
+// amended 2026-09-28). A count only, public to both viewers; the key is
+// always emitted.
 type AppliedMove struct {
 	Index       *int             `json:"index,omitempty"`
 	By          engine.PlayerID  `json:"by"`
@@ -53,6 +60,7 @@ type AppliedMove struct {
 	SubKind     *engine.MoveKind `json:"subKind"`
 	Card        *card.Card       `json:"card"`
 	TargetCard  *card.Card       `json:"targetCard"`
+	Drawn       *int             `json:"drawn"`
 	Description string           `json:"description"`
 	Seq         int              `json:"seq"`
 }
@@ -75,6 +83,11 @@ func (m *AppliedMove) UnmarshalJSON(data []byte) error {
 	if _, ok := probe["targetCard"]; !ok {
 		return errors.New(`missing required key "targetCard"`)
 	}
+	// Same rule for drawn (SPEC §2.7, amended 2026-09-28): a count or null,
+	// never an omitted key.
+	if _, ok := probe["drawn"]; !ok {
+		return errors.New(`missing required key "drawn"`)
+	}
 	type alias AppliedMove
 	var a alias
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -96,6 +109,10 @@ func redactHistory(history []AppliedMove, viewer engine.PlayerID) []AppliedMove 
 		} else if h.Index != nil {
 			idx := *h.Index
 			h.Index = &idx
+		}
+		if h.Drawn != nil {
+			n := *h.Drawn
+			h.Drawn = &n
 		}
 		out = append(out, h)
 	}

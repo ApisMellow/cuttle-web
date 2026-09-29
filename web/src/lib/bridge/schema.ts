@@ -112,6 +112,13 @@ export interface AppliedMove {
    * board, so public to both viewers. Always present as a key — never
    * omitted, even when null. (amended 2026-09-27) */
   targetCard: Card | null;
+  /** How many cards a 5 drew, on the entry whose apply resolved it: the 5's
+   * own entry when nobody could counter, else the Decline or Counter that
+   * closed its chain (history is append-only). The one who drew is the 5's
+   * player. null on every other entry, including a cancelled 5. A count
+   * only, public to both viewers. Always present as a key. (amended
+   * 2026-09-28) */
+  drawn: number | null;
 }
 
 export interface Envelope {
@@ -379,6 +386,12 @@ function validateAppliedMove(value: unknown, path: string): AppliedMove {
         fail(`${path}.targetCard`, 'must be present (a Card or null) — it is never omitted (SPEC §2.7, amended 2026-09-27)');
       }
       return validateCardOrNull(obj.targetCard, `${path}.targetCard`);
+    })(),
+    drawn: (() => {
+      if (!Object.prototype.hasOwnProperty.call(obj, 'drawn')) {
+        fail(`${path}.drawn`, 'must be present (a count or null) — it is never omitted (SPEC §2.7, amended 2026-09-28)');
+      }
+      return obj.drawn === null ? null : expectNumber(obj.drawn, `${path}.drawn`);
     })(),
   };
   if (Object.prototype.hasOwnProperty.call(obj, 'index')) {

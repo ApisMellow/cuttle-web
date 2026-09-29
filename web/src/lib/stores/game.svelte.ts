@@ -343,10 +343,11 @@ export class GameStore {
   }
 
   /**
-   * SPEC §5.7 restore. R4.4: a `v !== 1` (or otherwise malformed) snapshot is
-   * discarded without a crash, straight to the home screen with a brief
-   * notice, and no migration is attempted — `engine.restore()` is never even
-   * called in that case. Carry-over 3: a valid snapshot's `dealer`/`names`
+   * SPEC §5.7 restore. R4.4: a snapshot whose `v` is outside {1, 2} (or that
+   * is otherwise malformed) is discarded without a crash, straight to the
+   * home screen with a brief notice — `engine.restore()` is never even
+   * called in that case. A v1 save is migrated to v2 by `decodeSnapshot`
+   * (ruling 2026-09-28) and the bridge migrates its engine state. Carry-over 3: a valid snapshot's `dealer`/`names`
    * are pushed back into the session store. Carry-over 7: the persisted
    * `curtain` is re-raised before any view is exposed.
    *

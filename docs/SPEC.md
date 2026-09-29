@@ -394,6 +394,17 @@ export interface AppliedMove {
                                      // move. Always a card on the board, so public to both viewers.
                                      // Needed by the §4.6 recap, because Describe omits the target for Jack
                                      // steals and one-offs. (amended 2026-09-27, ApisMellow)
+  drawn: number | null;             // how many cards a 5 drew, on the entry whose apply RESOLVED the 5: the
+                                     // 5's own entry when nobody could counter, else the Decline or Counter
+                                     // that closed its chain with an even length (history is append-only, so
+                                     // an earlier entry is never rewritten). The one who drew is the 5's
+                                     // player (the chain origin's `by`). null on every other entry, including
+                                     // a cancelled 5. A count only — never the drawn cards — and public to
+                                     // both viewers (hand and deck counts are public, R7). Always present as
+                                     // a key; restore rejects a missing key or a count on an entry that
+                                     // resolved no 5. Read ONLY by the board's idle line (§4.6): the recap
+                                     // and the counter prompt never read it (R14). (amended 2026-09-28,
+                                     // playtest friction)
 }
 
 export interface Envelope {
@@ -737,7 +748,7 @@ Note the double flip at `apply.go:395-399`: `Active` is set to `Pending.PlayedBy
 
 The curtain must reveal nothing and must not be dismissible by an accidental brush.
 
-- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", a label, and the reveal control. The label is **"Your turn"** for `turn` and `seven-return`, and the single neutral **"Your response"** for `counter`, `acknowledge` and `discard` *(amended 2026-09-27, ApisMellow)*. The handoff is on screen while the *acting* player still holds the phone, so distinct labels ("You may counter" vs "Acknowledge" vs "Choose discards") would tell them whether the opponent held a 2 — the exact R14 leak §4.3 forbids. The machine's internal `HandoffReason` may still distinguish the three; it must not reach the DOM before the reveal gate in any form (text, attribute, class, `data-testid`, or layout). What the receiver needs to do is shown only after the reveal. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
+- **Handoff screen.** Full-viewport opaque surface. Content: "Pass the phone to `NAME`", a label, and the reveal control. *(Amended 2026-09-28, playtest friction: "Pass the phone to" only on a phone — a coarse pointer on a screen under 768 px in either dimension; everywhere else, a laptop included, the device-neutral "Pass to `NAME`". It depends on the device alone, never on game state or the reason, so it can't vary between turns.)* The label is **"Your turn"** for `turn` and `seven-return`, and the single neutral **"Your response"** for `counter`, `acknowledge` and `discard` *(amended 2026-09-27, ApisMellow)*. The handoff is on screen while the *acting* player still holds the phone, so distinct labels ("You may counter" vs "Acknowledge" vs "Choose discards") would tell them whether the opponent held a 2 — the exact R14 leak §4.3 forbids. The machine's internal `HandoffReason` may still distinguish the three; it must not reach the DOM before the reveal gate in any form (text, attribute, class, `data-testid`, or layout). What the receiver needs to do is shown only after the reveal. **Zero game state** — no counts, no scores, no scrap, nothing that changes between turns. A rendering that varies with hidden state is a leak even if no card is drawn. The board must be unmounted, not merely covered: a covered board is one CSS bug away from visible, and screenshots taken during a judged playtest have caught exactly this class of defect.
 - **Reveal gate.** Two-step by default, matching R13's "tap and hold (or tap through a two-step reveal)":
   - **Primary — press-and-hold**, 600 ms, with a progress ring. `pointerdown` starts, `pointerup`/`pointercancel`/`pointerleave` abort and reset.
   - **Fallback — two-step tap** ("I'm `NAME`" → "Show my hand"), used when `prefers-reduced-motion: reduce` is set, when the pointer is coarse-less (desktop, R19's "functioning afterthought"), and as the accessible path. Both are always present in the DOM; the hold path is progressive enhancement.
@@ -765,7 +776,7 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `PlayPermanent` (non-Jack) | "`NAME` played Q♦ as a permanent." |
 | `PlayPermanent` (Jack) | "`NAME` stole your 10♥ with J♣." |
 | `Scuttle` | "`NAME` scuttled your 7♥ with 9♠." (target card comes from the frozen pre-state description) |
-| `OneOff` | "`NAME` played 9♥ as a one-off." (+ target clause when `Target` is set) |
+| `OneOff` | "`NAME` played 9♥ as a one-off." (+ target clause when `Target` is set). A 5 adds what it does: "`NAME` played 5♥ as a one-off to draw 2 cards." *(amended 2026-09-28)* — the card's effect, never the count: on the real counter-window path the recap shows the 5 before it resolves, so the count (`drawn`, §2.7) is never read here (R14). |
 | `Counter` | "`NAME` countered with 2♠." |
 | `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, ApisMellow)*. A synthetic ack (§4.3) writes no history, so a "`NAME` let it resolve." line would appear only when the opponent really held a 2, and would even change whether a recap screen appears at all. |
 | `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, ApisMellow: was "revealed two cards", which is false when the deck held one card.)* |
@@ -777,6 +788,12 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 **Presentation.** At most the last 6 entries, oldest first; if more, a "+N earlier" affordance expands the rest. Each line pairs with a theme `mini` card face where a card is named. Dismissed by one tap; the dismissal is also what stamps `lastSeenSeq`.
 
 **The idle last-move line** on the board's center strip (R20, `docs/design.md` §6) is the **last `isRecapVisible` entry in `history`**, never raw `lastMove` *(amended 2026-09-28, W13 GameScreen review)*. `lastMove` can be a filtered-out kind such as `Decline`, and showing it told the acting player whether the opponent had held a 2.
+
+*Amended 2026-09-28 (playtest friction), `lastMoveLine` in `lib/recap.ts`:* the line is the formatter's sentence for the viewer, for the viewer's own move too ("You played 7♥ for points."), never the raw engine description. When a 5 has resolved, it reports the count from `drawn` (§2.7): "Alice played 5♥ as a one-off and drew 2 cards.", or, when the chain ended on a counter, "Alice countered with 2♥. Alice drew 2 cards." It reads `drawn` only on entries from the last visible one onward (anything after it is a Decline), so the real-window path (`drawn` on the Decline) and the synthetic path (`drawn` on the 5) read the same line (R14); the board only renders after the counter prompt, so the 5 has resolved on both. A count only; no line ever names a drawn card.
+
+**Player-facing wording for engine strings** *(amended 2026-09-28, playtest friction)*. No raw `Describe` text reaches the screen. The recap and idle line use the formatter above. The viewer's own options — the staging bar, the ambiguity chooser (§6.4) and the counter buttons (§4.3) — go through `plainMoveText` (`lib/recap.ts`): an instruction plus, where the card does something, one short clause from the engine's `RULES.md` ("Scuttle their 4♣ with 9♣: both cards go to the scrap.", "Play 5♥ as a one-off: draw 2 cards.", "Counter with 2♦: stop their card."). A 9 follows the engine, not RULES.md's wording (`engine/apply.go` v0.2.0 case Nine returns a point card to its original `Owner`; logged as C-1 in `docs/loop-log/engine-issues.md`): where the UI knows the target (`nineReturn`, from public board state) it says "that card goes back to their hand, and they can’t play it next turn" or, for a card they stole from you, "the card they stole comes back to your hand"; without that context, "that card goes back to its owner’s hand (a card they stole from you comes back to you)". A 7's dead-end scrap reads "Scrap X: no revealed card can be played." An unrecognised string passes through sentence-cased rather than throwing, because it labels a control the player still has to use. The error and boot-failure screens show plain copy and at most a code. The test hook's `description` stays raw engine text (it is not UI).
+
+**Result screen** *(amended 2026-09-28, playtest friction)*: under the headline, one third-person line naming the winning move, `winningMoveLine` in `lib/recap.ts`, from the last visible history entry and the winner's final points and goal (read off the scoreboard): "Alice won by reaching 21 with the 10♥.", "Blake won by reaching 22, stealing the 9♥ with the J♣.", "Alice won by playing the K♠, which lowered the goal to 14."; any other move falls back to "`NAME` won with N points. Last move: …". Every card it names was played face up; no hand renders (R2).
 
 ---
 
@@ -893,6 +910,8 @@ lib/bridge/
 
 Content is the engine repo's `RULES.md` (PRD R17), converted to a Svelte component **at build time** by a small script in `scripts/`, so there is no runtime Markdown parser in the bundle and no risk of the rules text drifting from the engine that implements them. The build script records the engine commit it read from and stamps it in the footer of the screen.
 
+*Amended 2026-09-28 (playtest friction):* shipped first as a short hand-written cheat-sheet (`RulesSheet.svelte`, opened by the home screen's Rules button): how to win, one line per one-off rank (Ace, 2, 3, 4, 5, 6, 7, 9), a turn, points and scuttling, and the permanents (the 9 line covers a stolen card coming home; the Jack line notes a 9 also ends a steal; the 7 line covers the dead-end scrap). The sheet is a dialog: focus moves into it on open and back to the Rules button on close, and Escape closes it. Every line is sourced from the engine's `RULES.md` at v0.2.0 and cross-checked against `engine/apply.go`; no suit glyphs (§5.6 rule 1: suits are named). The build-time `RULES.md` screen with the engine-commit footer (R17.1) and in-game access from the menu (R17.2) are still open.
+
 Presented as a scroll-locked overlay above the board. **It never unmounts `GameScreen`** ("without disturbing the game"), and it is reachable from the menu in every phase including mid-curtain — a player who forgets a rule while deciding whether to counter must not have to leave the decision. Opening it does not stamp `lastSeenSeq` and does not dismiss a recap.
 
 ### 5.6 Card art theme seam
@@ -962,7 +981,7 @@ Rules that keep the seam real:
 const SNAPSHOT_KEY = 'cuttle-web:game';
 
 interface Snapshot {
-  v: 1;                       // schema version — bump on ANY shape change
+  v: 2;                       // schema version — bump on ANY shape change (2 since 2026-09-28: AppliedMove.drawn)
   savedAt: string;            // ISO 8601
   engineState: unknown;       // opaque: __cuttleSnapshot() output, never inspected by TS
   history: AppliedMove[];
@@ -981,7 +1000,8 @@ interface Snapshot {
 - **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
 - **The opening curtain is persisted too** *(amended 2026-09-28, W25 playtest fixes, merged `b8238db`; no `v` bump, the shape is unchanged)*. `newGame()` writes the snapshot with `viewer` = the first actor and `curtain` = the opening `handoff`. The decoder normally rejects a curtain other than `none` over an empty `history`; it now allows `handoff` with reason `turn` and `reveal` there, since those are the opening deal's. On restore, a curtain with no move behind it is treated as the opening deal's (§4.2).
 - **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, then to the last-used names in settings *(R10, 2026-09-28)*, so a reload with no saved game still shows the last names used. Those live under the settings key, never in this snapshot; the snapshot shape is unchanged.
-- **Version mismatch (`v !== 1`) discards the snapshot** and returns to the home screen with a brief notice. No migration code in v1; a bump means the old game is gone. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
+- **Version mismatch discards the snapshot** and returns to the home screen with a brief notice. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
+- **v1 → v2 migration** *(orchestrator ruling, 2026-09-28; supersedes "no migration code")*. v2 differs from v1 only in `AppliedMove.drawn` (§2.7); the engine's state layout is unchanged, so a v1 save is upgraded rather than discarded, and family-beta games survive the upgrade. `decodeSnapshot` accepts `v` ∈ {1, 2}: for v1 it adds `drawn: null` to every `history` entry and every recap-curtain entry (an entry that already carries `drawn` is not a real v1 save: malformed). The opaque `engineState` keeps its own v1 tag; the bridge's `restore` accepts engine-snapshot `v` ∈ {1, 2} and, for v1, injects `"drawn": null` into each raw history entry before the strict decode, then validates as usual. The next write is v2 inside and out. A migrated save shows no draw count for 5s resolved before the upgrade. Any other `v` is still a version mismatch. Evidence: a genuine base-commit v1 engine snapshot (`internal/wasm/testdata/snapshot-v1-bce9fb2.json`) and live saves at every curtain kind rewritten as v1 (`web/tests/unit/snapshot-migration.test.ts`).
 - **The session tally is not persisted** (R3, PRD §4). It lives in `session.svelte.ts` and dies with the tab. A restored game restores the game only.
 - **The card style is not part of the snapshot** *(2026-09-28, round 8 themes)*. It lives in settings (§5.6 rule 5), so the same game saved under Classic and under Mythic is identical apart from `savedAt`, and a save made under either style resumes the same under the other.
 - "New game" from the menu requires a confirm before clearing (R4), and the confirm names the in-progress game.
@@ -1132,6 +1152,8 @@ Canonical cases, all present in the golden scenario of §2.6:
 - **A 7 sub-pick** where one revealed card affords several plays — resolved on the board by the sub-move's own target step.
 
 The genuinely ambiguous residue is small, which is the point: **most disambiguation falls out of zone-and-target geometry, and the chooser is the backstop.** When it appears it is a modal list of the candidate `descriptions[i]` strings (engine-authored, §2.7), each tappable, plus Cancel. Selecting one goes straight to `staged` — the chooser does not skip the confirm step.
+
+*Amended 2026-09-28 (playtest friction):* each option renders as one plain line saying what it does, via `plainMoveText` (§4.6), e.g. a 9 on a point card offers "Scuttle their 4♣ with 9♣: both cards go to the scrap." and "Play 9♣ as a one-off: that card goes back to their hand, and they can’t play it next turn." (or, on a card they stole from you, "…: the card they stole comes back to your hand."). A chooser holds at most two options: its candidates share one card and one target, and the engine offers at most a Scuttle plus one targeted one-off for that pair. The sheet overlays the hand and action bar at the bottom of the screen instead of taking a slot in the game screen's column, so the board never shrinks and the player's own Permanents row stays visible (`docs/design.md` §6).
 
 ### 6.5 R11's invariant, stated as the property to test
 

@@ -15,6 +15,7 @@ interface RenderProps {
   candidates: ChooserCandidate[];
   onchoose?: (index: number) => void;
   oncancel?: () => void;
+  describe?: (candidate: ChooserCandidate) => string;
 }
 
 function render(props: RenderProps): HTMLDivElement {
@@ -41,11 +42,36 @@ const CANDIDATES: ChooserCandidate[] = [
 ];
 
 describe('AmbiguityChooser', () => {
-  it('lists every candidate description verbatim, engine text and all', () => {
+  it('amended 2026-09-28: each option is one plain line saying what it does, never the raw engine text', () => {
     const el = render({ candidates: CANDIDATES });
     const text = el.querySelector('[data-testid="ambiguity-chooser"]')!.textContent ?? '';
-    expect(text).toContain('play A♥ as one-off');
-    expect(text).toContain('play A♥ as point card');
+    expect(text).toContain('Play A♥ as a one-off: scrap every point card.');
+    expect(text).toContain('Play A♥ for points.');
+    expect(text).not.toContain('as point card');
+    expect(text).not.toContain('as one-off');
+  });
+
+  it('the 9 on a point card: scuttle and one-off each say what happens (playtest friction 2026-09-28)', () => {
+    const el = render({
+      candidates: [
+        { index: 6, description: 'play 9♣ as one-off' },
+        { index: 7, description: "scuttle opponent's 4♣ with 9♣" },
+      ],
+    });
+    const option = (i: number): string =>
+      el.querySelector(`[data-testid="ambiguity-chooser-option-${i}"]`)?.textContent?.trim() ?? '';
+    expect(option(6)).toBe('Play 9♣ as a one-off: that card goes back to its owner’s hand (a card they stole from you comes back to you).');
+    expect(option(7)).toBe('Scuttle their 4♣ with 9♣: both cards go to the scrap.');
+  });
+
+  it('review B2: a describe prop (GameScreen\'s, which knows the 9 case) sets the option text', () => {
+    const el = render({
+      candidates: [{ index: 6, description: 'play 9♣ as one-off' }],
+      describe: () => 'Play 9♣ as a one-off: the card they stole comes back to your hand.',
+    });
+    expect(el.querySelector('[data-testid="ambiguity-chooser-option-6"]')?.textContent?.trim()).toBe(
+      'Play 9♣ as a one-off: the card they stole comes back to your hand.',
+    );
   });
 
   it('tapping a candidate calls onchoose with its engine index, not its list position', () => {

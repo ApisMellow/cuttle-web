@@ -39,6 +39,7 @@ export const Kind = {
  * THE factory: every AppliedMove in these tests is built through this.
  * `targetCard` (SPEC §2.7, amended 2026-09-27) defaults to null (an
  * untargeted move); pass `targetCard: { Rank, Suit }` to override.
+ * `drawn` (SPEC §2.7, amended 2026-09-28) defaults to null (no 5 resolved).
  */
 export function appliedMove(overrides: Partial<AppliedMove> & { by: PlayerId; kind: MoveKind }): AppliedMove {
   return {
@@ -47,6 +48,7 @@ export function appliedMove(overrides: Partial<AppliedMove> & { by: PlayerId; ki
     seq: 1,
     subKind: null,
     targetCard: null,
+    drawn: null,
     ...overrides,
   };
 }

@@ -100,7 +100,14 @@ function openingEnvelope(): Envelope {
 
 /** A game-over envelope from player 0's apply. Carries both hands, visible (N3). */
 function gameOverEnvelope(outcome: { winner: PlayerId | null; stalemate: boolean }): Envelope {
-  const lastMove = appliedMove({ by: 0, kind: Kind.PlayPoint, seq: 1, index: 0, card: { Rank: 10, Suit: 2 } });
+  const lastMove = appliedMove({
+    by: 0,
+    kind: Kind.PlayPoint,
+    seq: 1,
+    index: 0,
+    card: { Rank: 10, Suit: 2 },
+    description: 'play 10♥ as point card',
+  });
   return envelope({
     state: playerView({
       viewer: 0,
@@ -149,7 +156,7 @@ function click(el: HTMLElement, id: string): void {
 
 function resultSnapshot(): Snapshot {
   return {
-    v: 1,
+    v: 2,
     savedAt: '2026-09-27T00:00:00.000Z',
     engineState: '"fake-engine-state"',
     // A curtain other than `none` needs at least one applied move (snapshot.ts isWellFormed).
@@ -236,9 +243,21 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     expect(ids).toEqual(['final-scores', 'rematch', 'result-home', 'result-screen', 'tally']);
     expect(shell.querySelectorAll('svg, img, canvas').length).toBe(0);
     // Every text node on the screen, verbatim: headline, tally, button. Nothing else.
+    // Amended 2026-09-28: plus the winning-move line, which names only the
+    // card played face up in history (the 10♥), never a hand card.
     const texts = [...shell.querySelectorAll('h1, p, button')].map((n) => n.textContent?.trim());
-    expect(texts).toEqual(['Alice wins!', 'Alice 1 – Blake 0', 'Final score: Alice 0 – Blake 0', 'Rematch', 'Home']);
-    expect(shell.textContent?.replace(/\s+/g, '')).toBe('Alicewins!Alice1–Blake0Finalscore:Alice0–Blake0RematchHome');
+    expect(texts).toEqual([
+      'Alice wins!',
+      'Alice won by reaching 0 with the 10♥.',
+      'Alice 1 – Blake 0',
+      'Final score: Alice 0 – Blake 0',
+      'Rematch',
+      'Home',
+    ]);
+    expect(shell.textContent?.replace(/\s+/g, '')).toBe(
+      'Alicewins!Alicewonbyreaching0withthe10♥.Alice1–Blake0Finalscore:Alice0–Blake0RematchHome',
+    );
+    expect(shell.textContent?.match(/(?:10|[2-9]|[AJQK])[♣♦♥♠]/g)).toEqual(['10♥']);
   });
 });
 

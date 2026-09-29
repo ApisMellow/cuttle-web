@@ -73,6 +73,31 @@ describe('HandoffPanel content (SPEC §4.5, design.md §8)', () => {
     expect(r.querySelector('[data-testid="reveal-two-step"]')?.textContent?.trim()).toBe("I'm Alice");
   });
 
+  it('amended 2026-09-28: off a phone the prompt is device-neutral, "Pass to NAME"', () => {
+    const queries: string[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => {
+      queries.push(query);
+      return { matches: false, media: query } as MediaQueryList;
+    });
+    try {
+      const r = root(render(base()));
+      expect(r.querySelector('.gate__prompt')?.textContent).toBe('Pass to');
+      expect(r.textContent).not.toContain('phone');
+      expect(queries.some((q) => q.includes('pointer: coarse'))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('amended 2026-09-28: on a phone (coarse pointer, small screen) it keeps "Pass the phone to"', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: true, media: query }) as MediaQueryList);
+    try {
+      expect(root(render(base())).querySelector('.gate__prompt')?.textContent).toBe('Pass the phone to');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('the label slot is always present, even when empty (fixed-height slot)', () => {
     const el = render(base({ label: '' }));
     const slot = root(el).querySelector('.gate__label');

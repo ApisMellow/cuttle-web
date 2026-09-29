@@ -276,7 +276,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     expect(q(el, 'zone-points')?.dataset.state).toBe('highlighted');
     expect(q(el, 'zone-permanents')?.dataset.state).toBe('highlighted');
     await click(el, 'zone-permanents');
-    expect(q(el, 'staging-bar')?.textContent).toContain('7: play 8♦ as permanent');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play 8♦ as glasses: you see their hand.');
     expect(q(el, 'seven-card-0')?.dataset.staged).toBe('true');
     bridge.apply.mockImplementation(
       (): BridgeResult =>
@@ -290,7 +290,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     const el = await start(sevenEnvelope());
     await click(el, 'seven-card-1');
     await click(el, 'point-1-0');
-    expect(q(el, 'staging-bar')?.textContent).toContain('7: play J♣ (steal opponent point)');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play J♣ to steal that point card.');
   });
 
   it('a dead-end reveal is scrapped by tapping the lit scrap pile, not by opening the browser', async () => {
@@ -304,7 +304,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     await click(el, 'seven-card-0');
     await click(el, 'scrap-pile');
     expect(q(el, 'scrap-browser')).toBeNull();
-    expect(q(el, 'staging-bar')?.textContent).toContain('scrap 8♦');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Scrap 8♦: no revealed card can be played.');
   });
 
   it('PRIVACY: the panel is absent for a viewer who is not the actor, even at phase SevenChoosing', async () => {
@@ -463,7 +463,7 @@ describe('GameScreen ScrapBrowser (R6)', () => {
 
     await click(el, 'scrap-pick-2');
     expect(q(el, 'scrap-browser')).toBeNull();
-    expect(q(el, 'staging-bar')?.textContent).toContain('play 3♣ as one-off — take 9♣ from the scrap');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play 3♣ as a one-off: take 9♣ from the scrap.');
     expect(bridge.apply).not.toHaveBeenCalled();
     bridge.apply.mockImplementation(
       (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 0 }), history: [] }),

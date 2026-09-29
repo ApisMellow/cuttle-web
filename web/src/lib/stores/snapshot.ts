@@ -15,8 +15,17 @@ import type { CurtainState } from './curtain.svelte';
 
 export const SNAPSHOT_KEY = 'cuttle-web:game';
 
-/** SPEC §5.7: "bump on ANY shape change" — to this shape, or to the engine's state layout. */
-export const SNAPSHOT_VERSION = 1 as const;
+/**
+ * SPEC §5.7: "bump on ANY shape change" — to this shape, or to the engine's
+ * state layout. 2 since AppliedMove gained `drawn` (SPEC §2.7, amended
+ * 2026-09-28). A v1 save is migrated on read (`decodeSnapshot`, ruling
+ * 2026-09-28: the engine state layout is unchanged), so family-beta games
+ * survive; the next write is v2.
+ */
+export const SNAPSHOT_VERSION = 2 as const;
+
+/** The one older version `decodeSnapshot` upgrades (SPEC §5.7, ruling 2026-09-28). */
+const MIGRATABLE_VERSION = 1;
 
 export interface Snapshot {
   v: typeof SNAPSHOT_VERSION;
@@ -114,11 +123,44 @@ function isWellFormed(obj: Record<string, unknown>): obj is Record<keyof Snapsho
 /**
  * Decodes a raw localStorage string into a Snapshot.
  *
- * R4.4: a `v` other than SNAPSHOT_VERSION is reported as the
- * 'version-mismatch' failure variant — never thrown, never migrated. The
+ * R4.4: a `v` other than SNAPSHOT_VERSION (or the migratable v1) is
+ * reported as the 'version-mismatch' failure variant — never thrown. The
  * caller (GameStore) is responsible for discarding the stored value and
  * surfacing a notice; this function only classifies.
+ *
+ * v1 -> v2 (ruling 2026-09-28): v1 history and recap entries lack
+ * `drawn`; each gets `drawn: null` (a v1 save predates the count, and null
+ * is what v2 holds where no 5 resolved). The opaque `engineState` keeps its
+ * own v1 tag; the bridge's restore migrates it the same way (§5.7) and never
+ * a TS reader. An entry that already carries `drawn` is not a real v1 save:
+ * malformed.
  */
+function withNullDrawn(entries: unknown): unknown[] | null {
+  if (!Array.isArray(entries)) return null;
+  const out: unknown[] = [];
+  for (const entry of entries) {
+    if (!isPlainObject(entry)) {
+      out.push(entry); // shape errors are isWellFormed's to report
+      continue;
+    }
+    if ('drawn' in entry) return null;
+    out.push({ ...entry, drawn: null });
+  }
+  return out;
+}
+
+function migrateV1(v1: Record<string, unknown>): Record<string, unknown> | null {
+  const history = Array.isArray(v1.history) ? withNullDrawn(v1.history) : v1.history;
+  if (history === null) return null;
+  let curtain = v1.curtain;
+  if (isPlainObject(curtain) && curtain.kind === 'recap' && Array.isArray(curtain.entries)) {
+    const entries = withNullDrawn(curtain.entries);
+    if (entries === null) return null;
+    curtain = { ...curtain, entries };
+  }
+  return { ...v1, v: SNAPSHOT_VERSION, history, curtain };
+}
+
 export function decodeSnapshot(raw: string | null): DecodeResult {
   if (!raw) return { ok: false, reason: 'empty' };
 
@@ -134,16 +176,18 @@ export function decodeSnapshot(raw: string | null): DecodeResult {
   }
 
   // Version check BEFORE any structural check: a v-mismatched record may not
-  // even have this shape (SPEC §5.7 "no migration code in v1; a bump means
-  // the old game is gone"), so malformed-vs-version-mismatch would otherwise
-  // be ambiguous for an old-shaped record that also fails isWellFormed.
-  if (parsed.v !== SNAPSHOT_VERSION) {
+  // even have this shape, so malformed-vs-version-mismatch would otherwise
+  // be ambiguous for an old-shaped record that also fails isWellFormed. v1
+  // is the one older version that migrates (SPEC §5.7, ruling 2026-09-28).
+  if (parsed.v !== SNAPSHOT_VERSION && parsed.v !== MIGRATABLE_VERSION) {
     return { ok: false, reason: 'version-mismatch', detail: `found v=${JSON.stringify(parsed.v)}` };
   }
+  const current = parsed.v === MIGRATABLE_VERSION ? migrateV1(parsed) : parsed;
+  if (current === null) return { ok: false, reason: 'malformed', detail: 'v1 entry already carries drawn' };
 
-  if (!isWellFormed(parsed)) {
+  if (!isWellFormed(current)) {
     return { ok: false, reason: 'malformed', detail: 'missing or invalid field' };
   }
 
-  return { ok: true, snapshot: parsed as unknown as Snapshot };
+  return { ok: true, snapshot: current as unknown as Snapshot };
 }

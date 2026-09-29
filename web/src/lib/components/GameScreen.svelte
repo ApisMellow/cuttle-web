@@ -35,7 +35,7 @@
 
   import type { Card, Envelope, PlayerId } from '../bridge/schema';
   import { MoveKind, Phase } from '../enums';
-  import { counterPromptEntries, formatRecapLine, isRecapVisible } from '../recap';
+  import { counterPromptEntries, lastMoveLine, nineReturn, plainMoveText } from '../recap';
   import { game } from '../stores/game.svelte';
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
@@ -123,26 +123,22 @@
   // R10.1: the deck is live exactly when the engine offers Draw.
   const deckEnabled = $derived(board !== null && board.legalMoves.some((m) => m.Kind === MoveKind.Draw));
 
-  // R20: the viewer's own last move verbatim (R20.1); the opponent's as the
-  // §4.6 per-viewer line. Built from the last `isRecapVisible` history entry,
-  // never from `lastMove` (R14): after a real counter window `lastMove` is the
-  // Decline, after a synthetic ack it is the move itself, so reading it would
-  // tell the acting player whether the opponent held a 2.
-  const lastMoveText = $derived.by(() => {
-    const env = board;
-    if (env === null) return '';
-    const history = game.history;
-    let i = history.length - 1;
-    while (i >= 0 && !isRecapVisible(history[i])) i--;
-    if (i < 0) return '';
-    const last = history[i];
-    if (last.by === env.state.viewer) return last.description;
-    try {
-      return formatRecapLine(last, env.state.viewer, session.names);
-    } catch {
-      return '';
-    }
-  });
+  // R20: the board's centre line, `lastMoveLine` (lib/recap.ts, SPEC §4.6
+  // amended 2026-09-28): the last `isRecapVisible` history entry as a
+  // sentence for this viewer — "You played 7♥ for points." for the viewer's
+  // own move, never the raw engine description — plus a resolved 5's draw
+  // count. Never from `lastMove` (R14): after a real counter window
+  // `lastMove` is the Decline, after a synthetic ack it is the move itself,
+  // so reading it would tell the acting player whether the opponent held a 2.
+  const lastMoveText = $derived(board === null ? '' : lastMoveLine(game.history, board.state.viewer, session.names));
+
+  // Plain text for one of the viewer's own options (SPEC §4.6, §6.4). A 9
+  // says which way its target goes — back to them, or (a card they stole)
+  // back to you — read from public board state (review B2).
+  function optionText(index: number | null, description: string): string {
+    const move = index === null || board === null ? undefined : board.legalMoves[index];
+    return plainMoveText(description, move === undefined || board === null ? undefined : nineReturn(move, board.state));
+  }
 
   // ---- Desktop keyboard (W25) ---------------------------------------------
   // A click that a key press produced (Enter/Space on a focused button)
@@ -317,7 +313,7 @@
     <div class="game-screen__action-bar">
       {#if staging.stagedDescription !== null}
         <StagingBar
-          description={staging.stagedDescription}
+          description={optionText(staging.stagedIndex, staging.stagedDescription)}
           disabled={staging.inert}
           onconfirm={() => {
             staging.confirm().catch(report);
@@ -351,6 +347,7 @@
         candidates={staging.chooser.candidates}
         onchoose={(index) => staging.choose(index)}
         oncancel={() => staging.cancel()}
+        describe={(candidate) => optionText(candidate.index, candidate.description)}
       />
     {/if}
 
@@ -379,6 +376,21 @@
     background: var(--cu-ink);
     color: var(--cu-pearl);
     font-family: var(--cu-font-ui);
+  }
+
+  /* Amended 2026-09-28 (playtest friction, design.md §4): on a desktop
+     the 560 px column sits in a lot of empty space and its phone-sized text
+     reads small, so the type scale steps up for everything inside the game
+     screen. Desktop only: both phone targets (393x852, 430x932) are far
+     below the width gate, so their layout is untouched. Card sizes are not
+     touched here. */
+  @media (min-width: 1024px) and (min-height: 700px) {
+    .game-screen {
+      --cu-text-xs: 15px;
+      --cu-text-sm: 17px;
+      --cu-text-md: 19px;
+      --cu-text-lg: 28px;
+    }
   }
 
   .game-screen__sr-only {

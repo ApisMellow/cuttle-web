@@ -26,6 +26,7 @@
   import { settings } from '../stores/settings.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
   import { DEFAULT_THEME_ID, listThemeChoices } from '../theme';
+  import RulesButton from './RulesButton.svelte';
 
   let name0 = $state('');
   let name1 = $state('');
@@ -180,7 +181,7 @@
     <button type="button" data-testid="new-game" class="home-screen__button" onclick={handleNewGameClick}>
       New game
     </button>
-    <button type="button" class="home-screen__button" disabled>Rules</button>
+    <RulesButton />
   </div>
 
   {#if showAbandonConfirm}

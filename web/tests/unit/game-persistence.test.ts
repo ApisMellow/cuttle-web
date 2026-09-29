@@ -57,7 +57,7 @@ describe('persisted snapshot shape', () => {
     session = new SessionStore();
   });
 
-  it('writes under the SPEC §5.7 key with v:1 and the current names/seed/dealer/curtain', async () => {
+  it('writes under the SPEC §5.7 key with v:2 and the current names/seed/dealer/curtain', async () => {
     session.setNames('Alice', 'Blake');
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 1, viewer: 1 }) }), // dealer derives to 0
@@ -69,7 +69,7 @@ describe('persisted snapshot shape', () => {
     const decoded = decodeSnapshot(storage.getItem(SNAPSHOT_KEY));
     expect(decoded.ok).toBe(true);
     if (!decoded.ok) return;
-    expect(decoded.snapshot.v).toBe(1);
+    expect(decoded.snapshot.v).toBe(2);
     expect(decoded.snapshot.names).toEqual(['Alice', 'Blake']);
     expect(decoded.snapshot.seed).toBe('7');
     expect(decoded.snapshot.dealer).toBe(0);
