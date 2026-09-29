@@ -252,8 +252,37 @@ describe('winningMoveLine: the result screen names the winning move (R2, amended
   });
 
   it('any other last move: points plus the move, third person for everyone', () => {
+    const ace = appliedMove({ by: 1, kind: Kind.OneOff, card: { Rank: 1, Suit: 0 }, description: 'play A♣ as one-off' });
+    expect(winningMoveLine([ace], 0, NAMES, 21)).toMatch(/^Alice won with 21 points\. Last move: Blake played A♣ as a one-off/);
+  });
+
+  it('the winner did not move: a 2 that scrapped a Jack says the win came at the start of their turn', () => {
+    const two = appliedMove({
+      by: 0,
+      kind: Kind.OneOff,
+      card: { Rank: 2, Suit: 2 },
+      targetCard: { Rank: 11, Suit: 3 },
+      description: 'play 2♥ as one-off',
+    });
+    const expected = 'Blake reached 15 of 14 when Alice\u2019s 2\u2665 scrapped the J\u2660, and won at the start of their turn.';
+    expect(winningMoveLine([two], 1, NAMES, 15, 14)).toBe(expected);
+    // A trailing Decline changes nothing.
+    expect(winningMoveLine([two, decline(1, 2)], 1, NAMES, 15, 14)).toBe(expected);
+    expect(winningMoveLine([two], 1, NAMES, 15)).toBe(
+      'Blake reached 15 when Alice\u2019s 2\u2665 scrapped the J\u2660, and won at the start of their turn.',
+    );
+  });
+
+  it('the winner did not move: a 6 says every permanent was scrapped, naming no other card', () => {
     const six = appliedMove({ by: 1, kind: Kind.OneOff, card: { Rank: 6, Suit: 0 }, description: 'play 6♣ as one-off' });
-    expect(winningMoveLine([six], 0, NAMES, 21)).toBe('Alice won with 21 points. Last move: Blake played 6♣ as a one-off.');
+    const line = winningMoveLine([six], 0, NAMES, 15, 14);
+    expect(line).toBe('Alice reached 15 of 14 when Blake\u2019s 6\u2663 scrapped every permanent, and won at the start of their turn.');
+    expect(line.match(CARD_TOKEN)).toEqual(['6♣']);
+  });
+
+  it('the winner did not move, but the last move is not a 2 or a 6: the generic line stays', () => {
+    const nine = appliedMove({ by: 1, kind: Kind.OneOff, card: { Rank: 9, Suit: 0 }, description: 'play 9♣ as one-off' });
+    expect(winningMoveLine([nine], 0, NAMES, 21)).toMatch(/^Alice won with 21 points\. Last move: Blake played 9♣ as a one-off/);
   });
 
   it('skips a trailing Decline to find the move, and gives no line for a stalemate or empty history', () => {

@@ -577,6 +577,25 @@ export function winningMoveLine(
       return `${who} won by playing the ${perm[1]}, which lowered the goal to ${threshold}${tail}`;
     }
   }
+  // Engine v0.2.1: points gained during the opponent's turn (a 2 popping the
+  // opponent's Jack, or a 6 returning stolen points) no longer win off-turn;
+  // the player wins at the start of their own turn, so the winner may not be
+  // the mover. Say so for a 2 or 6 one-off. Only the played card and a
+  // board-visible target are named, never a hand card.
+  if (entry.by !== winner && isOneOffEntry(entry)) {
+    const fromSeven = entry.kind === KIND.SevenPick;
+    const text = fromSeven ? entry.description.replace(/^7: /, '') : entry.description;
+    const oneOff = text.match(new RegExp(`^play (${CARD}) as one-off$`));
+    const rank = oneOff === null ? '' : rankOf(oneOff[1]);
+    const mover = `${names[entry.by]}\u2019s`;
+    const reachedOf = `${who} reached ${reached}`;
+    const tail = ', and won at the start of their turn.';
+    if (oneOff !== null && rank === '2') {
+      const target = entry.targetCard === null ? 'a Jack' : `the ${cardGlyph(entry.targetCard)}`;
+      return `${reachedOf} when ${mover} ${oneOff[1]} scrapped ${target}${tail}`;
+    }
+    if (oneOff !== null && rank === '6') return `${reachedOf} when ${mover} ${oneOff[1]} scrapped every permanent${tail}`;
+  }
   const total = threshold === undefined ? `${points} points` : `${points} points of ${threshold}`;
   try {
     return `${who} won with ${total}. Last move: ${formatNeutralLine(entry, names, history)}`;
