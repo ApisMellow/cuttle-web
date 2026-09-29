@@ -47,9 +47,9 @@ attached evidence.
   `$(go env GOROOT)/lib/wasm/wasm_exec.js` (Go 1.24+ path) at build time
   and must match the Go version that compiled the `.wasm`.
 - `go:embed all:web/dist` requires `web/dist` to exist at compile time —
-  that is why `web/dist/index.html` is a committed placeholder. The
-  `.gitignore` needs `!web/dist/` BEFORE content negations, because `dist/`
-  excludes the directory itself and git will not descend into it.
+  so `web/dist/` is untracked and fully gitignored. `scripts/ensure-dist.sh`
+  (called by `scripts/ci.sh`) writes a minimal placeholder `index.html` when
+  none exists; run it before a bare `go build` or `go test` on a fresh clone.
 - Workbox's default `maximumFileSizeToCacheInBytes` is 2 MiB — the raw
   `.wasm` is silently skipped by precache at that default. Raise it (§5.8).
 
@@ -133,9 +133,8 @@ its own repo root, so calling it by absolute path tests that tree.
   `CUTTLE_E2E_PORT`.
 - Under CI, Playwright `retries: 2` can hide a flaky test. `flaky` or
   "retry #N" in the Playwright summary is a finding, not a pass.
-- `web/dist/index.html` is a committed placeholder that any `vite build`
-  overwrites. The overwritten file is never committed. If a build touched
-  it, say so in the report; the git agent restores it.
+- `web/dist/` is untracked and gitignored, so a `vite build` never dirties
+  the tree. `ci.sh` creates a placeholder there only when it is missing.
 - `*.svelte.test.ts` files are not matched by eslint's `**/*.svelte.ts`
   block. Check the `lint` row after adding one.
 
