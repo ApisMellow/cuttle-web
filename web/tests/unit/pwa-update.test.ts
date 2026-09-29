@@ -6,14 +6,16 @@ import { describe, expect, it } from 'vitest';
 
 import { createUpdatePolicy, type UpdateScreen } from '../../src/lib/pwa/update';
 
-function harness(opts: { typing?: boolean; start?: UpdateScreen } = {}) {
+function harness(opts: { typing?: boolean; start?: UpdateScreen; waiting?: boolean } = {}) {
   const calls: string[] = [];
   let typing = opts.typing ?? false;
   let now = 1_000_000;
+  let waiting = opts.waiting ?? false;
   const policy = createUpdatePolicy({
     activate: () => calls.push('activate'),
     reload: () => calls.push('reload'),
     checkForUpdate: () => calls.push('check'),
+    hasWaiting: () => waiting,
     isTyping: () => typing,
     now: () => now,
   });
@@ -21,6 +23,9 @@ function harness(opts: { typing?: boolean; start?: UpdateScreen } = {}) {
   return {
     policy,
     calls,
+    setWaiting(v: boolean) {
+      waiting = v;
+    },
     setTyping(v: boolean) {
       typing = v;
     },
@@ -127,5 +132,100 @@ describe('pwa update policy', () => {
     h.advance(61_000);
     h.policy.visible();
     expect(h.calls).toEqual(['check', 'check', 'check']);
+  });
+
+  describe('a waiting worker the events never reported (long-lived page)', () => {
+    it('is found on reaching Home', () => {
+      const h = harness({ start: 'game' });
+      h.setWaiting(true);
+      expect(h.actions()).toEqual([]);
+      h.policy.setScreen('home');
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('is found when the app returns to the foreground on a safe screen', () => {
+      const h = harness({ start: 'home' });
+      h.setWaiting(true);
+      h.policy.visible();
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('is found when typing ends', () => {
+      const h = harness({ start: 'home', typing: true });
+      h.setWaiting(true);
+      h.policy.poke();
+      expect(h.actions()).toEqual([]);
+      h.setTyping(false);
+      h.policy.poke();
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('is found while loading (the app opens onto an already-waiting worker)', () => {
+      const h = harness({ start: 'loading', waiting: true });
+      h.policy.poke();
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('never activates or reloads during a game, even when the foreground check sees it', () => {
+      const h = harness({ start: 'game', waiting: true });
+      h.policy.visible();
+      h.policy.poke();
+      h.policy.controllerChanged();
+      h.policy.visible();
+      expect(h.actions()).toEqual([]);
+    });
+
+    it('after Home found it, the takeover reloads once the new worker is in control', () => {
+      const h = harness({ start: 'home', waiting: true });
+      h.policy.poke();
+      h.policy.controllerChanged();
+      expect(h.actions()).toEqual(['activate', 'reload']);
+    });
+  });
+
+  describe('Rematch is a safe point', () => {
+    it('with a waiting worker, activates, returns true, and reloads when the worker takes control', () => {
+      const h = harness({ start: 'result', waiting: true });
+      h.policy.poke();
+      expect(h.actions()).toEqual([]);
+      expect(h.policy.rematch()).toBe(true);
+      expect(h.actions()).toEqual(['activate']);
+      h.policy.controllerChanged();
+      expect(h.actions()).toEqual(['activate', 'reload']);
+    });
+
+    it('also applies an update the events reported (updateReady) while on the result screen', () => {
+      const h = harness({ start: 'result' });
+      h.policy.updateReady();
+      expect(h.actions()).toEqual([]);
+      expect(h.policy.rematch()).toBe(true);
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('with nothing waiting, returns false and does nothing', () => {
+      const h = harness({ start: 'result' });
+      expect(h.policy.rematch()).toBe(false);
+      expect(h.actions()).toEqual([]);
+    });
+
+    it('if the takeover stalls, a second tap plays on and the result screen stops counting as safe', () => {
+      const h = harness({ start: 'result', waiting: true });
+      expect(h.policy.rematch()).toBe(true);
+      expect(h.policy.rematch()).toBe(false);
+      h.policy.setScreen('game');
+      h.policy.controllerChanged();
+      h.policy.visible();
+      expect(h.actions()).toEqual(['activate']);
+    });
+
+    it('when the worker already took control at Home, the tap just reloads', () => {
+      const h = harness({ start: 'home', waiting: true });
+      h.policy.poke();
+      h.policy.setScreen('result');
+      h.policy.controllerChanged();
+      expect(h.actions()).toEqual(['activate']);
+      expect(h.policy.rematch()).toBe(true);
+      expect(h.actions()).toEqual(['activate', 'reload']);
+    });
   });
 });

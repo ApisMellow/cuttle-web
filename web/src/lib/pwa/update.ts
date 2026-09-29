@@ -32,6 +32,12 @@ export interface UpdatePolicyDeps {
   reload(): void;
   /** Ask the browser to look for a new sw.js. Must not throw. */
   checkForUpdate(): void;
+  /**
+   * True when the registration holds a waiting worker. Read straight off the
+   * registration (workbox-window stops reporting updates found more than 60 s
+   * after registration, so its events alone can miss one in a long session).
+   */
+  hasWaiting(): boolean;
   /** True while the player is typing (a focused text field). */
   isTyping(): boolean;
   now(): number;
@@ -48,6 +54,15 @@ export interface UpdatePolicy {
   visible(): void;
   /** Something that might end "typing" happened; re-check the safe point. */
   poke(): void;
+  /**
+   * The player tapped Rematch on the result screen: a safe point, since the
+   * finished game is saved and no game is in progress. If an update is
+   * waiting, starts the takeover and returns true; the caller must then NOT
+   * start the game itself, but leave it to the reloaded page. Returns false
+   * when there is nothing to apply (or a takeover already started and did not
+   * finish, so a second tap just plays).
+   */
+  rematch(): boolean;
 }
 
 export function createUpdatePolicy(deps: UpdatePolicyDeps): UpdatePolicy {
@@ -57,9 +72,10 @@ export function createUpdatePolicy(deps: UpdatePolicyDeps): UpdatePolicy {
   let reloadPending = false;
   let reloaded = false;
   let lastCheck = -Infinity;
+  let rematchTakeover = false;
 
   function safe(): boolean {
-    return SAFE_SCREENS.has(screen) && !deps.isTyping();
+    return rematchTakeover || (SAFE_SCREENS.has(screen) && !deps.isTyping());
   }
 
   function check(): void {
@@ -76,6 +92,7 @@ export function createUpdatePolicy(deps: UpdatePolicyDeps): UpdatePolicy {
       deps.reload();
       return;
     }
+    if (!ready && deps.hasWaiting()) ready = true;
     if (ready && !activated) {
       activated = true;
       deps.activate();
@@ -102,6 +119,21 @@ export function createUpdatePolicy(deps: UpdatePolicyDeps): UpdatePolicy {
     },
     poke() {
       settle();
+    },
+    rematch() {
+      if (rematchTakeover) {
+        // The takeover did not finish; stop treating the result screen as safe.
+        rematchTakeover = false;
+        return false;
+      }
+      if (reloaded) return false;
+      if (!ready && !deps.hasWaiting()) return false;
+      ready = true;
+      rematchTakeover = true;
+      // settle() sends whichever step is next: the reload if the new worker
+      // already took control, else the activation.
+      settle();
+      return true;
     },
   };
 }

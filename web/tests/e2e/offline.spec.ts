@@ -32,9 +32,12 @@ const TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-// "Build B": the same build with a byte-different sw.js, which is all a
-// browser needs to install it as an update. It also answers a 'build?'
-// message so a test can tell which worker controls the page.
+// "Build B": a byte-different sw.js (all a browser needs to install it as an
+// update) whose precache list also differs from A's: index.html has new
+// content and a new revision, so installing B fetches a changed file and
+// activating it drops A's entry. It also answers a 'build?' message so a
+// test can tell which worker controls the page.
+const BUILD_B_MARKER = '<!-- build B -->';
 const BUILD_B_SUFFIX = `
 self.addEventListener('message', (e) => { if (e.data === 'build?') e.source.postMessage('B'); });
 `;
@@ -65,7 +68,12 @@ test.beforeAll(async () => {
       return;
     }
     let body: Buffer | string = readFileSync(file);
-    if (rel === 'sw.js' && serveBuildB) body = body.toString('utf8') + BUILD_B_SUFFIX;
+    if (serveBuildB && rel === 'sw.js') {
+      const patched = body.toString('utf8').replace(/(url:"index\.html",revision:")[0-9a-f]+"/, '$1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"');
+      if (patched === body.toString('utf8')) throw new Error('sw.js has no index.html precache entry to change');
+      body = patched + BUILD_B_SUFFIX;
+    }
+    if (serveBuildB && rel === 'index.html') body = body.toString('utf8') + BUILD_B_MARKER;
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(rel)] ?? 'application/octet-stream',
       'Cache-Control': 'no-cache',
@@ -278,6 +286,21 @@ test('R18 updates: a new build waits through a game, takes over at Home, and the
       }),
   );
   expect(build).toBe('B');
+
+  // Build B's precache list really differs: the shell in the cache is B's,
+  // and A's copy of it is gone.
+  const cachedShells = await page.evaluate(async () => {
+    const texts: string[] = [];
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      for (const req of await cache.keys()) {
+        if (new URL(req.url).pathname.endsWith('/index.html')) texts.push(await (await cache.match(req))!.text());
+      }
+    }
+    return texts;
+  });
+  expect(cachedShells).toHaveLength(1);
+  expect(cachedShells[0]).toContain(BUILD_B_MARKER);
 
   // The save from build A resumes on build B, unchanged.
   expect(await page.evaluate(() => localStorage.getItem('cuttle-web:game'))).toBe(save);
