@@ -102,6 +102,7 @@ function richView(): PlayerView {
         },
       ],
       permanents: [{ Rank: 8, Suit: 3 }],
+      watched: false,
     },
     opponent: {
       handCount: 3,
@@ -370,7 +371,7 @@ describe('Board visual states — highlighted / staged / dimmedHand', () => {
     flushSync();
     expect(faceState(testid(host, 'hand-card-0'))).toBe('staged');
 
-    props.view = { ...view, you: { ...view.you, frozenHandIndices: [0] } };
+    props.view = { ...view, you: { ...view.you, frozenHandIndices: [0], watched: false } };
     flushSync();
     expect(faceState(testid(host, 'hand-card-0'))).toBe('frozen');
   });

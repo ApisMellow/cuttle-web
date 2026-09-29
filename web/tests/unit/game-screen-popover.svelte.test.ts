@@ -77,7 +77,7 @@ function p0View(overrides: Partial<PlayerView> = {}): PlayerView {
     viewer: 0,
     active: 0,
     phase: Phase.Normal,
-    you: { hand: [ACE, KING], frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand: [ACE, KING], frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 2, hand: [...BLAKE_HAND], points: [], permanents: [] },
     ...overrides,
   });

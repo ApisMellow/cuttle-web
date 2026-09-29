@@ -59,7 +59,7 @@ export function playerView(overrides: Partial<PlayerView> = {}): PlayerView {
     passesInARow: 0,
     winner: null,
     stalemate: false,
-    you: { hand: [], frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 0, hand: null, points: [], permanents: [] },
     deckCount: 30,
     scrap: [],

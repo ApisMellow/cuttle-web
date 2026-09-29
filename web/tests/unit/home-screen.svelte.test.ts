@@ -15,11 +15,12 @@
 // the e2e suite instead (this round's brief: R1.3 and R4.3 are e2e
 // acceptance items).
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import HomeScreen from '../../src/lib/components/HomeScreen.svelte';
 import { game } from '../../src/lib/stores/game.svelte';
 import { session } from '../../src/lib/stores/session.svelte';
+import { SETTINGS_KEY, settings } from '../../src/lib/stores/settings.svelte';
 import { SNAPSHOT_KEY, encodeSnapshot, type Snapshot } from '../../src/lib/stores/snapshot';
 
 let host: HTMLDivElement | undefined;
@@ -57,9 +58,13 @@ beforeEach(() => {
   localStorage.clear();
   resetGameSingleton();
   session.setNames('', ''); // resets the shared singleton back to defaults
+  settings.lastNames = null; // the settings singleton read storage once, at import
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function resumeButton(el: HTMLElement): HTMLButtonElement | null {
   return el.querySelector<HTMLButtonElement>('[data-testid="resume"]');
@@ -190,5 +195,61 @@ describe('W25: name fields stay filled', () => {
 
   it('default names leave the fields blank (the placeholder shows)', () => {
     expect(inputs(render())).toEqual(['', '']);
+  });
+});
+
+describe('R10: names survive a reload with no saved game', () => {
+  function inputs(el: HTMLElement): [string, string] {
+    return [
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-0"]')!.value,
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-1"]')!.value,
+    ];
+  }
+
+  it('with no saved game and a fresh session, the last-used names from settings fill the fields', () => {
+    // A reload: the settings store read these names from storage at boot.
+    settings.setLastNames('Alice', 'Blake');
+    expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    expect(inputs(render())).toEqual(['Alice', 'Blake']);
+  });
+
+  it('a blank last-used name stays blank, so its placeholder shows', () => {
+    settings.setLastNames('Alice', '');
+    const el = render();
+    expect(inputs(el)).toEqual(['Alice', '']);
+    expect(el.querySelector<HTMLInputElement>('[data-testid="name-input-1"]')!.placeholder).toBe('Player 2');
+  });
+
+  it('names set this session win over the last-used names', () => {
+    settings.setLastNames('Blake', 'Alice');
+    session.setNames('Alice', 'Blake');
+    expect(inputs(render())).toEqual(['Alice', 'Blake']);
+  });
+
+  it('a saved game still wins over the last-used names', () => {
+    settings.setLastNames('Blake', 'Alice');
+    localStorage.setItem(SNAPSHOT_KEY, encodeSnapshot(VALID_SNAPSHOT));
+    expect(inputs(render())).toEqual(['Alice', 'Blake']);
+  });
+
+  it('New game saves the typed names to settings, never to the game snapshot key', () => {
+    const newGame = vi.spyOn(game, 'newGame').mockResolvedValue(undefined);
+    const el = render();
+    const [a, b] = [
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-0"]')!,
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-1"]')!,
+    ];
+    a.value = ' Alice ';
+    a.dispatchEvent(new Event('input'));
+    b.value = 'Blake';
+    b.dispatchEvent(new Event('input'));
+    flushSync();
+    newGameButton(el).click();
+    flushSync();
+
+    expect(newGame).toHaveBeenCalledTimes(1);
+    expect(settings.lastNames).toEqual(['Alice', 'Blake']);
+    expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!).lastNames).toEqual(['Alice', 'Blake']);
+    expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
 });

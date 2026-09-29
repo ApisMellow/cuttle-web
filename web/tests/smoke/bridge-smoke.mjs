@@ -195,6 +195,11 @@ function assertNoLeak(viewer, view, snapshot) {
         `viewer ${viewer} leaked opponent card ${JSON.stringify(hidden)}`);
     }
   }
+  // R10: you.watched is true exactly when the OTHER player holds glasses,
+  // i.e. exactly when their view carries this viewer's hand (SPEC §3.2).
+  const otherHasGlasses = (snapshot.state.Players[1 - viewer].Permanents ?? []).some((c) => c.Rank === 8);
+  assert.equal(view.state.you.watched, otherHasGlasses,
+    `viewer ${viewer}: you.watched=${view.state.you.watched} disagrees with the opponent's glasses`);
   for (const hidden of snapshot.state.Deck ?? []) {
     assert.equal(JSON.stringify(view.state).includes(JSON.stringify(hidden)), false,
       `viewer ${viewer} leaked deck card ${JSON.stringify(hidden)}`);

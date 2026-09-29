@@ -122,7 +122,7 @@ describe('carry-over 7: a persisted curtain is re-raised before the store expose
       // The bridge restore() call succeeds and would happily hand back a
       // full PlayerView for the persisted viewer — the STORE must still not
       // expose it while curtain.kind !== 'none'.
-      restore: () => envelope({ state: playerView({ active: 1, viewer: 1, you: { hand: [{ Rank: 3, Suit: 1 }], frozenHandIndices: [], points: [], permanents: [] } }) }),
+      restore: () => envelope({ state: playerView({ active: 1, viewer: 1, you: { hand: [{ Rank: 3, Suit: 1 }], frozenHandIndices: [], points: [], permanents: [], watched: false } }) }),
     });
     const store = new GameStore({ engine, storage, session });
 
@@ -210,7 +210,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
 
   function viewerEnvelope(viewer: 0 | 1, active: 0 | 1, phase: number, history = [oneOff]) {
     return envelope({
-      state: playerView({ viewer, active, phase: phase as 0 | 1 | 2 | 3 | 4, you: { hand: [SECRET], frozenHandIndices: [], points: [], permanents: [] } }),
+      state: playerView({ viewer, active, phase: phase as 0 | 1 | 2 | 3 | 4, you: { hand: [SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
       history,
     });
   }

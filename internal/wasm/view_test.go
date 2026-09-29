@@ -266,7 +266,7 @@ func TestSPEC2_7_PlayerViewWireKeys(t *testing.T) {
 	view := decodeGeneric(t, mustJSON(t, viewFor(state, engine.P2)))
 	assertKeys(t, "PlayerView", view, "viewer", "active", "phase", "passesInARow", "winner",
 		"stalemate", "you", "opponent", "deckCount", "scrap", "scoreboard", "sevenRevealed", "pending")
-	assertKeys(t, "you", view["you"].(map[string]any), "hand", "frozenHandIndices", "points", "permanents")
+	assertKeys(t, "you", view["you"].(map[string]any), "hand", "frozenHandIndices", "points", "permanents", "watched")
 	assertKeys(t, "opponent", view["opponent"].(map[string]any), "handCount", "hand", "points", "permanents")
 	assertKeys(t, "scoreboard", view["scoreboard"].(map[string]any), "you", "opponent")
 	assertKeys(t, "scoreboard.you", view["scoreboard"].(map[string]any)["you"].(map[string]any),
@@ -400,6 +400,40 @@ func TestSPEC3_2_GlassesOwnerSeesOpponentHandOnly(t *testing.T) {
 	other := viewFor(state, engine.P2)
 	if other.Opponent.Hand != nil {
 		t.Fatal("the glasses owner's opponent must not see the owner's hand")
+	}
+}
+
+// you.watched is the bridge's own answer to "can the opponent see my hand?":
+// the same viewerHasGlasses predicate that gates opponent.hand, applied to
+// the other side. It must mirror the gate exactly, in every phase, so the
+// being-watched marker can never disagree with what the watcher is sent.
+func TestSPEC3_2_YouWatchedMirrorsTheOpponentsGlassesGate(t *testing.T) {
+	for phase, state := range statesByPhase() {
+		for _, ownerGlasses := range [][]card.Card{nil, {c(card.Queen, card.Hearts)}, {c(card.King, card.Clubs), c(card.Eight, card.Spades)}} {
+			for _, owner := range []engine.PlayerID{engine.P1, engine.P2} {
+				st := state
+				st.Players = state.Players
+				p := st.Players[owner]
+				p.Permanents = ownerGlasses
+				st.Players[owner] = p
+
+				ownerView := viewFor(st, owner)
+				otherView := viewFor(st, owner.Other())
+				// The owner's opponent is watched exactly when the owner can see.
+				if otherView.You.Watched != (ownerView.Opponent.Hand != nil) {
+					t.Fatalf("phase %d owner %d perms %v: watched=%v but owner sees hand=%v",
+						phase, owner, ownerGlasses, otherView.You.Watched, ownerView.Opponent.Hand != nil)
+				}
+				// Nobody is watched by their own glasses.
+				if ownerView.You.Watched {
+					t.Fatalf("phase %d owner %d: the glasses owner must not be marked watched", phase, owner)
+				}
+				wire := decodeGeneric(t, mustJSON(t, otherView))
+				if _, ok := wire["you"].(map[string]any)["watched"].(bool); !ok {
+					t.Fatalf("phase %d: you.watched must be a boolean on the wire", phase)
+				}
+			}
+		}
 	}
 }
 

@@ -85,7 +85,7 @@ describe('stuck curtain: engine.view fails leaving the reveal (SPEC §2.9)', () 
   it('routes to the error screen (board and curtain gone), and New game recovers', async () => {
     const deal = () =>
       envelope({
-        state: playerView({ viewer: 0, active: 0, you: { hand: [{ Rank: 5, Suit: 0 }], frozenHandIndices: [], points: [], permanents: [] } }),
+        state: playerView({ viewer: 0, active: 0, you: { hand: [{ Rank: 5, Suit: 0 }], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
         legalMoves: [{ Kind: Kind.Draw, Card: null, HandIndex: 0, Target: null, JackTarget: null, ScrapIndex: 0, DiscardA: 0, DiscardB: 0, SubMove: null }],
         descriptions: ['draw a card'],
       });

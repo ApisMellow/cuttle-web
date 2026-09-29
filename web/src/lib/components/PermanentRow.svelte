@@ -103,8 +103,14 @@
      (card-geometry.css) instead of a hard-coded `* 1.4` — that literal was
      the pre-W17 ratio and had drifted from the card's real (now ~1.3)
      shape. */
+  /* R10: the row wraps rather than scrolling. A hidden scrollbar let a
+     sixth permanent (K K Q Q plus two sideways glasses at 393 wide) sit
+     off the end of the row with nothing to say it was there; wrapping puts
+     it on a second line, so every permanent is always on the table. The
+     common rows (up to Q + K + two glasses) still hold one line. */
   .permanent-row__cards {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     flex: 1;

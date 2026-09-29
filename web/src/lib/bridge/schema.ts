@@ -60,6 +60,11 @@ export interface PlayerView {
     frozenHandIndices: number[];
     points: PointEntry[];
     permanents: Card[];
+    /** True while the OPPONENT has glasses in play, so the opponent's view
+     * carries this viewer's hand (§3.2, amended 2026-09-28). The bridge
+     * computes it with the same predicate that gates `opponent.hand`; the
+     * being-watched marker renders from this flag and nothing else. */
+    watched: boolean;
   };
   opponent: {
     handCount: number;
@@ -331,6 +336,7 @@ function validatePlayerView(value: unknown, path: string): PlayerView {
         validatePointEntry(v, `${path}.you.points[${i}]`),
       ),
       permanents: validateCardArray(you.permanents, `${path}.you.permanents`),
+      watched: expectBoolean(you.watched, `${path}.you.watched`),
     },
     opponent: {
       handCount: expectNumber(opponent.handCount, `${path}.opponent.handCount`),

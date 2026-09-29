@@ -143,7 +143,7 @@ function discardView(hand: Card[]): PlayerView {
     viewer: 1,
     active: 1,
     phase: Phase.AwaitingDiscard,
-    you: { hand, frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand, frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 4, hand: null, points: [], permanents: [] },
     pending: { playedBy: 0, card: FOUR_D, target: null, counterChain: [] },
   });
@@ -175,7 +175,7 @@ describe('GameScreen DiscardPicker (R15)', () => {
     bridge.apply.mockImplementation(
       (): BridgeResult =>
         envelope({
-          state: playerView({ viewer: 1, active: 1, you: { hand: [NINE_C], frozenHandIndices: [], points: [], permanents: [] } }),
+          state: playerView({ viewer: 1, active: 1, you: { hand: [NINE_C], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
           lastMove: appliedMove({ by: 1, kind: Kind.DiscardPair, seq: 1, index: 1 }),
           history: [appliedMove({ by: 1, kind: Kind.DiscardPair, seq: 1, index: 1 })],
         }),
@@ -217,7 +217,7 @@ describe('GameScreen DiscardPicker (R15)', () => {
   it('the picker does not render outside a discard position', async () => {
     const el = await start(
       envelope({
-        state: playerView({ you: { hand: [FIVE_S], frozenHandIndices: [], points: [], permanents: [] } }),
+        state: playerView({ you: { hand: [FIVE_S], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
         legalMoves: [mv({ Kind: Kind.Draw })],
         descriptions: ['draw a card'],
       }),
@@ -236,7 +236,7 @@ function sevenView(overrides: Partial<PlayerView> = {}): PlayerView {
     viewer: 0,
     active: 0,
     phase: Phase.SevenChoosing,
-    you: { hand: [FIVE_S], frozenHandIndices: [], points: [], permanents: [] },
+    you: { hand: [FIVE_S], frozenHandIndices: [], points: [], permanents: [], watched: false },
     opponent: { handCount: 3, hand: null, points: [point(NINE_C, 1)], permanents: [] },
     scrap: [{ Rank: 7, Suit: 2 }],
     sevenRevealed: [EIGHT_D, JACK_C],
@@ -361,7 +361,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
             active: 1,
             sevenRevealed: null,
             pending: null,
-            you: { hand: [FIVE_S], frozenHandIndices: [], points: [point(EIGHT_D, 0)], permanents: [] },
+            you: { hand: [FIVE_S], frozenHandIndices: [], points: [point(EIGHT_D, 0)], permanents: [], watched: false },
           }),
           lastMove: { ...pick, index: 0 },
           history: [{ ...pick, index: 0 }],
@@ -373,7 +373,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
           state: playerView({
             viewer: 1,
             active: 1,
-            you: { hand: [KING_H], frozenHandIndices: [], points: [point(NINE_C, 1)], permanents: [] },
+            you: { hand: [KING_H], frozenHandIndices: [], points: [point(NINE_C, 1)], permanents: [], watched: false },
             opponent: { handCount: 1, hand: null, points: [point(EIGHT_D, 0)], permanents: [] },
           }),
           lastMove: pick,
@@ -413,7 +413,7 @@ function threeEnvelope(): Envelope {
     state: playerView({
       viewer: 0,
       active: 0,
-      you: { hand: [KING_H, THREE_C], frozenHandIndices: [], points: [], permanents: [] },
+      you: { hand: [KING_H, THREE_C], frozenHandIndices: [], points: [], permanents: [], watched: false },
       scrap: SCRAP,
     }),
     legalMoves: [

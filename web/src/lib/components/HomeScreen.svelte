@@ -68,17 +68,26 @@
   // W25 (live playtest): keep the name fields filled. After a reload the
   // in-memory session is fresh, so the saved game's names (the snapshot
   // carries them, SPEC §5.7) fill the fields; otherwise the session's own
-  // names do, when someone has set them this session. A default
-  // ("Player 1"/"Player 2") stays blank so the placeholder shows.
+  // names do, when someone has set them this session. R10: with neither,
+  // the last-used names from settings do (they survive a reload with no
+  // saved game). A default ("Player 1"/"Player 2") or a blank stays blank
+  // so the placeholder shows.
   function prefill(names: readonly [string, string]): void {
     name0 = names[0] === 'Player 1' ? '' : names[0];
     name1 = names[1] === 'Player 2' ? '' : names[1];
   }
+  function namesToShow(): readonly [string, string] {
+    if (existingNames) return existingNames;
+    const setThisSession = session.names[0] !== 'Player 1' || session.names[1] !== 'Player 2';
+    return setThisSession ? session.names : (settings.lastNames ?? session.names);
+  }
   // Once, at mount, like peekSnapshot() above; the fields are the user's after that.
-  prefill(untrack(() => existingNames ?? session.names));
+  prefill(untrack(namesToShow));
 
   function startNewGame(): void {
     session.setNames(name0, name1);
+    // R10: remembered in settings (its own key), never in the game snapshot.
+    settings.setLastNames(name0, name1);
     void game.newGame();
   }
 

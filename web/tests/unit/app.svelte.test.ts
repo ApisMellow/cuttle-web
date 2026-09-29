@@ -108,7 +108,7 @@ function gameOverEnvelope(outcome: { winner: PlayerId | null; stalemate: boolean
       phase: Phase.GameOver,
       winner: outcome.winner,
       stalemate: outcome.stalemate,
-      you: { hand: HAND_CARDS, frozenHandIndices: [], points: [], permanents: [] },
+      you: { hand: HAND_CARDS, frozenHandIndices: [], points: [], permanents: [], watched: false },
       opponent: { handCount: OPPONENT_HAND.length, hand: OPPONENT_HAND, points: [], permanents: [] },
     }),
     lastMove,
@@ -397,7 +397,7 @@ describe('W25: New game starts behind the curtain (privacy, SPEC ยง3.3 rule 4, ย
     // Blake (P1) acts first; Alice is the one who tapped New game.
     const firstView = (p: PlayerId) =>
       envelope({
-        state: playerView({ viewer: p, active: 1, you: { hand: SECRET_HAND, frozenHandIndices: [], points: [], permanents: [] } }),
+        state: playerView({ viewer: p, active: 1, you: { hand: SECRET_HAND, frozenHandIndices: [], points: [], permanents: [], watched: false } }),
       });
     bridge.newGame.mockImplementation(() => firstView(1));
     bridge.view.mockImplementation((p: PlayerId) => firstView(p));

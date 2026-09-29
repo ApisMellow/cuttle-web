@@ -27,6 +27,18 @@ const cuttleGlobal = globalThis as CuttleGlobal;
 
 let readyPromise: Promise<void> | null = null;
 
+/**
+ * R10 (deploy safety, SPEC §2.3): the URL of one runtime-fetched engine file
+ * (`wasm_exec.js` or `cuttle.wasm`), under Vite's `base`, with the build's
+ * engine content token as a query string. The files keep fixed names in
+ * publicDir while the app's JS is content-hashed, so without the token a
+ * browser holding a cached old engine would pair it with new JS after a
+ * deploy, and every view would fail schema validation.
+ */
+export function engineAssetUrl(name: 'wasm_exec.js' | 'cuttle.wasm'): string {
+  return `${import.meta.env.BASE_URL}${name}?v=${encodeURIComponent(__CUTTLE_ENGINE_VERSION__)}`;
+}
+
 function whenReady(): Promise<void> {
   return new Promise((resolve) => {
     function poll() {
@@ -57,7 +69,7 @@ function loadWasmExec(): Promise<void> {
   // used by dev and scripts/ci.sh. Both files are served straight out of
   // publicDir (vite.config.ts), so Vite never rewrites a literal '/...'
   // string the way it rewrites index.html's own asset references.
-  const src = `${import.meta.env.BASE_URL}wasm_exec.js`;
+  const src = engineAssetUrl('wasm_exec.js');
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
@@ -83,7 +95,7 @@ export function ensureEngine(): Promise<void> {
     const go = new cuttleGlobal.Go();
     // W16: same subpath reasoning as loadWasmExec() above.
     const result = await WebAssembly.instantiateStreaming(
-      fetch(`${import.meta.env.BASE_URL}cuttle.wasm`),
+      fetch(engineAssetUrl('cuttle.wasm')),
       go.importObject,
     );
     void go.run(result.instance); // never await — resolves only when the Go program exits (§2.3)

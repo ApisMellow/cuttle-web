@@ -61,17 +61,17 @@ function sevenRoundTrip() {
   const sevenPublicEntry = appliedMove({ by: 0, kind: Kind.OneOff, seq: 1, card: { Rank: 7, Suit: 2 } });
   const handOf = (p: PlayerId) => (p === 0 ? [A_SECRET] : [O_SECRET]);
   const engine = createFakeEngine({
-    newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [] } }) }),
+    newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }) }),
     apply: vi.fn(() =>
       envelope({
-        state: playerView({ active: 0, viewer: 0, phase: Phase.SevenChoosing, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [] } }),
+        state: playerView({ active: 0, viewer: 0, phase: Phase.SevenChoosing, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
         lastMove: sevenMoverEntry,
         history: [sevenMoverEntry],
       }),
     ),
     view: vi.fn((p: PlayerId) =>
       envelope({
-        state: playerView({ active: 0, viewer: p, phase: Phase.SevenChoosing, you: { hand: handOf(p), frozenHandIndices: [], points: [], permanents: [] } }),
+        state: playerView({ active: 0, viewer: p, phase: Phase.SevenChoosing, you: { hand: handOf(p), frozenHandIndices: [], points: [], permanents: [], watched: false } }),
         history: [p === 0 ? sevenMoverEntry : sevenPublicEntry],
       }),
     ),
@@ -89,7 +89,7 @@ async function advanceUntil(store: GameStore, pred: () => boolean): Promise<void
 describe('carry-over 4: no PlayerView of the previous holder survives across a curtain', () => {
   it('after a turn-passing apply, the store exposes neither envelope nor view until the curtain resolves', async () => {
     const { storage, session } = setup();
-    const moverView = playerView({ active: 0, viewer: 0, you: { hand: [{ Rank: 5, Suit: 0 }], frozenHandIndices: [], points: [], permanents: [] } });
+    const moverView = playerView({ active: 0, viewer: 0, you: { hand: [{ Rank: 5, Suit: 0 }], frozenHandIndices: [], points: [], permanents: [], watched: false } });
     const postMoveEnvelope = envelope({
       state: playerView({ active: 1, viewer: 0 }), // apply() returns the MOVER's own envelope (§2.4)
       lastMove: appliedMove({ by: 0, kind: Kind.Draw, seq: 1 }),
@@ -371,7 +371,7 @@ describe('B1: the acknowledger\'s PlayerView does not survive the handoff back t
       apply: () => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.Normal }), lastMove: counter, history: [oneOff, counter] }),
       view: (p) =>
         envelope({
-          state: playerView({ active: 0, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [], frozenHandIndices: [], points: [], permanents: [] } }),
+          state: playerView({ active: 0, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
           history: [oneOff, p === 0 ? counter : counterPublic],
         }),
     });
@@ -464,10 +464,10 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
     const { storage, session } = setup();
     const drawMove = appliedMove({ by: 0, kind: Kind.Draw, seq: 1 });
     const view = vi.fn((p: PlayerId) =>
-      envelope({ state: playerView({ active: 1, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [A_SECRET], frozenHandIndices: [], points: [], permanents: [] } }), history: [drawMove] }),
+      envelope({ state: playerView({ active: 1, viewer: p, you: { hand: p === 1 ? [O_SECRET] : [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }), history: [drawMove] }),
     );
     const engine = createFakeEngine({
-      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [] } }) }),
+      newGame: () => envelope({ state: playerView({ active: 0, viewer: 0, you: { hand: [A_SECRET], frozenHandIndices: [], points: [], permanents: [], watched: false } }) }),
       apply: () => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] }),
       view,
     });
