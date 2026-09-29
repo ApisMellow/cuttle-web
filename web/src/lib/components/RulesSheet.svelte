@@ -4,12 +4,13 @@
   // and permanents work, in plain words.
   //
   // The win is checked as soon as a play resolves, not at the end of a
-  // turn (engine/apply.go v0.2.0 resolveOneOffWith checkWin, lines 773-776),
-  // and a 2 that pops a last Jack can win it for the card's owner mid-turn
-  // (lines 709-715) — hence "as soon as".
+  // turn — hence "as soon as". Engine v0.2.1: points that land on a
+  // player's side during the opponent's turn (a 2 popping the opponent's
+  // Jack, a 6 returning stolen points) no longer win off-turn; that player
+  // wins at the start of their next turn.
   //
   // Every line is sourced from the engine this build runs,
-  // github.com/ApisMellow/cuttle@v0.2.0: RULES.md ("Win Condition", "Hand
+  // github.com/ApisMellow/cuttle@v0.2.1: RULES.md ("Win Condition", "Hand
   // Limit", "Turn Structure", "One-Offs", "Permanents", "Notes"), checked
   // against engine/apply.go and engine/win.go. It is a summary, not the full
   // RULES.md text; the build-time RULES.md screen with the engine-commit
@@ -60,7 +61,7 @@
 
     <section>
       <h3>Win</h3>
-      <p>You win as soon as you have 21 or more points on your side (fewer with Kings in play).</p>
+      <p>You win as soon as you have 21 or more points on your side (fewer with Kings in play). Points that reach your side during their turn win at the start of your next turn instead.</p>
       <p>Each King you have lowers that goal: 1 King 14, 2 Kings 10, 3 Kings 7, 4 Kings 5.</p>
     </section>
 
