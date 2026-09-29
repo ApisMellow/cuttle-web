@@ -24,11 +24,9 @@
 //     read from the served DOM, fetch 200 under the subpath (W23,
 //     add-to-home-screen)
 //
-// No service-worker check: `vite-plugin-pwa` (SPEC §5.8, R18) isn't wired
-// up yet. "PWA/offline polish" is explicitly deferred past the family beta
-// (docs/loop-workflow.md §4.5), so there is no service worker to register
-// yet, under any base. When it lands, this script is where a
-// `navigator.serviceWorker.ready` + scope-prefix check belongs.
+// No service-worker check here: tests/e2e/offline.spec.ts builds for this
+// same subpath and checks the worker's scope, offline play and updates
+// (R18, SPEC §5.8), inside the gate.
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';

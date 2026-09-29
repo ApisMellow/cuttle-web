@@ -594,8 +594,8 @@ requirements:
     acceptance:
       - "bridge-smoke: the generated sw.js precache list includes cuttle.wasm and wasm_exec.js; the build fails loudly if either is missing (SPEC §5.8, §7.6 — guards the Workbox 2 MiB default silent-skip)"
     verify: [bridge-smoke]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (offline play, feat/offline-play, pending review): web/tests/smoke/precache-manifest.mjs, inside test:smoke, builds for /cuttle-web/ with the gallery copied in and reads the real sw.js via web/scripts/precache-manifest.mjs. It fails on a missing cuttle.wasm, wasm_exec.js, index.html, web manifest, icon, JS/CSS bundle, themes/index.json or any catalog-theme image; on an entry absent from the build; on any gallery/ entry; on a missing gallery fallback denylist or ?v= matcher; and on a worker that could skipWaiting or clientsClaim by itself. The checker's own failure paths are tested (a sw.js with the wasm and loader removed; a gallery entry). Red evidence: with maximumFileSizeToCacheInBytes removed, the build itself fails (vite-plugin-pwa 1.3.0: 'cuttle.wasm is 3.57 MB, and won't be precached') and all 7 smoke tests fail. The Pages workflow runs the same checker on the deployed dist before upload. Measured: 126 entries, 5,322,676 bytes."
     fails: 0
 
   - id: R18.3
@@ -604,8 +604,8 @@ requirements:
     acceptance:
       - "e2e-test: install the service worker, set the browser context offline, hard-reload, and complete a full turn including a WASM apply() call with no network requests succeeding (PRD R18, SPEC §5.8, §7.4 'R18 offline')"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (offline play, feat/offline-play, pending review): web/tests/e2e/offline.spec.ts builds for /cuttle-web/ and serves it on 127.0.0.1 at an OS-assigned port. 'R18.3: after one online visit…' waits for the worker (scope /cuttle-web/), goes offline, reloads, picks Mythic, plays a seed-42 game (Alice, Blake) through the opening reveal and two curtain passes with three wasm applies, asserts Mythic hand faces decoded, every response came from the worker and no request failed. 'a save made online resumes offline' passes the resume gate offline with the save byte-identical. 'R18 gallery' shows the gallery never gets the app shell. 'R18 updates' shows a new sw.js waits through a game (no reload, play continues), takes over at Home with one reload, and the build-A save resumes on build B unchanged. Red evidence: with the worker registration removed the offline test times out waiting for navigator.serviceWorker.ready; with 'game' treated as a safe screen the update test fails on a mid-game navigation; with the gallery denylist removed the gallery test fails. 'Hard-reload' read as a full reload (SPEC §7.4 note)."
     fails: 0
 
   - id: R18.4
@@ -777,14 +777,14 @@ requirements:
 
   - id: R22.4
     prd: R22
-    title: "Bitmap assets are runtime-cached, not precached"
+    title: "Bitmap themes are precached and play offline"
     acceptance:
-      - "e2e-test: the generated sw.js precache manifest (globPatterns) contains no bitmap-theme asset path; bitmap themes register only as a CacheFirst runtime route with an explicit cache name and entry cap, warmed on first use — this doubles as the R18 precache guard (SPEC §5.6, §7.6)"
-    verify: [e2e-test]
-    status: todo
-    evidence: ""
+      - "e2e-test: every image of every shipped catalog theme is in the generated sw.js precache list, and a game played offline in a bitmap theme renders its faces from the precache (SPEC §5.6, §5.8, §7.6; amended 2026-09-29, offline play — replaces 'runtime-cached, not precached')"
+    verify: [e2e-test, bridge-smoke]
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (offline play, feat/offline-play, pending review): web/tests/smoke/precache-manifest.mjs 'the precache holds … both card themes' (all 115 Mythic manifest and image paths, via themeImagePaths); web/tests/e2e/offline.spec.ts 'R18.3: after one online visit…' picks Mythic offline and asserts every hand-card image decoded with no network response."
     fails: 0
-    notes: "Not yet applicable (2026-09-28, round-08 themes): the app has no PWA plugin, so there is no sw.js and no precache manifest. Bitmap images are plain files loaded lazily per displayed card. Revisit when SPEC §5.8 lands."
+    notes: "Amended 2026-09-29 by the offline-play brief: a pass-and-play game must work fully offline in either card style, so bitmap themes are precached rather than runtime-cached. The R22.3 4 MB budget still applies."
 
   # ---------------------------------------------------------------------
   # R23 — Theme-layer integration
