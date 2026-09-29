@@ -1,0 +1,269 @@
+/* Mythic deck gallery. Standalone: no game code, no build step. */
+
+:root {
+  --felt: #1c1627;
+  --felt-deep: #120e1a;
+  --glow: #3a2c4d;
+  --ink: #efe5cf;
+  --muted: #a99dbd;
+  --gilt: #d6b05a;
+  --line: #3d3252;
+  --shadow: rgba(4, 2, 8, 0.72);
+  --slide-ease: cubic-bezier(0.2, 0.75, 0.2, 1);
+  --slide-time: 520ms;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --felt: #e9dfcb;
+    --felt-deep: #dccfb5;
+    --glow: #f6efe0;
+    --ink: #2a2035;
+    --muted: #65587a;
+    --gilt: #7f5f17;
+    --line: #c7b797;
+    --shadow: rgba(52, 36, 20, 0.38);
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="dark"] { color-scheme: dark; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; background: var(--felt-deep); color: var(--ink); }
+
+body {
+  font: 16px/1.5 "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  height: 100svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right))
+    env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
+  background:
+    radial-gradient(70% 55% at 50% 38%, var(--glow) 0%, transparent 70%),
+    var(--felt);
+  overflow: hidden;
+}
+
+:focus-visible { outline: 3px solid var(--gilt); outline-offset: 3px; border-radius: 6px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---- Masthead ---------------------------------------------------------- */
+
+.masthead {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding-block: 10px 6px;
+}
+.deck-name h1 {
+  margin: 0;
+  font: 400 30px/1 "IM Fell English SC", Georgia, serif;
+  color: var(--gilt);
+  letter-spacing: 0.02em;
+}
+.deck-name p {
+  margin: 2px 0 0;
+  font: italic 15px/1.2 "IM Fell English", Georgia, serif;
+  color: var(--muted);
+}
+.play {
+  flex: none;
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px;
+  border: 1px solid var(--gilt); border-radius: 999px;
+  color: var(--ink); text-decoration: none; font-weight: 500;
+  background: color-mix(in srgb, var(--gilt) 12%, transparent);
+}
+.play:hover { background: color-mix(in srgb, var(--gilt) 24%, transparent); }
+
+/* ---- Viewer ------------------------------------------------------------ */
+
+.viewer {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "stage" "plate" "index";
+}
+
+.stage {
+  grid-area: stage;
+  position: relative;
+  min-height: 0;
+  container-type: size;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.stage.dragging { cursor: grabbing; }
+
+.fallback { text-align: center; color: var(--muted); padding-top: 30vh; }
+
+/* Every card is stacked in the stage. The current card sits on top of the
+   one it slid over; cards further on wait off to the right, hidden. */
+.slide {
+  position: absolute; inset: 0; margin: 0;
+  display: grid; place-items: center;
+  padding-block: 8px;
+  visibility: hidden;
+  transform: translateX(112%) rotate(3deg);
+  transform-origin: 50% 90%;
+  transition:
+    transform var(--slide-time) var(--slide-ease),
+    filter var(--slide-time) var(--slide-ease),
+    visibility 0s linear var(--slide-time);
+}
+.slide.is-behind {
+  transform: scale(0.88) translateY(-2%);
+  filter: brightness(0.38) saturate(0.7);
+}
+.slide.is-current {
+  visibility: visible;
+  transform: none;
+  filter: none;
+  transition-delay: 0s, 0s, 0s;
+}
+/* The card it slid over stays beneath, dimmed, like a dealt pile. */
+.slide.is-shown,
+.slide.is-under { visibility: visible; transition-delay: 0s, 0s, 0s; }
+.stage.dragging .slide { transition: none; }
+
+.slide img {
+  display: block;
+  width: min(100cqw, (100cqh - 16px) * var(--ar));
+  height: auto;
+  aspect-ratio: var(--ar);
+  border-radius: clamp(8px, 2.6cqmin, 18px);
+  background: var(--felt-deep);
+  box-shadow:
+    0 2px 0 1px color-mix(in srgb, var(--gilt) 22%, transparent),
+    0 28px 60px -12px var(--shadow),
+    0 10px 22px -8px var(--shadow);
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* ---- Caption plate ----------------------------------------------------- */
+
+.plate {
+  grid-area: plate;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+  padding-block: 10px 6px;
+}
+.caption { text-align: center; min-width: 0; }
+.caption h2 {
+  margin: 0;
+  font: 400 28px/1.05 "IM Fell English SC", Georgia, serif;
+  color: var(--gilt);
+}
+.cap-sub {
+  margin: 2px 0 0;
+  font: italic 17px/1.25 "IM Fell English", Georgia, serif;
+}
+.cap-effect {
+  margin: 4px auto 0;
+  max-width: 38ch;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.35;
+  min-height: 2.7em;
+}
+.cap-count {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.step {
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: color-mix(in srgb, var(--felt-deep) 60%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+}
+.step svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.step:hover:not(:disabled) { border-color: var(--gilt); color: var(--gilt); }
+.step:disabled { opacity: 0.3; cursor: default; }
+
+/* ---- Thumbnail index --------------------------------------------------- */
+
+.index {
+  grid-area: index;
+  min-height: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  margin-inline: -16px;
+  padding: 4px 16px 8px;
+}
+.thumbs {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; gap: 6px;
+  width: max-content;
+}
+.thumbs li { display: flex; }
+.thumb {
+  display: block; padding: 0; margin: 0;
+  height: 72px;
+  border: 2px solid transparent; border-radius: 7px;
+  background: none; cursor: pointer;
+  opacity: 0.62;
+}
+.thumb img {
+  display: block; height: 100%; width: auto;
+  aspect-ratio: var(--ar);
+  border-radius: 5px;
+  background: var(--felt-deep);
+}
+.thumb:hover { opacity: 0.9; }
+.thumb[aria-current="true"] { opacity: 1; border-color: var(--gilt); }
+/* A thin rule between ranks: the deck is ordered rank by rank. */
+.thumbs li.rank-start { margin-left: 8px; }
+.thumbs li:first-child { margin-left: 0; }
+
+.colophon { padding-block: 2px 8px; }
+.colophon p { margin: 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+
+/* ---- Desktop: card on the left, plate and full index on the right ----- */
+
+@media (min-width: 960px) and (min-height: 560px) {
+  .page { padding-inline: max(32px, env(safe-area-inset-left)); }
+  .masthead { padding-block: 18px 8px; }
+  .deck-name h1 { font-size: 38px; }
+  .viewer {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "stage plate" "stage index";
+    column-gap: 48px;
+  }
+  .plate { padding-block: 40px 16px; align-items: start; }
+  .caption h2 { font-size: 40px; }
+  .cap-sub { font-size: 20px; }
+  .cap-effect { font-size: 17px; }
+  .step { margin-top: 4px; }
+  .index { overflow-x: hidden; overflow-y: auto; margin: 0; padding: 4px; }
+  .thumbs { width: auto; flex-wrap: wrap; gap: 6px; }
+  .thumbs li.rank-start { margin-left: 0; }
+  .thumb { height: 66px; }
+  .colophon p { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --slide-time: 0s; }
+  .slide { transform: none; }
+  .slide.is-behind { transform: scale(0.88); }
+}
