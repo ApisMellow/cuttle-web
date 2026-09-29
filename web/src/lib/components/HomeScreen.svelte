@@ -19,6 +19,8 @@
   // behaviour into something this screen can surface without accidentally
   // triggering a real resume for a VALID snapshot (which must wait for an
   // explicit tap on Resume, per this round's brief).
+  import { untrack } from 'svelte';
+
   import { game } from '../stores/game.svelte';
   import { session } from '../stores/session.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
@@ -60,6 +62,18 @@
   // `game.screen === 'home'` (SPEC §5.2's App.svelte route switch), so a
   // fresh instance means a fresh boot or a return to the home screen.
   peekSnapshot();
+
+  // W25 (live playtest): keep the name fields filled. After a reload the
+  // in-memory session is fresh, so the saved game's names (the snapshot
+  // carries them, SPEC §5.7) fill the fields; otherwise the session's own
+  // names do, when someone has set them this session. A default
+  // ("Player 1"/"Player 2") stays blank so the placeholder shows.
+  function prefill(names: readonly [string, string]): void {
+    name0 = names[0] === 'Player 1' ? '' : names[0];
+    name1 = names[1] === 'Player 2' ? '' : names[1];
+  }
+  // Once, at mount, like peekSnapshot() above; the fields are the user's after that.
+  prefill(untrack(() => existingNames ?? session.names));
 
   function startNewGame(): void {
     session.setNames(name0, name1);

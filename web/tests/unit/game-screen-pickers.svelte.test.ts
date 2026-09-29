@@ -11,7 +11,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BridgeResult, Card, Envelope, Move, PlayerId, PlayerView, PointEntry } from '../../src/lib/bridge/schema';
-import { Kind, Phase, appliedMove, envelope, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, envelope, playerView, startGameMocked } from './game-test-support';
 
 const bridge = vi.hoisted(() => ({
   newGame: vi.fn(),
@@ -118,8 +118,7 @@ async function click(el: HTMLElement, id: string): Promise<void> {
 }
 
 async function start(env: Envelope): Promise<HTMLDivElement> {
-  bridge.newGame.mockImplementation(() => env);
-  await game.newGame({ seed: '1' });
+  await startGameMocked(game, bridge, env, { seed: '1' });
   const el = render();
   await settle();
   return el;

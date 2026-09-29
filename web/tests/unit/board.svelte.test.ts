@@ -581,6 +581,7 @@ describe('OpponentHand redaction — null, [] and face-up all render correctly',
     hand = testid(el, 'opp-hand');
     expect(hand.getAttribute('data-revealed')).toBe('true');
     expect(hand.querySelectorAll('[data-state]').length).toBe(1);
-    expect(hand.textContent).toContain('1 cards');
+    expect(hand.textContent).toContain('1 card'); // W25: singular
+    expect(hand.textContent).not.toContain('1 cards');
   });
 });

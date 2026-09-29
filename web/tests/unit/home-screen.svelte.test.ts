@@ -169,3 +169,26 @@ describe('HomeScreen discarded-snapshot notice (R4.4 — "already verified at st
     expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
 });
+
+describe('W25: name fields stay filled', () => {
+  function inputs(el: HTMLElement): [string, string] {
+    return [
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-0"]')!.value,
+      el.querySelector<HTMLInputElement>('[data-testid="name-input-1"]')!.value,
+    ];
+  }
+
+  it('after a reload (fresh session), the saved game fills the names', () => {
+    localStorage.setItem(SNAPSHOT_KEY, encodeSnapshot(VALID_SNAPSHOT));
+    expect(inputs(render())).toEqual(['Alice', 'Blake']);
+  });
+
+  it('back on Home in the same session, the session names fill the fields', () => {
+    session.setNames('Alice', 'Blake');
+    expect(inputs(render())).toEqual(['Alice', 'Blake']);
+  });
+
+  it('default names leave the fields blank (the placeholder shows)', () => {
+    expect(inputs(render())).toEqual(['', '']);
+  });
+});

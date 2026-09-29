@@ -13,10 +13,19 @@
   interface ScoreBarProps {
     scoreboard: PlayerView['scoreboard'];
     opponentName: string;
+    /** W25: the viewer's own name; without it the side reads "You". */
+    youName?: string;
+    /** W25: whose turn it is (`view.active`, public). Omitted, no turn is marked. */
+    active?: 'you' | 'opponent';
     menu?: Snippet;
   }
 
-  let { scoreboard, opponentName, menu }: ScoreBarProps = $props();
+  let { scoreboard, opponentName, youName, active, menu }: ScoreBarProps = $props();
+
+  // W25 turn header: the active side's label names the player whose turn it
+  // is. Public information only (names and `view.active`).
+  const youLabel = $derived(youName === undefined ? 'You' : active === 'you' ? `${youName}, your turn` : youName);
+  const opponentLabel = $derived(active === 'opponent' ? `${opponentName}’s turn` : opponentName);
 
   // W22: design.md §6's 4px progress meter under each side. Display only:
   // both numbers are the scoreboard's own values, never recomputed.
@@ -27,7 +36,7 @@
 
 <div class="score-bar" data-testid="score-bar">
   <div class="score-bar__side" data-side="you">
-    <span class="score-bar__label">You</span>
+    <span class={['score-bar__label', active === 'you' && 'score-bar__label--turn']}>{youLabel}</span>
     <span class="score-bar__points">{scoreboard.you.points}</span>
     <span class="score-bar__threshold">of {scoreboard.you.threshold}</span>
     {#if scoreboard.you.kings > 0}
@@ -36,7 +45,7 @@
     <span class="score-bar__meter" aria-hidden="true"><span style={`--fill: ${fill(scoreboard.you)}`}></span></span>
   </div>
   <div class="score-bar__side" data-side="opponent">
-    <span class="score-bar__label">{opponentName}</span>
+    <span class={['score-bar__label', active === 'opponent' && 'score-bar__label--turn']}>{opponentLabel}</span>
     <span class="score-bar__points">{scoreboard.opponent.points}</span>
     <span class="score-bar__threshold">of {scoreboard.opponent.threshold}</span>
     {#if scoreboard.opponent.kings > 0}
@@ -92,6 +101,12 @@
     color: var(--cu-muted, #b4a8be);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .score-bar__label--turn {
+    max-width: 12em;
+    font-weight: var(--cu-weight-bold, 700);
+    color: var(--cu-ochre, #f0b54a);
   }
 
   .score-bar__points {

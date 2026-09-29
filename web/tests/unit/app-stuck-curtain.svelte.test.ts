@@ -83,25 +83,30 @@ afterEach(() => {
 
 describe('stuck curtain: engine.view fails leaving the reveal (SPEC §2.9)', () => {
   it('routes to the error screen (board and curtain gone), and New game recovers', async () => {
-    bridge.newGame.mockImplementation(() =>
+    const deal = () =>
       envelope({
         state: playerView({ viewer: 0, active: 0, you: { hand: [{ Rank: 5, Suit: 0 }], frozenHandIndices: [], points: [], permanents: [] } }),
         legalMoves: [{ Kind: Kind.Draw, Card: null, HandIndex: 0, Target: null, JackTarget: null, ScrapIndex: 0, DiscardA: 0, DiscardB: 0, SubMove: null }],
         descriptions: ['draw a card'],
-      }),
-    );
+      });
+    bridge.newGame.mockImplementation(deal);
     const drew = appliedMove({ by: 0, kind: Kind.Draw, seq: 1, index: 0, description: 'draw a card' });
     bridge.apply.mockImplementation(
       (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 1, phase: Phase.Normal }), lastMove: drew, history: [drew] }),
     );
-    bridge.view.mockImplementation((_viewer: PlayerId): BridgeResult => engineError('INTERNAL', 'boom'));
+    // P0's opening view (W25) succeeds; P1's view, after P0's draw, fails.
+    bridge.view.mockImplementation((viewer: PlayerId): BridgeResult => (viewer === 0 ? deal() : engineError('INTERNAL', 'boom')));
 
     host = document.createElement('div');
     document.body.append(host);
     instance = mount(App, { target: host });
     await settle();
     await click('new-game');
+    expect(q('board')).toBeNull(); // W25: behind the opening curtain
+    await click('reveal-two-step');
+    await click('reveal-two-step');
     expect(q('board')).not.toBeNull();
+    bridge.view.mockClear();
 
     await click('deck-pile');
     await click('staging-confirm');
@@ -121,9 +126,13 @@ describe('stuck curtain: engine.view fails leaving the reveal (SPEC §2.9)', () 
     // The only forward action works. The stuck game is still in progress, so
     // the R4.3 abandon confirm comes first.
     bridge.view.mockReset();
+    bridge.view.mockImplementation(() => deal());
     await click('error-new-game');
     await click('confirm-abandon');
     expect(game.error).toBeNull();
+    expect(game.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'turn' });
+    await click('reveal-two-step');
+    await click('reveal-two-step');
     expect(game.curtain.kind).toBe('none');
     expect(q('board')).not.toBeNull();
   });

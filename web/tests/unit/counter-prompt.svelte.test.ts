@@ -119,7 +119,7 @@ describe('CounterPrompt (SPEC §4.3)', () => {
     el.querySelector<HTMLButtonElement>('[data-testid="counter-option-4"]')!.click();
     flushSync();
     expect(oncounter).not.toHaveBeenCalled();
-    expect(el.querySelector('[data-testid="staging-bar"]')?.textContent).toContain('counter with 2x');
+    expect(el.querySelector('[data-testid="staging-bar"]')?.textContent).toContain('Counter with 2x'); // W25: sentence-cased
 
     el.querySelector<HTMLButtonElement>('[data-testid="staging-cancel"]')!.click();
     flushSync();
@@ -147,5 +147,40 @@ describe('CounterPrompt (SPEC §4.3)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('W25: a staged counter locks "Let it resolve"', () => {
+  const OPTS = [{ index: 1, description: 'counter with 2♣' }];
+
+  it('disables "Let it resolve" while a counter is staged, and a tap on it does nothing', () => {
+    const onresolve = vi.fn();
+    const el = render({ options: OPTS, onresolve });
+    const resolve = el.querySelector<HTMLButtonElement>('[data-testid="counter-resolve"]')!;
+    expect(resolve.disabled).toBe(false);
+    el.querySelector<HTMLElement>('[data-testid="counter-option-1"]')!.click();
+    flushSync();
+    expect(resolve.disabled).toBe(true);
+    resolve.click();
+    flushSync();
+    expect(onresolve).not.toHaveBeenCalled();
+
+    el.querySelector<HTMLElement>('[data-testid="staging-cancel"]')!.click();
+    flushSync();
+    expect(resolve.disabled).toBe(false);
+  });
+
+  it('capitalises the staged text: "Counter with 2♣"', () => {
+    const el = render({ options: OPTS });
+    el.querySelector<HTMLElement>('[data-testid="counter-option-1"]')!.click();
+    flushSync();
+    expect(el.querySelector('[data-testid="staging-bar"]')?.textContent).toContain('Counter with 2♣');
+  });
+
+  it('PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)', () => {
+    const real = render({ options: OPTS });
+    const synthetic = render({ options: [] });
+    expect(withoutCounterOptions(real)).toBe(withoutCounterOptions(synthetic));
+    expect(real.querySelector('[data-testid="counter-resolve"]')?.hasAttribute('disabled')).toBe(false);
   });
 });

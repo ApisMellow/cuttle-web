@@ -9,7 +9,7 @@ import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY, type Snapshot, encodeSnapshot } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
-import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, playerView, startGame } from './game-test-support';
 
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -347,8 +347,9 @@ describe('N4: R7.4 null-vs-[] through a real snapshot() -> restore() round trip'
     it(`opponent.hand ${JSON.stringify(hand)} survives newGame -> persisted snapshot -> restore in a fresh store`, async () => {
       const storage = fakeStorage();
       const first = envelope({ state: playerView({ viewer: 0, active: 0, opponent: { handCount: 0, hand: hand === null ? null : [], points: [], permanents: [] } }) });
-      const writer = new GameStore({ engine: roundTrippingEngine(first), storage, session: new SessionStore() });
-      await writer.newGame({ seed: '5' });
+      const writerEngine = roundTrippingEngine(first);
+      const writer = new GameStore({ engine: writerEngine, storage, session: new SessionStore() });
+      await startGame(writer, writerEngine, { seed: '5' });
 
       // A fresh engine instance that knows nothing but what the snapshot carries.
       const reader = new GameStore({ engine: roundTrippingEngine(envelope({ state: playerView({ opponent: { handCount: 9, hand: [{ Rank: 1, Suit: 0 }], points: [], permanents: [] } }) })), storage, session: new SessionStore() });
@@ -364,6 +365,7 @@ describe('N4: R7.4 null-vs-[] through a real snapshot() -> restore() round trip'
     const storage = fakeStorage();
     const live = new GameStore({ storage, session: new SessionStore() });
     await live.newGame({ seed: '42' });
+    await advance(live); // W25: through the opening curtain to the first player's board
     const hiddenAtStart = live.view?.opponent.hand;
     expect(hiddenAtStart).toBeNull(); // no glasses on move 0
     const drawIndex = live.envelope!.legalMoves.findIndex((m) => m.Kind === Kind.Draw);

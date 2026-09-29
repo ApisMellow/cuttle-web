@@ -40,6 +40,8 @@
     theme?: CardTheme;
     /** P2 W15: shown in the hand's slot instead of the hand (the integrator's SevenRevealPanel). */
     handTray?: Snippet;
+    /** W25: a tap on empty board space or the score bar (anything that isn't a button). */
+    ontapblank?: () => void;
   }
 
   let {
@@ -55,6 +57,7 @@
     lastMoveText,
     theme = getTheme(DEFAULT_THEME_ID),
     handTray,
+    ontapblank,
   }: BoardProps = $props();
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
@@ -74,6 +77,13 @@
   // P2 W13: children report plain strings; this is also the one place they
   // are narrowed to the shared `TargetKey` vocabulary. A string outside it
   // is dropped rather than forwarded.
+  function blankTap(event: MouseEvent): void {
+    if (inert || ontapblank === undefined) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, a, input, [role="button"]') !== null) return;
+    ontapblank();
+  }
+
   function tap(key: string): void {
     if (inert) return;
     const parsed = parseTargetKey(key);
@@ -81,8 +91,16 @@
   }
 </script>
 
-<div class="board" data-testid="board" data-inert={inert ? 'true' : 'false'}>
-  <ScoreBar scoreboard={view.scoreboard} opponentName={names[opponentId]} />
+<!-- W25: a pointer convenience only. Every target is its own <button>, so
+     keyboard users clear a selection by re-selecting or with Cancel. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="board" data-testid="board" data-inert={inert ? 'true' : 'false'} onclick={blankTap}>
+  <ScoreBar
+    scoreboard={view.scoreboard}
+    opponentName={names[opponentId]}
+    youName={names[view.viewer]}
+    active={view.active === view.viewer ? 'you' : 'opponent'}
+  />
   <OpponentZone
     opponent={view.opponent}
     {opponentId}

@@ -9,7 +9,7 @@ import type { NewGameOpts } from '../../src/lib/bridge/engine';
 import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
-import { Kind, Phase, appliedMove, createFakeEngine, engineError, envelope, fakeStorage, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, createFakeEngine, engineError, envelope, fakeStorage, playerView, startGame } from './game-test-support';
 
 describe('GameStore.newGame (carry-overs 1, 2)', () => {
   let storage: Storage;
@@ -105,7 +105,7 @@ describe('GameStore.newGame (carry-overs 1, 2)', () => {
     expect(captured?.seed).toBe('42');
   });
 
-  it('on success: loads the first actor\'s envelope directly (no curtain — whoever starts is the first player)', async () => {
+  it('on success: raises the opening curtain to the first actor and holds no view (W25; the full walk is in game-opening-curtain.test.ts)', async () => {
     const engine = createFakeEngine({
       newGame: () => envelope({ state: playerView({ active: 1, viewer: 1 }) }),
     });
@@ -113,9 +113,9 @@ describe('GameStore.newGame (carry-overs 1, 2)', () => {
 
     await store.newGame();
 
-    expect(store.curtain).toEqual({ kind: 'none' });
-    expect(store.viewer).toBe(1);
-    expect(store.view?.active).toBe(1);
+    expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
+    expect(store.viewer).toBeNull();
+    expect(store.envelope).toBeNull();
     expect(store.screen).toBe('game');
   });
 
@@ -123,7 +123,7 @@ describe('GameStore.newGame (carry-overs 1, 2)', () => {
     const engine = createFakeEngine({ newGame: () => engineError('BAD_REQUEST', 'bad opts') });
     const store = new GameStore({ engine, storage, session });
 
-    await store.newGame();
+    await startGame(store, engine);
 
     expect(store.error).toEqual(engineError('BAD_REQUEST', 'bad opts'));
     expect(store.screen).toBe('home');
@@ -155,7 +155,7 @@ describe('GameStore.apply — basic success/error handling', () => {
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
 
@@ -168,7 +168,7 @@ describe('GameStore.apply — basic success/error handling', () => {
     });
     const store = new GameStore({ engine, storage, session });
 
-    await store.newGame();
+    await startGame(store, engine);
 
     expect(store.view?.opponent.hand).toEqual([]);
     expect(store.view?.opponent.hand).not.toBeNull();
@@ -186,7 +186,7 @@ describe('GameStore.apply — basic success/error handling', () => {
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
 
@@ -202,7 +202,7 @@ describe('GameStore.apply — basic success/error handling', () => {
       apply: () => engineError('ILLEGAL_MOVE', 'nope'),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     const beforeEnvelope = store.envelope;
     const beforeHistory = store.history;
     const beforeCurtain = store.curtain;
@@ -236,7 +236,7 @@ describe('R3.3 unit bullet: session tally is never written to the R4 snapshot', 
     });
     const store = new GameStore({ engine, storage, session });
 
-    await store.newGame();
+    await startGame(store, engine);
 
     const raw = storage.getItem(SNAPSHOT_KEY);
     expect(raw).not.toBeNull();
