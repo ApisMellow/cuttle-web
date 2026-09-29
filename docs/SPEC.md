@@ -1022,10 +1022,9 @@ Rules that keep the seam real:
 
 **Asset budget (R18, R22).** The WASM engine already occupies ~806 KiB of the precache (§2.2). R22 budgets the full art theme at **≤ 4 MB compressed, loaded lazily so R18's first-load/offline budget is unaffected** — which this seam implements as follows:
 
-- The `vector` theme and the WASM engine are the **only** precached game assets. Together they are the offline-guaranteed baseline (R18), and adding art must not change that number.
-- Bitmap themes are **runtime-cached, not precached** — a `CacheFirst` Workbox route with an explicit cache name and entry cap, warmed on first use of the theme. This is what makes R22's "loaded lazily" true rather than aspirational: the art cannot enter the precache manifest even by accident, because the manifest's `globPatterns` (§5.8) do not match its directory. *(Status 2026-09-28: the app has no PWA plugin yet, so there is no service worker and no precache; this bullet, and R22.4, apply once §5.8 lands. Bitmap images today are plain HTTP-cached files.)*
+- ~~The `vector` theme and the WASM engine are the only precached game assets.~~ ~~Bitmap themes are runtime-cached, not precached.~~ *(Superseded 2026-09-29, offline play, product-owner brief: a pass-and-play game has to work fully offline in either card style, so every catalog theme's files are **precached** (§5.8). Mythic adds 1.47 MB to the precache. Rendering is still lazy: a face image is requested only when a card shows it, and from the precache once the worker is installed.)*
 - P-ART must declare `assetBytes` per theme and produce a single sprite sheet or a small set of atlases, not 52 separate requests. The declared figure is what the R22 budget check measures. *(Ruling, 2026-09-28, round 8 themes: per-card files replace the atlas requirement. Mythic ships one small WebP per card and size, loaded lazily per displayed card, so a game fetches only the faces on the table rather than a whole atlas. `assetBytes` is declared in the manifest and checked against the real total by `theme-mythic-assets.test.ts`.)*
-- **R18's precache assertion (§7.6) doubles as the R22 guard:** if an art asset ever appears in `sw.js`'s precache list, the gate fails.
+- ~~R18's precache assertion (§7.6) doubles as the R22 guard: if an art asset ever appears in `sw.js`'s precache list, the gate fails.~~ *(Superseded 2026-09-29: the assertion now fails if any catalog theme's image is **missing** from the list, and if anything under `gallery/` is in it.)*
 
 ### 5.7 Persistence (R4)
 
@@ -1069,29 +1068,48 @@ interface Snapshot {
 
 ### 5.8 PWA and offline (R18)
 
-`vite-plugin-pwa` in `generateSW` mode, `registerType: 'prompt'` (a silent update that swaps the WASM mid-game would be a correctness hazard; prompt, and apply the update only from the home screen or the result screen).
+*(Rewritten 2026-09-29, offline play, `feat/offline-play`. The earlier sketch had a `prompt` update and runtime-cached bitmap themes; both are superseded below.)*
+
+`vite-plugin-pwa` in `generateSW` mode (A4). After one online visit the whole game, both card styles included, boots and plays with no network, in a browser tab and from the home screen.
 
 ```ts
 // vite.config.ts — the parts that are not defaults
 VitePWA({
-  registerType: 'prompt',
+  registerType: 'prompt',          // the worker never skipWaiting()s itself
+  injectRegister: false,           // lib/pwa/register.ts registers it (prod only)
+  manifest: false,                 // static/manifest.webmanifest (W23) is the manifest
   workbox: {
-    globPatterns: ['**/*.{js,css,html,svg,woff2,wasm}'],
-    // REQUIRED: the default is 2 MiB and the ~2.9 MB raw .wasm would be
-    // SILENTLY SKIPPED — no build error, but the app fails offline (§2.2).
-    maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-    runtimeCaching: [ /* bitmap card themes only — see §5.6 */ ],
+    globPatterns: ['**/*.{html,js,css,wasm,json,webmanifest,png,svg,webp,woff2}'],
+    globIgnores: ['gallery/**'],
+    // REQUIRED: the default is 2 MiB and the ~3.4 MiB raw .wasm would be
+    // SILENTLY SKIPPED — the app then fails offline (§2.2).
+    maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+    ignoreURLParametersMatching: [/^v$/],   // cuttle.wasm?v=<hash> (R10)
+    navigateFallback: 'index.html',
+    navigateFallbackDenylist: [/\/gallery(\/|$)/],
+    cleanupOutdatedCaches: true,
+    clientsClaim: false,
+    skipWaiting: false,
+    // no runtimeCaching
   },
-  manifest: {
-    name: 'Cuttle', short_name: 'Cuttle',
-    display: 'standalone', orientation: 'portrait',
-    background_color: '#0f1115', theme_color: '#0f1115',
-    icons: [ /* 192, 512, 512-maskable */ ],
-  },
+  devOptions: { enabled: false },
 })
 ```
 
-Acceptance for R18 is an **evidenced offline run**, not a config review: install, kill the network, hard-reload, play a full turn including a WASM `apply`. The `.wasm` and `wasm_exec.js` must both appear in the precache manifest — P1b's build script asserts this by grepping the generated `sw.js`, because a missing entry produces no error until a user is offline.
+- **What is precached.** Everything the build emits that the game can load: `index.html`, the JS and CSS bundles, `cuttle.wasm`, `wasm_exec.js`, the web manifest, the icons, `themes/index.json`, and every file of every catalog theme (Mythic's 52 faces, 4 glasses faces and back, at both sizes, plus its `manifest.json`). Classic is drawn by the JS bundle and has no files. The app loads no fonts (the UI face falls back to the system stack) and makes no third-party request. Measured 2026-09-29: 126 entries, 5,322,676 bytes raw (wasm 3.57 MB, Mythic 1.47 MB, JS/CSS 0.23 MB); Pages gzips the wasm, so the first visit transfers about 2.7 MB.
+- **What is not.** The card gallery (`/cuttle-web/gallery/`, copied into the site after the build) and its ~4.8 MB of images. Its navigations are on the fallback denylist, so the worker never answers them with the app shell; offline, the gallery is simply unavailable.
+- **No runtime caching.** The worker caches only files from its own build, so it never stores anything user-specific (there is nothing user-specific on the server anyway). Saves stay in `localStorage` (§5.7).
+- **Base path.** The worker is `BASE/sw.js` and its scope is `BASE` (`/cuttle-web/` on Pages), so it controls only the app. Navigations in scope that aren't a precached file fall back to `index.html`. The manifest's `start_url` and `scope` are `.`, which resolve to the same `BASE`.
+- **Engine URL token.** R10 fetches `cuttle.wasm?v=<hash>` and `wasm_exec.js?v=<hash>`. The precache matches them with `v` ignored, which is safe because the worker only ever serves the engine from its own build, the same build as the JS it serves.
+
+**Updates without breaking games.** A new deploy's `sw.js` installs in the background and **waits**. It never activates over a running page by itself, so a game keeps the engine it started with. It takes over in one of two ways (`lib/pwa/update.ts`):
+
+1. **Next launch.** When the app is closed, no page is left on the old worker, and the browser activates the waiting one on its own. The next launch runs the new build.
+2. **A safe point.** On the home screen (and not while a name field has focus), the loading screen or the boot-failure screen, the page tells the waiting worker to take over (`SKIP_WAITING`) and reloads once it has. On the game, result and error screens it never does. If a new worker takes control while a game is on screen (for example from another tab), the reload waits for the next safe point.
+
+The page asks for a new `sw.js` when it reaches the home screen and when it returns to the foreground, at most once a minute (the browser also checks on each navigation). No update prompt is shown. A save is in `localStorage`, which a worker swap doesn't touch, so after the reload Resume brings the same game back on the new build; the snapshot format is unchanged by this feature.
+
+**Acceptance (R18).** An evidenced offline run, not a config review (`web/tests/e2e/offline.spec.ts`, against a real `/cuttle-web/` build on a local static server): install, go offline, reload, choose Mythic, play a seeded game through curtain passes with every response served by the worker and no failed request; a save made online resumes offline; the gallery never gets the app shell; a new build waits through a game and takes over at Home. The precache list is checked by `web/tests/smoke/precache-manifest.mjs` in `test:smoke` and again by `web/scripts/precache-manifest.mjs` in the Pages workflow before upload. A browser "hard reload" (Shift-reload) bypasses service workers by design and is not an offline path.
 
 ### 5.9 Mobile quality bar (R19)
 
@@ -1340,7 +1358,7 @@ Real browser, **390×844 portrait**, driven by scenarios.
 - ~~**R14 indistinguishability.**~~ *(Superseded 2026-09-29, §4.3: the accepted leak.)* In its place: `no-counter-ack` shows no counter prompt and no "Let it resolve" anywhere, and `counter-chain` shows the prompt straight after the reveal, with no recap repeating the one-off.
 - **R12 misclick.** No single tap on any hand card, target, or zone changes the engine state. Assert `seq` is unchanged after each exploratory tap.
 - **R19 sweep, every screen and phase:** `scrollWidth <= clientWidth`; every `[data-testid]` bounding box ≥ 44 px; the suite runs once with `prefers-reduced-motion: reduce` forced and must fully pass.
-- **R18 offline.** Install the service worker, `context.setOffline(true)`, hard-reload, complete a turn including a WASM `apply`.
+- **R18 offline.** Install the service worker, `context.setOffline(true)`, reload, complete a turn including a WASM `apply`. *(2026-09-29: "hard-reload" read as a full page reload; Shift-reload bypasses service workers by design. `web/tests/e2e/offline.spec.ts`.)*
 - **R4 resume.** Mid-game reload restores the position; **mid-curtain reload restores the curtain, not the board** (§5.7).
 
 ### 7.5 Layer 4 — screenshot judge (`verify: screenshot-judge`)
@@ -1368,7 +1386,7 @@ npm --prefix web run test:e2e       # Playwright
 Two additions specific to this spec, run as part of `test:smoke`:
 
 - **WASM size budget (R18):** fail if the gzipped `cuttle.wasm` exceeds 1.5 MB. Current headroom is large (806 KiB) but the check is cheap and the budget is a requirement.
-- **Precache manifest check (R18):** fail if the generated `sw.js` precache list omits `cuttle.wasm` or `wasm_exec.js` (§5.8) — the silent-skip failure has no other symptom until a user is offline.
+- **Precache manifest check (R18):** fail if the generated `sw.js` precache list omits `cuttle.wasm` or `wasm_exec.js` (§5.8) — the silent-skip failure has no other symptom until a user is offline. *(Built 2026-09-29: `web/tests/smoke/precache-manifest.mjs` builds for `/cuttle-web/` and also fails on a missing shell file, icon or catalog-theme image, an entry that doesn't exist in the build, any `gallery/` entry, a missing gallery fallback denylist, or a worker that could activate itself.)*
 
 ---
 

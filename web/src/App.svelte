@@ -28,6 +28,7 @@
   import HomeScreen from './lib/components/HomeScreen.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
+  import { reportScreen } from './lib/pwa/register';
   import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
   import { session } from './lib/stores/session.svelte';
@@ -80,6 +81,12 @@
               ? 'result'
               : 'game',
   );
+
+  // R18 (SPEC §5.8): a new build waits for a safe screen (home, loading,
+  // boot failure) before it takes over. Never mid-game.
+  $effect(() => {
+    reportScreen(screen);
+  });
 
   // R2.3/R3: the app layer's job, not ResultScreen's (which is a pure
   // presentational component; see its own file doc). Stalemates are never

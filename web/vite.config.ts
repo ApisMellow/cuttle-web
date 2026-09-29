@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
 // SPEC §1.3 / §2.3: static build artifacts (cuttle.wasm, wasm_exec.js) live
@@ -42,7 +43,48 @@ function engineVersion(): string {
 
 export default defineConfig({
   base,
-  plugins: [svelte()],
+  plugins: [
+    svelte(),
+    // R18 (SPEC §5.8): offline after one visit. `generateSW` precaches the
+    // whole build; the service worker and its scope sit at `base`, so on
+    // Pages they are /cuttle-web/sw.js and /cuttle-web/. Only `vite build`
+    // emits a worker; the dev server never registers one.
+    VitePWA({
+      // Update policy (SPEC §5.8): a new worker installs in the background
+      // and WAITS. It never calls skipWaiting on its own and never claims a
+      // running page, so a game in progress keeps the engine it started
+      // with. lib/pwa/update.ts decides when to let it take over: the next
+      // launch, or when the player is on the home screen.
+      registerType: 'prompt',
+      // lib/pwa/register.ts registers the worker itself (prod builds only).
+      injectRegister: false,
+      // The hand-written static/manifest.webmanifest (W23) stays the one
+      // manifest; the plugin doesn't generate a second.
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{html,js,css,wasm,json,webmanifest,png,svg,webp,woff2}'],
+        // The gallery is a separate page (pages.yml copies it in after the
+        // build); this keeps it out even if it ever lands in static/.
+        globIgnores: ['gallery/**'],
+        // REQUIRED: the default is 2 MiB and the ~3.4 MiB raw .wasm would be
+        // silently skipped, so the app would fail offline with no build
+        // error (§2.2). tests/smoke/precache-manifest.mjs fails if it is.
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // The engine files are fetched as cuttle.wasm?v=<hash> (R10). The
+        // worker serves the copy from its own build, so the token can be
+        // ignored when matching the precache.
+        ignoreURLParametersMatching: [/^v$/],
+        // Navigations in scope fall back to the app shell, except the gallery.
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/\/gallery(\/|$)/],
+        cleanupOutdatedCaches: true,
+        clientsClaim: false,
+        skipWaiting: false,
+        // No runtimeCaching: nothing outside the build is ever cached.
+      },
+      devOptions: { enabled: false },
+    }),
+  ],
   define: {
     __CUTTLE_ENGINE_VERSION__: JSON.stringify(engineVersion()),
   },
