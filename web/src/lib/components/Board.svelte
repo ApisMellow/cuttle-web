@@ -15,6 +15,7 @@
   import type { Snippet } from 'svelte';
 
   import type { PlayerId, PlayerView } from '../bridge/schema';
+  import type { HandDrag } from '../dragDrop';
   import { parseTargetKey, type TargetKey } from '../targetKey';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -46,6 +47,8 @@
     menu?: Snippet;
     /** r16: drawn over the centre strip (the integrator's ambiguity chooser). */
     centerOverlay?: Snippet;
+    /** Issue #26: the hand card being dragged (GameScreen owns the gesture). Display only. */
+    drag?: HandDrag | null;
   }
 
   let {
@@ -64,6 +67,7 @@
     ontapblank,
     menu,
     centerOverlay,
+    drag = null,
   }: BoardProps = $props();
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
@@ -147,6 +151,7 @@
     {handTray}
     {watchedBy}
     {names}
+    {drag}
   />
 </div>
 

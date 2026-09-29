@@ -41,6 +41,12 @@
     /** docs/design.md §7: luminance drop; still tappable to inspect (Board brief). */
     dimmed?: boolean;
     onselect?: (handIndex: number) => void;
+    /**
+     * Issue #26: where this card is being dragged, in px from where the press
+     * started, or null when it isn't. The card itself moves (no ghost copy);
+     * GameScreen owns the gesture and clears this at every curtain.
+     */
+    dragOffset?: { x: number; y: number } | null;
     /** Injectable for testing / future theme wiring; defaults to the app default (rule 4). */
     theme?: CardTheme;
   }
@@ -54,6 +60,7 @@
     staged = false,
     dimmed = false,
     onselect,
+    dragOffset = null,
     theme = getTheme(DEFAULT_THEME_ID),
   }: HandCardProps = $props();
 
@@ -100,6 +107,9 @@
   data-frozen={isFrozen ? 'true' : 'false'}
   data-staged={staged ? 'true' : 'false'}
   data-dimmed={dimmed ? 'true' : 'false'}
+  data-dragging={dragOffset !== null ? 'true' : 'false'}
+  style:--drag-x={dragOffset !== null ? `${dragOffset.x}px` : undefined}
+  style:--drag-y={dragOffset !== null ? `${dragOffset.y}px` : undefined}
   aria-pressed={selected}
   aria-label={accessibleName}
   onclick={handleClick}
@@ -141,8 +151,28 @@
        container's (design.md §7), eased over --cu-dur-fast. Reduced motion
        zeroes the duration in tokens.css; the offset still applies. */
     box-shadow: -2px 0 4px rgb(0 0 0 / 30%);
-    transition: transform var(--cu-dur-fast, 120ms) var(--cu-ease-out, ease-out);
+    transition:
+      transform var(--cu-dur-fast, 120ms) var(--cu-ease-out, ease-out),
+      translate var(--cu-dur-fast, 120ms) var(--cu-ease-out, ease-out);
     -webkit-tap-highlight-color: transparent;
+    /* Issue #26: a press may become a drag, so no text selection, no iOS
+       long-press callout and no native image drag on the face. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Issue #26: the dragged card follows the pointer with no easing; on
+     release the attribute drops and `translate` eases back over
+     --cu-dur-fast, which reduced motion zeroes (tokens.css), so the snap
+     back is instant there. Pointer events off, so the drop hit-test sees
+     what is under the card. Above its neighbours in the hand. */
+  .hand-card[data-dragging='true'] {
+    z-index: 10;
+    translate: var(--drag-x, 0) var(--drag-y, 0);
+    transition: none;
+    pointer-events: none;
+    cursor: grabbing;
   }
 
   /* W25: a hover lift for mouse users, smaller than the selected lift.

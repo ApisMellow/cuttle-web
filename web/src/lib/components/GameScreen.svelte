@@ -50,6 +50,7 @@
   import { settings } from '../stores/settings.svelte';
   import { StagingStore, type StagingEnv } from '../stores/staging.svelte';
   import { resolveBoardTap, type TargetKey } from '../targetKey';
+  import { DragGesture, dropKeyAt, dropTarget, targetKeyFromTestId, testIdForKey, type HandDrag } from '../dragDrop';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
   import { installTestHook } from '../testHook';
   import { clearImageFailures, getTheme } from '../theme';
@@ -113,6 +114,7 @@
     void game.seq;
     void game.curtain.kind;
     untrack(() => {
+      endDrag();
       staging.reset();
       browsingScrap = false;
       notice = null;
@@ -233,14 +235,6 @@
   let lastInputKeyboard = false;
   let screenEl: HTMLDivElement | undefined = $state();
 
-  function testIdForKey(key: TargetKey): string {
-    if (key === 'deck') return 'deck-pile';
-    if (key === 'scrap') return 'scrap-pile';
-    if (key.startsWith('hand:')) return `hand-card-${key.slice('hand:'.length)}`;
-    if (key.startsWith('seven:')) return `seven-card-${key.slice('seven:'.length)}`;
-    return key.replace(/:/g, '-');
-  }
-
   function focusFirstTarget(): void {
     void tick().then(() => {
       for (const key of staging.highlighted) {
@@ -318,6 +312,145 @@
       void tick().then(() => focusBest());
     }
   }
+
+  // ---- Drag and drop (issue #26, SPEC §6.1) --------------------------------
+  // A pointer extra on top of the tap path, never a second path. Pressing a
+  // hand card arms the gesture; once the pointer has moved 8 px it is a
+  // drag, which selects the card with the same tap a player would make.
+  // Releasing over a lit target makes the tap on that target (so a chooser,
+  // the 3's pick or a stage follows exactly as for a tap); releasing
+  // anywhere else snaps the card back and clears the selection, like a tap
+  // on an unlit target or empty space. Nothing here applies: Confirm is
+  // still the only commit (R12). The card itself moves (HandCard's
+  // `dragOffset`); there is no ghost copy, and `endDrag()` runs on every
+  // apply, viewer change and curtain change with the staging reset above.
+  const gesture = new DragGesture();
+  let drag = $state<HandDrag | null>(null);
+  // The click a browser may fire on the dragged card after a drag (a mouse
+  // released over the card, a short touch drag inside the browser's own tap
+  // slop) is not a tap: it would re-select the card. Only a click on THAT
+  // card, and only shortly after, is swallowed; Confirm, the chooser and any
+  // other control take their taps at once.
+  let swallowClick: { handIndex: number; until: number } | null = null;
+  const SWALLOW_CLICK_MS = 400;
+
+  function armClickSwallow(handIndex: number): void {
+    swallowClick = { handIndex, until: performance.now() + SWALLOW_CLICK_MS };
+  }
+
+  function endDrag(): void {
+    gesture.cancel();
+    drag = null;
+  }
+
+  /** A hand card may start a drag only where a tap on it would select it for a play. */
+  function canDrag(handIndex: number): boolean {
+    return (
+      board !== null &&
+      handIndex < board.state.you.hand.length &&
+      !staging.inert &&
+      staging.state !== 'staged' &&
+      staging.chooser === null &&
+      staging.scrapPick === null &&
+      staging.discard === null &&
+      !staging.dimmedHand.has(handIndex)
+    );
+  }
+
+  function onDragPointerdown(event: PointerEvent): void {
+    if (!event.isPrimary || event.button !== 0 || gesture.phase !== 'idle' || board === null) return;
+    const target = event.target;
+    if (!(target instanceof Element) || screenEl === undefined || !screenEl.contains(target)) return;
+    const cardEl = target.closest('[data-testid="player-hand"] [data-testid^="hand-card-"]');
+    const key = cardEl === null ? null : targetKeyFromTestId(cardEl.getAttribute('data-testid') ?? '');
+    if (key === null || !key.startsWith('hand:')) return;
+    const handIndex = Number(key.slice('hand:'.length));
+    if (!canDrag(handIndex)) return;
+    gesture.down(event.pointerId, handIndex, event.clientX, event.clientY);
+  }
+
+  function onDragPointermove(event: PointerEvent): void {
+    const step = gesture.move(event.pointerId, event.clientX, event.clientY);
+    if (step === null) return;
+    const handIndex = gesture.handIndex as number;
+    if (step === 'start' && !beginDrag(handIndex)) return;
+    drag = { handIndex, x: gesture.dx, y: gesture.dy };
+  }
+
+  /** Selects the card as a tap would (unless it already is). False, and the gesture is dropped, if it can't be dragged. */
+  function beginDrag(handIndex: number): boolean {
+    if (!canDrag(handIndex)) {
+      endDrag();
+      return false;
+    }
+    if (!(staging.state === 'selected' && staging.selectedHand === handIndex)) onBoardTap(`hand:${handIndex}`);
+    if (staging.state !== 'selected' || staging.selectedHand !== handIndex || staging.chooser !== null) {
+      endDrag();
+      return false;
+    }
+    return true;
+  }
+
+  function onDragPointerup(event: PointerEvent): void {
+    const handIndex = gesture.handIndex;
+    if (gesture.up(event.pointerId) !== 'drop' || handIndex === null) return;
+    armClickSwallow(handIndex);
+    // Hit-test before the card drops back into place: while dragging it has
+    // pointer events off, so this finds what is under it.
+    const key = dropKeyAt(document.elementFromPoint(event.clientX, event.clientY));
+    drag = null;
+    const viewer = board?.state.viewer;
+    if (board === null || viewer === undefined) return;
+    const target = dropTarget(key, staging.highlighted, viewer);
+    if (target !== null) {
+      onBoardTap(target);
+      return;
+    }
+    // Snap back, unselected: what a tap on an unlit target or empty space does.
+    const card = selectedCard;
+    staging.clearSelection();
+    notice = card !== null && key !== null && !key.startsWith('hand:') ? targetReason(card, key, board.state) : null;
+  }
+
+  /** The system took the pointer (a call, a gesture): the card goes back, still selected, and nothing is dropped. */
+  function onDragPointercancel(event: PointerEvent): void {
+    if (event.pointerId !== gesture.pointerId) return;
+    if (gesture.phase === 'dragging' && gesture.handIndex !== null) armClickSwallow(gesture.handIndex);
+    endDrag();
+  }
+
+  $effect(() => {
+    // Non-passive, so a drag in progress can stop the board scrolling. Only
+    // once the drag has started: under the threshold a touch still scrolls
+    // and still taps.
+    const onTouchmove = (event: TouchEvent): void => {
+      if (gesture.phase === 'dragging' && event.cancelable) event.preventDefault();
+    };
+    // A press that may become a drag never starts the browser's own
+    // drag-and-drop (a bitmap face's <img> would, and cancel the pointer).
+    const onDragstart = (event: DragEvent): void => {
+      if (gesture.phase !== 'idle') event.preventDefault();
+    };
+    const onClick = (event: MouseEvent): void => {
+      const pending = swallowClick;
+      swallowClick = null;
+      if (pending === null || performance.now() >= pending.until) return;
+      const target = event.target;
+      const card = target instanceof Element ? target.closest('[data-testid^="hand-card-"]') : null;
+      if (card?.getAttribute('data-testid') !== testIdForKey(`hand:${pending.handIndex}`)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('touchmove', onTouchmove, { passive: false });
+    window.addEventListener('dragstart', onDragstart);
+    window.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('touchmove', onTouchmove);
+      window.removeEventListener('dragstart', onDragstart);
+      window.removeEventListener('click', onClick, true);
+      endDrag();
+    };
+  });
 
   // r16 (desktop keyboard): whatever unmounts the focused element (a
   // curtain lifting, the chooser or the scrap sheet closing, Cancel or
@@ -476,10 +609,14 @@
 
 <svelte:window
   onkeydown={onWindowKeydown}
-  onpointerdown={() => {
+  onpointerdown={(event) => {
     keyboardActivation = false;
     lastInputKeyboard = false;
+    onDragPointerdown(event);
   }}
+  onpointermove={onDragPointermove}
+  onpointerup={onDragPointerup}
+  onpointercancel={onDragPointercancel}
 />
 
 <div data-testid="game-screen" class="game-screen" bind:this={screenEl}>
@@ -536,6 +673,7 @@
       handTray={revealed === null ? undefined : sevenTray}
       menu={menuButtonSnippet}
       centerOverlay={staging.chooser === null ? undefined : chooserSheet}
+      {drag}
     />
 
     {#snippet chooserSheet()}

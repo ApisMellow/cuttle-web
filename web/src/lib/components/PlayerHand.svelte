@@ -19,6 +19,7 @@
   // matching the Board brief's `dimmedHand: ReadonlySet<number>` directly.
   import type { Card } from '../bridge/schema';
   import type { CardTheme } from '../theme/types';
+  import type { HandDrag } from '../dragDrop';
   import HandCard from './HandCard.svelte';
 
   interface PlayerHandProps {
@@ -32,6 +33,8 @@
     /** Hand indices to render dimmed; dimmed cards stay tappable (Board brief). */
     dimmedHandIndices?: ReadonlySet<number>;
     onselect: (handIndex: number) => void;
+    /** Issue #26: the card being dragged and its offset, or null. */
+    drag?: HandDrag | null;
     /** Injectable for testing / future theme wiring; HandCard supplies the default. */
     theme?: CardTheme;
   }
@@ -44,6 +47,7 @@
     staged = new Set<string>(),
     dimmedHandIndices = new Set<number>(),
     onselect,
+    drag = null,
     theme,
   }: PlayerHandProps = $props();
 </script>
@@ -61,6 +65,7 @@
       staged={staged.has(`hand:${handIndex}`)}
       dimmed={dimmedHandIndices.has(handIndex)}
       {onselect}
+      dragOffset={drag !== null && drag.handIndex === handIndex ? { x: drag.x, y: drag.y } : null}
       {theme}
     />
     </span>
