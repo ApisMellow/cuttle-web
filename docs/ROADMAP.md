@@ -15,6 +15,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 **In progress:** a Card style picker on the home screen and in the in-game menu, with Classic (the vector cards) and Mythic, the first painted deck. The choice is remembered between visits. Mythic has faces and a card back but no playmat yet. Every theme keeps the rank and suit readable in the upper-left corner at phone size, and falls back to the plain vector cards if its art fails to load (PRD A-6, R23).
 
 - **Mythic (first):** a full 52-card painted deck in the spirit of classic fantasy card games. Colour follows what each rank does: the Ace wipes the board, the 2 counters, the Jack steals. Sideways goggles mark a glasses 8.
+- **Card gallery (shipped).** Every Mythic painting, uncropped, one card at a time at https://apismellow.github.io/cuttle-web/gallery/. A standalone page in `gallery/` (see `gallery/README.md`).
 - **New Classic card back:** the standard vector deck gets a new back design, replacing the current plain back.
 - **Stained glass:** a hand-drawn vector deck. It's a candidate to become the standard look.
 - **Webb table:** playmats and card backs from James Webb Space Telescope imagery (IC 348), which pair with any theme.

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mythic Deck Gallery</title>
+<meta name="description" content="Every painting in the Mythic deck for Cuttle, one card at a time.">
+<meta name="color-scheme" content="dark light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="gallery.css">
+<link rel="preload" href="cards.json" as="fetch" crossorigin>
+<script src="gallery.js" defer></script>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div class="deck-name">
+      <h1>Mythic</h1>
+      <p>A painted deck for Cuttle</p>
+    </div>
+    <a class="play" href="../" data-testid="gallery-play">Play Cuttle</a>
+  </header>
+
+  <main class="viewer" aria-roledescription="carousel" aria-label="Mythic deck">
+    <div class="stage" id="stage" data-testid="gallery-stage">
+      <noscript><p class="fallback">The gallery needs JavaScript to show the cards.</p></noscript>
+    </div>
+
+    <section class="plate" aria-label="Current card">
+      <button class="step prev" id="prev" type="button" aria-label="Previous card" data-testid="gallery-prev">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <div class="caption">
+        <h2 id="cap-title">&nbsp;</h2>
+        <p class="cap-sub" id="cap-sub">&nbsp;</p>
+        <p class="cap-effect" id="cap-effect">&nbsp;</p>
+        <p class="cap-count" id="cap-count" data-testid="gallery-count"></p>
+      </div>
+      <button class="step next" id="next" type="button" aria-label="Next card" data-testid="gallery-next">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </section>
+
+    <nav class="index" aria-label="All cards">
+      <ol class="thumbs" id="thumbs"></ol>
+    </nav>
+
+    <p class="sr-only" aria-live="polite" id="live"></p>
+  </main>
+
+  <footer class="colophon">
+    <p>Cuttle Web by ApisMellow. Swipe, use the arrow keys, or pick a card below.</p>
+  </footer>
+</div>
+</body>
+</html>

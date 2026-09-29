@@ -9,4 +9,6 @@ A graphical, mobile-first web version of the two-player card game [Cuttle](https
 - [`docs/SPEC.md`](docs/SPEC.md) — technical spec (P1a output, binding for the loop)
 - [`docs/requirements.yaml`](docs/requirements.yaml) — the requirements ledger, the single source of truth for "done"
 
+The Mythic deck's card gallery is a separate static page in [`gallery/`](gallery/README.md), deployed at `/cuttle-web/gallery/`.
+
 Next phase: the P2 loop, per §2 of the workflow doc. `scripts/ci.sh` runs the full mechanical gate. Card art runs as its own phase (P-ART, workflow §11).
