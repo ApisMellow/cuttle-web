@@ -222,6 +222,13 @@
 
   function onWindowKeydown(event: KeyboardEvent): void {
     keyboardActivation = event.key === 'Enter' || event.key === ' ';
+    // Issue #24: a second deck press commits a staged draw, so a held key
+    // must not count as one. Auto-repeat keydowns on the deck never
+    // activate it (Enter clicks on every keydown; Space only on keyup).
+    if (keyboardActivation && event.repeat && event.target instanceof Element && event.target.closest('[data-testid="deck-pile"]')) {
+      event.preventDefault();
+      return;
+    }
     if (event.key !== 'Escape' || board === null) return;
     if (staging.state === 'staged' || staging.chooser !== null || staging.scrapPick !== null) staging.cancel();
     else staging.clearSelection();
@@ -255,7 +262,8 @@
       browsingScrap = true;
       return;
     }
-    staging.tap(resolveBoardTap(key, staging.highlighted, viewer));
+    // Issue #24: a deck re-tap on a staged draw commits it, like Confirm.
+    staging.tap(resolveBoardTap(key, staging.highlighted, viewer))?.catch(report);
   }
 
   function report(err: unknown): void {

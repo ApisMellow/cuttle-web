@@ -1099,7 +1099,7 @@ R12 is absolute: **no single tap ever applies a move.** Every commit is `select 
    │  tap a highlighted target  (skipped when the affordance needs no target)
    ▼
   staged              StagingBar shows the move's description + Confirm / Cancel
-   │  tap Confirm
+   │  tap Confirm  (a staged Draw: or tap the deck again, issue #24)
    ▼
   applying            engine.apply(index) — bar disabled, no double-submit
    │
@@ -1108,14 +1108,15 @@ R12 is absolute: **no single tap ever applies a move.** Every commit is `select 
 ```
 
 - **Cancel** is always available while staged and returns to `idle`.
-- Tapping the selected card itself again (a hand card, or the 7's revealed card) clears to `idle` *(added 2026-09-29, issue #25)*; once staged, only Confirm/Cancel act.
+- Tapping the selected card itself again (a hand card, or the 7's revealed card) clears to `idle` *(added 2026-09-29, issue #25)*; once staged, only Confirm/Cancel act, plus the deck re-tap that confirms a staged Draw (issue #24, below).
 - Tapping a different hand card while `selected` re-selects. Tapping a **non-highlighted** area while `selected` clears to `idle` and never stages anything (R9's explicit non-goal).
 - Cards with no legal play render **dimmed but still inspectable** (R9) — tapping one opens a card-detail popover and does not enter `selected`. The popover shows only the tapped card from the viewer's own hand, never hidden information (no opponent card, no deck card, nothing from another viewer's history) *(2026-09-28: privacy bound restated while the popover is built)*.
 - While `applying`, the whole board is inert. A second Confirm tap must be impossible.
 
 *(Added 2026-09-28, W25 playtest fixes, merged `b8238db`.)*
 
-- **Deck tap while a card is selected draws.** The deck is never a selected card's target, so the tap clears the selection and is then handled as a deck tap from idle: when Draw is legal it stages the draw in the same tap, and when it isn't the tap only clears the selection. Only Confirm applies it (R12).
+- **Deck tap while a card is selected draws.** The deck is never a selected card's target, so the tap clears the selection and is then handled as a deck tap from idle: when Draw is legal it stages the draw in the same tap, and when it isn't the tap only clears the selection. Only Confirm, or a second deck tap (below), applies it (R12).
+- **A second deck tap confirms a staged draw** *(added 2026-09-29, issue #24)*. While the staged move is a Draw, tapping the deck again does exactly what Confirm does: `staging.tap('deck')` calls `confirm()`, the only caller of `apply`, and the pass curtain follows. It is still two taps, so R12 holds. A deck tap while any other move is staged does nothing, and Confirm still works as before. On the keyboard, Enter or Space twice on the focused deck acts as two taps; an auto-repeat keydown (a held key) on the deck is ignored, so holding Enter only stages the draw. The deck button sets `touch-action: manipulation` so a quick double tap on a phone arrives as two taps rather than a zoom. No card is shown on commit: the drawn card appears only in the drawer's own hand on their next turn, behind their own curtain, as with any draw.
 - **Tapping blank space clears a selection.** A tap on the board that doesn't land on a button, link, input or `role="button"` element, including a tap on the score bar, calls `staging.clearSelection()` (§5.3): a selected card goes back to idle. A staged move keeps waiting for Confirm or Cancel, the chooser and the scrap pick keep their own Cancel, and discard picks are left alone. This is a pointer convenience; the board ignores it while inert.
 - **Desktop mouse.** On devices that really hover (`@media (hover: hover)`), a hand card lifts `--cu-lift-hover` (−4 px, less than the selected lift) under the pointer. Dimmed, selected and staged cards don't hover-lift, and a touch tap never leaves a card raised.
 - **Desktop keyboard.** Every target is its own `<button>`, including the Points, Permanents and One-off drop zones. When Enter or Space selects a hand card, focus moves to the first lit target, so the next Tab or Enter lands on a target (for example the Points or One-off zone). A pointer click never moves focus. Escape cancels a staged move, the chooser or the scrap pick, and otherwise clears a selection. Focused board targets (deck, scrap, drop zones, point and permanent cards, the 7's revealed cards) show a 3 px `--cu-pearl` ring drawn inset (`outline-offset: -3px`), so a clipping row or well can't hide it. Hand cards keep their 2 px outset ring.
@@ -1169,7 +1170,7 @@ Totality table. Random-playout frequencies from the §2.10 survey are included s
 
 | Kind | Freq. | Affordance | Target step | Confirm |
 |---|---|---|---|---|
-| `Draw` (0) | 44,369 | Tap the deck pile (R10). Deck shows its count; disabled and visibly so when the deck is empty or the hand is at 8 (`apply.go:34`). | none | StagingBar: "Draw a card" |
+| `Draw` (0) | 44,369 | Tap the deck pile (R10). Deck shows its count; disabled and visibly so when the deck is empty or the hand is at 8 (`apply.go:34`). | none | StagingBar: "Draw a card"; Confirm or a second deck tap (§6.1, issue #24) |
 | `PlayPoint` (1) | 29,161 | Tap hand card → the **Points** drop zone in your field highlights. | tap zone | "Play 7♥ as a point card" |
 | `PlayPermanent` (2), non-Jack | 19,650 (with Jacks) | Tap hand card (Q/K/8) → **Permanents** zone highlights. | tap zone | "Play Q♦ as a permanent" |
 | `PlayPermanent` (2), **Jack** | — | Tap the Jack → each stealable opponent point card highlights. Engine omits all of them when a Queen protects (`apply.go:88-97`), so **the UI shows no targets and needs no Queen rule of its own.** | tap a point | "Steal 10♥ with J♣" |

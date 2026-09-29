@@ -1,6 +1,7 @@
 <script lang="ts">
   // P2 W9 (Board props contract, docs/design.md §6) — the deck. Tap = R10
-  // MoveDraw, wired by a later round; here it just reports `deck`.
+  // MoveDraw; this component just reports `deck`. The staging store stages
+  // the draw on one tap and commits it on a second (issue #24).
   //
   // "Shows the count only": no card identity ever renders for the deck — a
   // `CardBack` carries none by construction (VectorCardBack has no `card`
@@ -59,6 +60,9 @@
     border: none;
     background: none;
     cursor: pointer;
+    /* Issue #24: a second tap on a staged draw commits it, so a quick
+       double tap must reach the button as two taps, not a browser zoom. */
+    touch-action: manipulation;
   }
 
   .deck-pile__card {
