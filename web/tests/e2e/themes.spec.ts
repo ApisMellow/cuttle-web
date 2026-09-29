@@ -82,8 +82,12 @@ test('the home screen offers Classic and Mythic; the pick persists across a relo
   for (const card of ['2-hearts', '3-clubs', 'A-hearts', 'K-diamonds', 'Q-clubs']) {
     expect(srcs.some((s) => s.includes(`/${card}.webp`))).toBe(true);
   }
-  // The opponent's hand stays card backs (Mythic has no back image: vector backs).
-  await expect(page.getByTestId('opp-hand').locator('img')).toHaveCount(0);
+  // The opponent's hand stays card backs: Mythic's one back image, naming no card.
+  const oppBacks = page.getByTestId('opp-hand').locator('img');
+  await expect(oppBacks).toHaveCount(6);
+  for (const src of await oppBacks.evaluateAll((els) => els.map((e) => (e as HTMLImageElement).src))) {
+    expect(src).toMatch(/\/themes\/mythic\/back(-2x)?\.webp$/);
+  }
 
   const save = await page.evaluate(() => localStorage.getItem('cuttle-web:game'));
   expect(save).not.toBeNull();

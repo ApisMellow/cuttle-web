@@ -1,7 +1,7 @@
 {
   "id": "mythic",
   "label": "Mythic",
-  "assetBytes": 1436240,
+  "assetBytes": 1463844,
   "index": {
     "x": 0.0156,
     "y": 0.009,
@@ -572,6 +572,15 @@
       }
     ]
   },
-  "back": null,
+  "back": [
+    {
+      "src": "back.webp",
+      "w": 132
+    },
+    {
+      "src": "back-2x.webp",
+      "w": 264
+    }
+  ],
   "table": null
 }

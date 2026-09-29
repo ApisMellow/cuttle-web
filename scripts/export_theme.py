@@ -13,7 +13,7 @@ Source layout (one folder per rank; override any folder with --rank-dir):
 
     <source>/aces/A-spades.png  ...  <source>/kings/K-clubs.png
     <source>/<eights folder>/glasses-<suit>.png   landscape glasses-8 art (optional)
-    <source>/back.png                              card back (optional)
+    <source>/back.png                              card back (optional; or --back PATH)
     <source>/table.png                             playmat (optional)
 
 Every slot is optional; a missing file is left out of the manifest and the
@@ -35,7 +35,7 @@ Requires Python 3.10+ and Pillow with WebP support (pip install Pillow).
 
 Usage:
     scripts/export_theme.py SOURCE_DIR --theme-id mythic --label Mythic \\
-        [--rank-dir 8=eights-v2] [--glasses-dir eights-v2]
+        [--rank-dir 8=eights-v2] [--glasses-dir eights-v2] [--back PATH]
 """
 
 from __future__ import annotations
@@ -177,6 +177,7 @@ def main() -> int:
     ap.add_argument("--rank-dir", action="append", default=[], metavar="RANK=DIR",
                     help="override a rank's source folder, e.g. 8=eights-v2")
     ap.add_argument("--glasses-dir", default=None, help="folder holding glasses-<suit>.png (default: the 8s folder)")
+    ap.add_argument("--back", type=Path, default=None, help="card back image (default: SOURCE/back.png)")
     ap.add_argument("--quality", type=int, default=80, help="WebP quality (default 80)")
     args = ap.parse_args()
 
@@ -249,8 +250,9 @@ def main() -> int:
         glasses[suit] = [{"src": f"glasses/{suit}.webp", "w": SMALL[1]}, {"src": f"glasses-2x/{suit}.webp", "w": LARGE[1]}]
 
     back = None
-    if (source / "back.png").exists():
-        with Image.open(source / "back.png") as im:
+    back_src = args.back.expanduser().resolve() if args.back else source / "back.png"
+    if back_src.exists():
+        with Image.open(back_src) as im:
             cropped, _ = crop_portrait(im.convert("RGB"), ratio, NO_PLAQUE)
         total += save_webp(cropped, SMALL, out / "back.webp", args.quality)
         total += save_webp(cropped, LARGE, out / "back-2x.webp", args.quality - 4)

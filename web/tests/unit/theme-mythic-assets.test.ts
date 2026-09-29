@@ -67,6 +67,11 @@ describe('Mythic is a complete deck', () => {
     for (const suit of SUIT_NAMES) expect(manifest.glasses[suit]?.map((s) => s.w)).toEqual([172, 344]);
   });
 
+  it('has a card back at game size and 2x (the playmat stays Classic)', () => {
+    expect(manifest.back?.map((s) => s.w)).toEqual([132, 264]);
+    expect(manifest.table).toBeNull();
+  });
+
   it('records where the painted corner index sits (upper left)', () => {
     expect(manifest.index).not.toBeNull();
     expect(manifest.index!.x).toBeLessThan(0.1);
