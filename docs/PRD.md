@@ -51,7 +51,7 @@ The Go engine in `cuttle` is a pure, well-tested state machine:
 | A4 | **Frontend: Svelte 5 + TypeScript + Vite + vite-plugin-pwa. DOM/CSS/SVG rendering — no canvas.** | ~25 board elements; CSS transforms give 60fps card animation free; SVG faces are crisp at any DPI; Playwright gets real selectors (the autonomous playtest judge depends on this). Pin the official Svelte 5 LLM docs file in the repo for dev-agent reliability. |
 | A5 | **Packaging: single Go binary serving the built frontend via `embed.FS`.** Local dev and production are the same binary. | One deployment unit for the project's whole life; v2 adds WebSocket handlers to the same binary. |
 | A6 | **Hosting: Fly.io**, shared-cpu-1x with auto-stop/auto-start machines (≪ $2/mo; ~300 ms–2 s wake). Deploy-on-push via GitHub Action. | Replit needs a $15/mo VM for WebSockets; Render free tier's 30–60 s cold start ruins the join flow. |
-| A7 | **Engine imported as a published Go module dependency**, `github.com/ApisMellow/cuttle` (repo renamed to match the module path — §10 A-2), pinned at `v0.2.0` with no committed `replace` directive. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
+| A7 | **Engine imported as a published Go module dependency**, `github.com/ApisMellow/cuttle` (repo renamed to match the module path — §10 A-2), pinned at `v0.2.1` with no committed `replace` directive. Engine fixes land in the engine repo. | Clean separation; the terminal project stays the single home of the rules. |
 
 ## 6. V1 functional requirements
 

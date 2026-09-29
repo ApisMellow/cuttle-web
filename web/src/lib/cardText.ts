@@ -250,7 +250,7 @@ export function rulesPermanentLines(): RulesLine[] {
     {
       rank: RANK_WORDS[11],
       name: CLASSIC_NAMES[11],
-      text: `${sentenceCase(JACK_EFFECT)}. It counts for you until the Jack is scrapped or stolen back, or a 9 sends that card home.`,
+      text: `${sentenceCase(JACK_EFFECT)}. It counts for you until the Jack is scrapped or stolen back, or a 9 sends that card home. A 2 scrapping a Jack takes only the top one, and the card goes to whoever controls the next Jack, or back to its owner.`,
     },
     {
       rank: RANK_WORDS[12],
