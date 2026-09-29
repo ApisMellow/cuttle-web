@@ -172,6 +172,17 @@
     </fieldset>
   {/if}
 
+  <!-- Issue #37, SPEC §5.10: a settings-store preference, never saved in the
+       game snapshot. A game in progress picks it up at its next curtain. -->
+  <label class="home-screen__toggle" data-testid="table-mode-toggle">
+    <input
+      type="checkbox"
+      checked={settings.tableMode}
+      onchange={(event) => settings.setTableMode(event.currentTarget.checked)}
+    />
+    <span>Table mode: phone lies flat between you</span>
+  </label>
+
   <div class="home-screen__actions">
     {#if hasSnapshot}
       <button type="button" data-testid="resume" class="home-screen__button" onclick={handleResume}>
@@ -299,6 +310,39 @@
   .home-screen__theme-option input {
     accent-color: var(--cu-ochre);
     margin: 0;
+  }
+
+  .home-screen__toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--cu-space-3);
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    padding: 0 var(--cu-space-3);
+    border: 1px solid var(--cu-ink-line);
+    border-radius: var(--cu-radius-control);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-size: var(--cu-text-md);
+    cursor: pointer;
+  }
+
+  .home-screen__toggle:has(input:checked) {
+    border-color: var(--cu-ochre);
+    box-shadow: inset 0 0 0 1px var(--cu-ochre);
+  }
+
+  .home-screen__toggle:has(input:focus-visible) {
+    outline: 2px solid var(--cu-iris);
+    outline-offset: 2px;
+  }
+
+  .home-screen__toggle input {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--cu-ochre);
   }
 
   .home-screen__actions {

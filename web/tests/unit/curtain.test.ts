@@ -420,6 +420,19 @@ describe('handoff label — SPEC §4.5 (amended 2026-09-27)', () => {
   it('the resume gate reads "Resume game", one label whatever it resumes into (SPEC §4.5, §5.7, ruling 2026-09-29)', () => {
     expect(handoffLabel('resume')).toBe('Resume game');
   });
+
+  it('table mode (SPEC §5.10): "Your turn" would repeat the heading, so it reads the reveal control; the neutral labels stay', () => {
+    expect(handoffLabel('turn', true)).toBe('Hold to show your hand');
+    expect(handoffLabel('seven-return', true)).toBe('Hold to show your hand');
+    expect(handoffLabel('counter', true)).toBe('Your response');
+    expect(handoffLabel('discard', true)).toBe('Your response');
+    expect(handoffLabel('resume', true)).toBe('Resume game');
+  });
+
+  it('table mode off (explicitly or by default) is unchanged for every reason', () => {
+    const reasons: HandoffReason[] = ['turn', 'seven-return', 'counter', 'discard', 'resume'];
+    for (const r of reasons) expect(handoffLabel(r, false)).toBe(handoffLabel(r));
+  });
 });
 
 describe('W25: the opening deal\'s curtain (move null)', () => {

@@ -1,8 +1,8 @@
 // SPEC §5.6 rule 5, §5.7 — user preferences (card theme id, reduced motion,
 // hold-vs-two-step reveal preference, and the last-used player names so the
-// home screen can pre-fill them after a reload), persisted under their own
-// `localStorage` key, independently of the game snapshot key
-// (`SNAPSHOT_KEY = 'cuttle-web:game'`, §5.7).
+// home screen can pre-fill them after a reload, and table mode, issue #37),
+// persisted under their own `localStorage` key, independently of the game
+// snapshot key (`SNAPSHOT_KEY = 'cuttle-web:game'`, §5.7).
 //
 // Every storage read and write is wrapped so a throwing or empty
 // `localStorage` (private browsing, quota, disabled storage, or a stray
@@ -21,6 +21,8 @@ interface StoredSettings {
   revealPreference: RevealPreference;
   /** R10: the names last typed on the home screen, trimmed and capped at NAME_MAX_LENGTH; '' for a blank field. */
   lastNames: [string, string] | null;
+  /** Issue #37, SPEC §5.10: the phone lies flat between the players; player 2's screens are turned 180°. */
+  tableMode: boolean;
 }
 
 // SPEC §5.6 rule 4: 'vector' is always available and is the fallback theme.
@@ -31,6 +33,8 @@ const DEFAULTS: StoredSettings = {
   reducedMotion: false,
   revealPreference: 'hold',
   lastNames: null,
+  // Normal pass-and-play stays the default (issue #37).
+  tableMode: false,
 };
 
 function isRevealPreference(value: unknown): value is RevealPreference {
@@ -70,6 +74,7 @@ function readStoredSettings(): Partial<StoredSettings> {
   if (typeof obj.themeId === 'string') result.themeId = obj.themeId;
   if (typeof obj.reducedMotion === 'boolean') result.reducedMotion = obj.reducedMotion;
   if (isRevealPreference(obj.revealPreference)) result.revealPreference = obj.revealPreference;
+  if (typeof obj.tableMode === 'boolean') result.tableMode = obj.tableMode;
   if (isNamePair(obj.lastNames)) result.lastNames = [cleanName(obj.lastNames[0]), cleanName(obj.lastNames[1])];
   return result;
 }
@@ -94,6 +99,7 @@ export class SettingsStore {
   reducedMotion = $state<boolean>(this.#initial.reducedMotion ?? DEFAULTS.reducedMotion);
   revealPreference = $state<RevealPreference>(this.#initial.revealPreference ?? DEFAULTS.revealPreference);
   lastNames = $state<[string, string] | null>(this.#initial.lastNames ?? DEFAULTS.lastNames);
+  tableMode = $state<boolean>(this.#initial.tableMode ?? DEFAULTS.tableMode);
 
   #persist(): void {
     writeStoredSettings({
@@ -101,6 +107,7 @@ export class SettingsStore {
       reducedMotion: this.reducedMotion,
       revealPreference: this.revealPreference,
       lastNames: this.lastNames,
+      tableMode: this.tableMode,
     });
   }
 
@@ -118,6 +125,16 @@ export class SettingsStore {
 
   setRevealPreference(preference: RevealPreference): void {
     this.revealPreference = preference;
+    this.#persist();
+  }
+
+  /**
+   * Issue #37, SPEC §5.10: the home-screen toggle calls this. A game in
+   * progress picks the change up at its next curtain or view change, never
+   * in the middle of a turn (GameScreen latches it).
+   */
+  setTableMode(value: boolean): void {
+    this.tableMode = value;
     this.#persist();
   }
 

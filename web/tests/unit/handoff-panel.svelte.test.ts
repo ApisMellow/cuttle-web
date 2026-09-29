@@ -24,6 +24,7 @@ interface RenderProps {
   label: string;
   stage: 'handoff' | 'reveal';
   epoch?: number;
+  tableMode?: boolean;
   revealPreference: 'hold' | 'two-step';
   onadvance: () => void;
 }
@@ -96,6 +97,28 @@ describe('HandoffPanel content (SPEC §4.5, design.md §8)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('table mode (SPEC §5.10): the heading is "NAME\'s turn" with no pass prompt, on a phone or off it', () => {
+    for (const matches of [true, false]) {
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches, media: query }) as MediaQueryList);
+      try {
+        const r = root(render(base({ tableMode: true, name: 'Blake', player: 1, label: 'Hold to show your hand' })));
+        expect(r.querySelector('.gate__name')?.textContent).toBe("Blake's turn");
+        expect(r.querySelector('.gate__prompt')).toBeNull();
+        expect(r.textContent).not.toContain('Pass');
+        expect(r.querySelector('.gate__label')?.textContent).toBe('Hold to show your hand');
+        expect(r.querySelector('[data-testid="reveal-two-step"]')?.textContent?.trim()).toBe("I'm Blake");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+  });
+
+  it('table mode off keeps "Pass the phone to" and the bare name', () => {
+    const r = root(render(base({ tableMode: false })));
+    expect(r.querySelector('.gate__prompt')?.textContent).toBe('Pass the phone to');
+    expect(r.querySelector('.gate__name')?.textContent).toBe('Alice');
   });
 
   it('the label slot is always present, even when empty (fixed-height slot)', () => {

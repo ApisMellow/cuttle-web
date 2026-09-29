@@ -86,6 +86,25 @@ test('checker: a precache without the wasm or its loader fails', () => {
   assert.ok(problems.includes('missing from precache: wasm_exec.js'), problems.join('\n'));
 });
 
+test('R18.2: the bundled UI font (regular and bold woff2) is precached', () => {
+  const fonts = result.entries.filter((e) => /^assets\/atkinson-hyperlegible-next-latin-(400|700)-normal-.+\.woff2$/.test(e.url));
+  assert.equal(fonts.length, 2, `expected latin 400 and 700 woff2, got ${fonts.map((e) => e.url).join(', ')}`);
+});
+
+test('checker: a precache without the UI font fails', () => {
+  const fake = path.join(tmp, 'fake-font');
+  mkdirSync(path.join(fake, 'themes'), { recursive: true });
+  writeFileSync(path.join(fake, 'themes', 'index.json'), '{"themes":[]}');
+  const sw = readFileSync(path.join(dist, 'sw.js'), 'utf8').replace(
+    /\{url:"assets\/atkinson-hyperlegible-next-[^"]*\.woff2",revision:(null|"[^"]*")\},?/g,
+    '',
+  );
+  writeFileSync(path.join(fake, 'sw.js'), sw);
+  const { problems } = checkPrecache(fake);
+  assert.ok(problems.includes('missing from precache: the UI font (latin 400 woff2)'), problems.join('\n'));
+  assert.ok(problems.includes('missing from precache: the UI font (latin 700 woff2)'), problems.join('\n'));
+});
+
 test('checker: a gallery entry in the precache fails', () => {
   const entries = parsePrecacheEntries('precacheAndRoute([{url:"gallery/img/2-clubs.webp",revision:"abc"}])');
   assert.deepEqual(entries, [{ url: 'gallery/img/2-clubs.webp', revision: 'abc' }]);
