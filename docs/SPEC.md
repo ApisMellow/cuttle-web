@@ -815,6 +815,35 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 - **Result:** the goal beside the total, "Alice won by reaching 16 of 14 with the 10♥.", and the tally is labelled "Match: Alice 0 – Blake 1".
 - **Blocked reasons** (`lib/blockedReason.ts`, text in `lib/cardText.ts`), shown only after the engine has refused, from the viewer's own hand and public board state: the dimmed-card popover says "A 9 just sent this card back …", "Play one of the revealed cards first.", "Their Queen protects their cards from your Jack." or "They have no point cards for your Jack to steal.", else the generic line. A tap that did nothing puts one line in the action bar until the next tap: the deck gives "Your hand is full (8 cards)." or "The deck is empty."; a 2, 9 or Jack tapped onto a card a Queen protects gives "Their Queen protects that card from your 9." The Queen reason appears only when the Queen is the cause, that is, when the card is one that rank could otherwise target (engine v0.2.0 LegalMoves): for a 2, a permanent or a Jack-topped point on either side ("Your own Queen protects that card." on the viewer's side); for a 9, any opponent card; for a Jack, an opponent point. Any other refused tap gets no line. The reason never reads the opponent's hand, hand count or the scrap. A dimmed-card tap while another card is selected clears that selection first, so no stale target stays lit behind the popover.
 
+### 4.7 The 5's draw reveal *(added 2026-09-29, issue #27)*
+
+When a 5 resolves and draws cards, the player who drew sees them: the cards leave a face-down deck, travel into that player's hand and turn face up. A tap anywhere, the Continue button (`draw-reveal-continue`), or 3 seconds of waiting (`DRAW_REVEAL_MS` in `lib/drawReveal.ts`) goes on. The panel (`DrawRevealPanel`, `data-testid="draw-reveal"`) shows the drawer's whole hand with the drawn cards marked, and "You drew N card(s)".
+
+**Who sees it.** Only the drawer, on the drawer's own screen. The drawer is the 5's player: `fiveDrawer(history, i)` in `lib/recap.ts` reads the entry whose `drawn` is set (§2.7) and walks back over Counters to the one-off that opened the chain, reading kinds and `by` only. The opponent's screens never carry a reveal, and the handoff that follows one carries nothing of it.
+
+**When.** Never before the 5 has resolved, and never where it would tell the drawer something R14 hides:
+
+- *Before the pass.* Only when the drawer's own apply resolved their own 5 (a OneOff, a 7's pick, or a Counter closing an even chain) **and no synthetic ack is staged**, which after §4.3's ruling means the responder holds no cards. The mover still holds the phone and the handoff has not been shown, so the reveal comes first and continuing raises that handoff.
+- *Otherwise at the drawer's next own view*: their board (`none`) or an `ack`, whichever comes first. This covers the synthetic ack (showing the draw before the pass would tell the drawer the responder had no 2), the real window closed by the opponent's Decline, and a chain closed by the drawer's own Counter while the responder still holds cards. The ack counts, real and synthetic alike (the same step on both paths, so R14 holds), because a counter there could take a drawn 2 out of the hand before the next board.
+- A 5 that drew nothing (empty deck, or the hand at `HandLimit`) shows nothing. A 5 that drew one card shows one. A cancelled 5 has `drawn: null` and shows nothing.
+
+**Which cards.** The store never holds a drawn card. `game.drawReveal` is `{ to, indices }`: indices into the drawer's own `you.hand`, and the panel reads the identities from that envelope when it renders. The drawn cards are the end of the hand (engine v0.2.0 `engine/apply.go` `resolveOneOffWith` case Five appends them). Between the draw and the drawer's next own view only the opponent moves, and the only opponent move that adds to the drawer's hand is a 9 (case Nine), which runs `endTurn` first and then appends and freezes the returned card. So on the drawer's own normal turn (`phase === Normal`, `active === viewer`) a frozen tail is a 9's returned card and is skipped; anywhere else no `endTurn` has handed the drawer the turn, a freeze can be stale, and no 9 has resolved, so nothing is skipped (`drawnHandIndices` in `lib/drawReveal.ts`). The reveal comes before any move of the drawer's own. `game-draw-reveal-wasm.test.ts` checks every reveal against the cards the bridge actually drew across 100 seeded games.
+
+**Store rules** (`game.svelte.ts`):
+
+- *Memory only.* `drawReveal` is never written to the save, and the snapshot shape is unchanged (no `v` bump). Before the pass, the save already holds the handoff the reveal gives way to, written by `apply()` exactly as without a reveal; in memory the curtain stays `none` with the mover's own envelope (no legal moves: the turn has passed) until `dismissDrawReveal()` raises that handoff, dropping the envelope, the viewer and mover-only `index` keys, and writing nothing.
+- *Nothing else moves while it is up.* `apply()`, `refresh()` and `advanceCurtain()` throw. `dismissDrawReveal()` is idempotent.
+- *Shown once.* A per-player memory mark records the resolving seq last shown. `newGame()`, `goHome()` and a discarded save clear the reveal and the marks.
+- *Reload.* A reload mid-reveal before the pass comes back to the saved handoff; at a board or an ack it comes back behind the resume gate (§5.7), and the reveal is not replayed there. `restore()` sets each player's mark to one below their saved `lastSeenSeq`, so a draw resolved by that player's own last move and not yet shown (the synthetic path) is still shown at their next own view, and one already shown is not. A reload between a before-the-pass reveal and the drawer's next view can show that draw once more at that view; it is the drawer's own hand, so this costs a repeat, not privacy.
+
+**GameScreen gate.** `DrawRevealPanel` mounts in place of the board or the counter prompt only while `game.drawReveal` is up, the curtain is `none` or `ack`, and both the exposed envelope's viewer and `game.viewer` are the drawer. It never mounts behind a withheld curtain. The in-game menu floats top right over it.
+
+**Input.** Focus moves to Continue on mount. An auto-repeat keydown never presses it (the same rule as the deck's issue #24 guard), and a click that a held key produces on keyup (Space) is ignored until a fresh keydown, so a key held from the previous screen can't skip the reveal. The 3-second wait is not a curtain auto-advance (§4.5): the reveal sits outside the curtain, and before the pass it only brings the handoff sooner, which then waits for a tap like any handoff.
+
+**Reduced motion** (the setting or the OS): no travel and no flip; the faces are simply there, and the wait is still 3 seconds.
+
+*Glasses.* Under an opponent's glasses-8 the opponent's view already includes the drawer's whole hand (R7, §3.2); the reveal adds nothing to it.
+
 ---
 
 ## 5. Component breakdown
@@ -860,6 +889,7 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   ├── StagingBar.svelte         # R9/R12: staged move + Confirm/Cancel
 │   ├── AmbiguityChooser.svelte   # R11: >1 move for one (card, target) pair
 │   ├── CounterPrompt.svelte      # R14 — real window AND synthetic ack (§4.3)
+│   ├── DrawRevealPanel.svelte    # issue #27 — the 5's draw, drawer only, in place of the board or counter prompt (§4.7)
 │   ├── DiscardPicker.svelte      # R15
 │   ├── SevenRevealPanel.svelte   # R16 — mounted here, gated on viewer === active; RENDERS in Board's `handTray` slot, not here (see below)
 │   ├── ScrapBrowser.svelte       # R6 — browse mode and pick mode
@@ -906,6 +936,8 @@ class GameStore {
 ```
 
 *(Amended 2026-09-27, round 2.)* There is **no public viewer switch**. `setViewer(p)` was removed because it could expose the non-holder's view without a curtain (§2.4, §3.3 rule 4). The viewer changes only inside the curtain machine's transitions. `viewer` is nullable and is `null` while the curtain withholds the board. `refresh()` takes no argument and is allowed only at curtain `none` or a real counter window.
+
+*(Amended 2026-09-29, issue #27.)* `drawReveal: { to, indices } | null` and `dismissDrawReveal()` carry the 5's draw reveal (§4.7). Memory only, indices only, and while it is up `apply()`, `refresh()` and `advanceCurtain()` throw.
 
 - **`curtain.svelte.ts`** — the §4.2 machine. Pure: `next(pre, appliedMove, post) -> CurtainState`. Its purity is what makes the transition table of §4.4 unit-testable without WASM (§7.1).
 - **`staging.svelte.ts`** — R9/R12 selection pipeline (§6). Holds `selectedHandIndex`, `stagedMoveIndex`, `candidateMoveIndices`, `highlightedTargets`. Cleared on every `apply` and on every viewer change. `clearSelection()` *(W25, merged `b8238db`)* returns a selected card to idle; it does nothing while a move is staged, while the ambiguity chooser or the 3's scrap pick is open, or at a discard position (§6.1).
@@ -1400,13 +1432,13 @@ For the ledger seeder: where each PRD requirement's binding detail lives.
 | R11 legal-move parity | §6.2, §6.5, §7.4 | e2e-test |
 | R12 misclick protection | §6.1, §7.4 | e2e-test |
 | R13 curtain | §4.1, §4.2, §4.5 | e2e-test, screenshot-judge |
-| R14 counter without leak | §4.3, §7.4 | unit-test, e2e-test |
+| R14 counter without leak | §4.3, §4.7, §7.4 | unit-test, e2e-test |
 | R15 four-discard | §4.4, §6.3 | e2e-test |
 | R16 seven privacy | §3.2, §4.6, §6.3 | unit-test, e2e-test |
 | R17 rules screen | §5.5 | screenshot-judge |
 | R18 PWA/offline | §2.2, §5.8, §7.6 | e2e-test, bridge-smoke |
 | R19 mobile quality | §4.5, §5.9 | e2e-test, screenshot-judge |
-| R20 event feedback | §2.7, §4.6 | unit-test, e2e-test |
+| R20 event feedback | §2.7, §4.6, §4.7 | unit-test, e2e-test |
 | R21 style lock (P-ART) | §5.6 (target contract only — the brief itself is P-ART's output) | screenshot-judge |
 | R22 full-deck generation | §5.6 asset budget, §5.8, §7.6 | screenshot-judge, e2e-test |
 | R23 theme integration | §5.6 (whole) | e2e-test, screenshot-judge |

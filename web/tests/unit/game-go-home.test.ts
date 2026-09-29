@@ -192,6 +192,11 @@ describe('Home -> Resume at a synthetic ack and at result (real engine)', () => 
     // Play to the end: draw while the engine offers it, else its first move;
     // every curtain is walked; a counter window is let resolve.
     for (let ply = 0; ply < 400 && store.curtain.kind !== 'result'; ply++) {
+      // Issue #27 (SPEC §4.7): a 5's draw reveal is continued like a tap.
+      if (store.drawReveal !== null) {
+        store.dismissDrawReveal();
+        continue;
+      }
       if (store.curtain.kind !== 'none' && !(store.curtain.kind === 'ack' && !store.curtain.synthetic)) {
         await store.advanceCurtain();
         continue;

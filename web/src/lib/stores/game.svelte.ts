@@ -26,6 +26,16 @@
 // `handoff(to: viewer, reason: 'resume')` -> `reveal` first, so whoever taps
 // Resume never sees that player's hand or counter options. The gate is
 // memory only; the save keeps the resting position.
+//
+// Draw reveal (SPEC §4.7, issue #27): when a 5 resolves, the drawer is shown
+// the drawn cards on their own screen, `drawReveal` = { to, indices }. It is
+// memory only and never saved. It holds hand INDICES, never cards: the
+// identities are read from the drawer's own envelope when rendered. It is
+// raised only while the exposed envelope is the drawer's own: right after
+// the drawer's own apply resolved the 5 with no ack to stage (the handoff
+// that follows is already saved and is raised on dismissal), or at the
+// drawer's next own view (`none`, or an `ack` of either kind). While it is
+// up, nothing else moves the store.
 
 import type { NewGameOpts } from '../bridge/engine';
 import type { AppliedMove, BridgeResult, Envelope, EngineError, PlayerId } from '../bridge/schema';
@@ -36,12 +46,15 @@ import {
   snapshot as bridgeSnapshot,
   view as bridgeView,
 } from '../bridge/engine';
-import { isRecapVisible } from '../recap';
+import { type DrawReveal, drawnHandIndices, unseenDrawFor } from '../drawReveal';
+import { Phase } from '../enums';
+import { fiveDrawer, isRecapVisible } from '../recap';
 import {
   type CurtainContext,
   type CurtainState,
   type CurtainView,
   advance as advanceCurtainState,
+  needsSyntheticAck,
   next as nextCurtainState,
   opening as openingCurtain,
 } from './curtain.svelte';
@@ -118,6 +131,15 @@ export class GameStore {
    * the gate is up; `null` otherwise. Memory only: never saved (SPEC §5.7).
    */
   #resumeTo: ResumeTarget | null = null;
+  /**
+   * SPEC §4.7: per player, the seq of the last 5-draw that player has been
+   * shown (or that needs no showing). Memory only. On restore it starts one
+   * below the saved `lastSeenSeq`, so a draw resolved by that player's own
+   * last move, not yet shown, is still shown at their next board.
+   */
+  #drawSeen: Record<PlayerId, number> = { 0: 0, 1: 0 };
+  /** SPEC §4.7: the handoff a before-the-pass reveal gives way to (already saved); null otherwise. */
+  #afterDrawReveal: WithheldCurtain | null = null;
 
   /** The only full `PlayerView` (+ legalMoves/descriptions) in memory. `null` whenever nobody's view is currently safe to show (SPEC §3.3 rule 4). */
   envelope = $state<Envelope | null>(null);
@@ -132,6 +154,8 @@ export class GameStore {
   /** R4.4 store-level surface: "an observable state the app shell will render as home, plus a notice value." */
   screen = $state<'home' | 'game'>('home');
   notice = $state<string | null>(null);
+  /** SPEC §4.7: the 5's draw reveal on the drawer's own board, or null. Memory only, never saved. */
+  drawReveal = $state<DrawReveal | null>(null);
 
   view = $derived(this.envelope?.state ?? null);
   legalMoves = $derived(this.envelope?.legalMoves ?? []);
@@ -192,6 +216,7 @@ export class GameStore {
 
     this.error = null;
     this.#resumeTo = null;
+    this.#clearDrawReveal({ 0: 0, 1: 0 });
     this.#pendingCtx = { pre: firstView, move: null, post: firstView, responderHandEmpty: false };
     this.history = history;
     this.seq = result.seq;
@@ -219,6 +244,7 @@ export class GameStore {
    * (SPEC §4.6, amended 2026-09-27: a player's own moves are seen).
    */
   async apply(moveIndex: number): Promise<void> {
+    this.#refuseDuringDrawReveal('apply');
     const current = this.envelope;
     const curtain = this.curtain;
     const curtainAllowsMove = curtain.kind === 'none' || (curtain.kind === 'ack' && !curtain.synthetic);
@@ -243,6 +269,7 @@ export class GameStore {
     // its `opponent` is the would-be responder. A public count, read as is.
     const responderHandEmpty = result.state.opponent.handCount === 0;
     const curtainState = nextCurtainState(preView, mv, postView, responderHandEmpty);
+    const beforePass = this.#drawRevealBeforePass(result, preView, postView, curtainState, responderHandEmpty);
 
     // 'result' needs no viewer switch either — post.active is meaningless at
     // game over (§4.1), so the current holder simply keeps their own
@@ -265,15 +292,106 @@ export class GameStore {
     });
 
     this.error = null;
-    this.history = nextHistory;
-    this.seq = result.seq;
     this.lastSeenSeq = nextLastSeenSeq;
     this.#pendingCtx = nextPendingCtx;
+    this.seq = result.seq;
+    if (beforePass !== null) {
+      // SPEC §4.7: the mover is still holding the phone and the save already
+      // holds the handoff. The mover's own board stays up (no legal moves:
+      // the turn has passed) under the reveal; dismissDrawReveal() raises
+      // the saved handoff exactly as the line below would have.
+      this.#drawSeen = { ...this.#drawSeen, [mv.by]: mv.seq };
+      this.#afterDrawReveal = beforePass.after;
+      this.history = result.history;
+      this.envelope = result;
+      this.viewer = result.state.viewer;
+      this.curtain = { kind: 'none' };
+      this.drawReveal = beforePass.reveal;
+      return;
+    }
+    this.history = nextHistory;
     // Carry-over 4: this is the ONLY line in apply() that can populate
     // `envelope` with the mover's own view, and only when no handoff follows.
     this.envelope = settled ? result : null;
     this.viewer = settled ? result.state.viewer : null;
     this.curtain = curtainState;
+    if (curtainState.kind === 'none') this.#revealUnseenDraw(result);
+  }
+
+  /**
+   * SPEC §4.7: ends the draw reveal (a tap, a key, or the 3 s timer). Before
+   * the pass it raises the handoff the save already holds, dropping the
+   * mover's envelope, viewer and mover-only `index` keys (carry-over 4, B2);
+   * at the drawer's next board it just leaves the board up. Writes nothing.
+   * A second call, or a call with no reveal up, does nothing.
+   */
+  dismissDrawReveal(): void {
+    if (this.drawReveal === null) return;
+    const after = this.#afterDrawReveal;
+    this.#afterDrawReveal = null;
+    this.drawReveal = null;
+    if (after === null) return;
+    this.envelope = null;
+    this.viewer = null;
+    this.history = this.history.map(withoutIndex);
+    this.curtain = after;
+  }
+
+  /**
+   * SPEC §4.7 before the pass: the mover's own apply resolved their own 5
+   * and drew, no synthetic ack is staged (the responder holds no cards,
+   * §4.3), and a handoff follows. Only then may the draw show before the
+   * pass: with an ack pending, showing it would tell the mover that the
+   * responder held no 2 (R14), so it waits for the mover's next board.
+   */
+  #drawRevealBeforePass(
+    result: Envelope,
+    pre: CurtainView,
+    post: CurtainView,
+    curtainState: CurtainState,
+    responderHandEmpty: boolean,
+  ): { reveal: DrawReveal; after: WithheldCurtain } | null {
+    const mv = result.lastMove;
+    if (mv === null || mv.drawn === null || mv.drawn <= 0) return null;
+    if (curtainState.kind !== 'handoff') return null;
+    if (!responderHandEmpty && needsSyntheticAck(pre, mv, post)) return null;
+    const history = result.history;
+    if (fiveDrawer(history, history.length - 1) !== mv.by || result.state.viewer !== mv.by) return null;
+    const indices = drawnHandIndices(result.state.you, mv.drawn, false);
+    if (indices.length === 0) return null;
+    return { reveal: { to: mv.by, indices }, after: curtainState };
+  }
+
+  /**
+   * SPEC §4.7 at the drawer's next own view: `env` is the envelope just
+   * exposed at curtain `none` or an `ack` (either kind: the same step on
+   * both R14 paths). If its viewer drew with a 5 that they have not been
+   * shown, show it now, before anything they do can change their hand. On
+   * the viewer's own normal turn a frozen tail is a 9's returned card and is
+   * skipped; see lib/drawReveal.ts.
+   */
+  #revealUnseenDraw(env: Envelope): void {
+    const view = env.state;
+    const p = view.viewer;
+    const unseen = unseenDrawFor(env.history, p, this.#drawSeen[p]);
+    if (unseen === null) return;
+    this.#drawSeen = { ...this.#drawSeen, [p]: unseen.seq };
+    const ownTurn = view.phase === Phase.Normal && view.active === p;
+    const indices = drawnHandIndices(view.you, unseen.count, ownTurn);
+    if (indices.length === 0) return;
+    this.drawReveal = { to: p, indices };
+  }
+
+  #refuseDuringDrawReveal(call: string): void {
+    if (this.drawReveal !== null) {
+      throw new Error(`GameStore.${call}() is not allowed while the draw reveal is up; dismiss it first (SPEC §4.7)`);
+    }
+  }
+
+  #clearDrawReveal(seen: Record<PlayerId, number>): void {
+    this.drawReveal = null;
+    this.#afterDrawReveal = null;
+    this.#drawSeen = seen;
   }
 
   /**
@@ -286,6 +404,7 @@ export class GameStore {
    * `lastSeenSeq`.
    */
   async refresh(): Promise<void> {
+    this.#refuseDuringDrawReveal('refresh');
     const curtain = this.curtain;
     const looking = curtain.kind === 'none' || (curtain.kind === 'ack' && !curtain.synthetic);
     if (!looking || this.viewer === null) {
@@ -308,6 +427,7 @@ export class GameStore {
    * `recap`. (A successful `apply()` separately stamps the mover.)
    */
   async advanceCurtain(): Promise<void> {
+    this.#refuseDuringDrawReveal('advanceCurtain');
     if (this.#resumeTo !== null) {
       await this.#passResumeGate(this.#resumeTo);
       return;
@@ -319,17 +439,25 @@ export class GameStore {
     switch (newState.kind) {
       case 'none': {
         const ok = await this.#applyViewerChange(ctx.post.active, { stamp: true, curtain: newState });
-        if (ok) this.#pendingCtx = null;
+        if (ok) {
+          this.#pendingCtx = null;
+          if (this.envelope !== null) this.#revealUnseenDraw(this.envelope);
+        }
         return;
       }
-      case 'ack':
+      case 'ack': {
         // SPEC §4.6 (amended 2026-09-27): dismissing a recap stamps its
         // viewer, so an acknowledger who hands the phone back without ever
         // reaching 'none' is not shown the same entries again. The ack
         // target is the recap's viewer (afterRecap keeps `to`), and the
         // stamp lands in #applyViewerChange's persist-first write.
-        await this.#applyViewerChange(newState.to, { stamp: leavingRecap, curtain: newState });
+        const ok = await this.#applyViewerChange(newState.to, { stamp: leavingRecap, curtain: newState });
+        // SPEC §4.7: an ack (real or synthetic alike, R14) is the drawer's
+        // first own view when the opponent's turn ended in a one-off; the
+        // draw shows here, before a counter can change the hand.
+        if (ok && this.envelope !== null) this.#revealUnseenDraw(this.envelope);
         return;
+      }
       case 'handoff':
       case 'reveal':
       case 'recap':
@@ -351,6 +479,7 @@ export class GameStore {
    * context, since the home screen needs none of them.
    */
   goHome(): void {
+    this.#clearDrawReveal({ 0: 0, 1: 0 });
     this.envelope = null;
     this.viewer = null;
     this.#pendingCtx = null;
@@ -400,6 +529,7 @@ export class GameStore {
     }
 
     this.#session.setNames(snap.names[0], snap.names[1]);
+    this.#clearDrawReveal({ 0: Math.max(0, snap.lastSeenSeq[0] - 1), 1: Math.max(0, snap.lastSeenSeq[1] - 1) });
     this.#session.recordDealer(snap.dealer);
     this.#session.recordSeed(snap.seed);
     this.#seed = snap.seed;
@@ -475,6 +605,7 @@ export class GameStore {
     this.envelope = result;
     this.viewer = gate.to;
     this.curtain = target;
+    this.#revealUnseenDraw(result);
   }
 
   /**
@@ -578,6 +709,7 @@ export class GameStore {
     this.seq = 0;
     this.#pendingCtx = null;
     this.#resumeTo = null;
+    this.#clearDrawReveal({ 0: 0, 1: 0 });
   }
 }
 

@@ -16,6 +16,13 @@
   //   none                     -> Board + the action bar (+ AmbiguityChooser).
   //   result                   -> never reached here; App routes to ResultScreen.
   //
+  // Issue #27 draw reveal (SPEC §4.7): while `game.drawReveal` is up and the
+  // exposed envelope is its drawer's own, at `none` or an `ack` (never a
+  // withheld curtain), DrawRevealPanel takes the place of the board or the
+  // counter prompt. Continuing (tap, key, or 3 s) calls
+  // `game.dismissDrawReveal()`, which brings the board, the counter prompt,
+  // or (before the pass) the saved handoff.
+  //
   // Stuck curtain (brief): if `engine.view` fails while the curtain leaves
   // reveal/recap, the store keeps the curtain and sets `game.error`, and
   // RevealGate's latch means no retry can come from the curtain. App's
@@ -51,6 +58,7 @@
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
+  import DrawRevealPanel from './DrawRevealPanel.svelte';
   import GameMenu from './GameMenu.svelte';
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
@@ -118,6 +126,21 @@
   });
 
   const board = $derived(boardEnvelope());
+
+  /**
+   * SPEC §4.7 privacy gate for the draw reveal, independent of the store's
+   * own: only at `none` or an `ack`, and only when the exposed envelope and
+   * the store's viewer are both the drawer. The hand comes from that
+   * envelope; the store holds indices only.
+   */
+  const drawReveal = $derived.by((): { hand: Card[]; indices: number[] } | null => {
+    const reveal = game.drawReveal;
+    const env = game.envelope;
+    const kind = game.curtain.kind;
+    if (reveal === null || env === null || (kind !== 'none' && kind !== 'ack')) return null;
+    if (env.state.viewer !== reveal.to || game.viewer !== reveal.to) return null;
+    return { hand: env.state.you.hand, indices: reveal.indices };
+  });
   const revealed = $derived(board === null ? null : sevenCards(board));
   const withheld = $derived(
     game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
@@ -367,6 +390,14 @@
       onadvance={advanceCurtain}
       {theme}
     />
+  {:else if drawReveal !== null}
+    <DrawRevealPanel
+      hand={drawReveal.hand}
+      drawn={drawReveal.indices}
+      reducedMotion={settings.reducedMotion}
+      oncontinue={() => game.dismissDrawReveal()}
+      {theme}
+    />
   {:else if ackTo !== null}
     <CounterPrompt
       entries={ackEntries}
@@ -469,7 +500,7 @@
     {/if}
   {/if}
 
-  {#if board === null}
+  {#if board === null || drawReveal !== null}
     <div class="game-screen__menu-float">
       {@render menuButtonSnippet()}
     </div>
@@ -477,7 +508,7 @@
 
   <GameMenu
     open={menuOpen}
-    anchor={board === null ? 'screen' : 'column'}
+    anchor={board === null || drawReveal !== null ? 'screen' : 'column'}
     names={session.names}
     onclose={closeMenu}
     focusopener={() => menuButton?.focus()}

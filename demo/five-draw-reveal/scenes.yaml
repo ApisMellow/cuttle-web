@@ -1,0 +1,52 @@
+size: 786x1704
+fps: 30
+engine: piper
+voice: en_US-lessac-medium
+
+scenes:
+  - id: title
+    card: A 5 shows you what you drew
+    subtitle: Cuttle, issue 27
+    duration: 3
+
+  - id: before-setup
+    frames: out/frames/before-setup
+    rate: 10
+    narration: First, the game as it runs today. Alice plays a two for points. Then Blake plays a five.
+
+  - id: before-five
+    frames: out/frames/before-five
+    rate: 10
+    narration: Alice lets the five resolve, draws, and passes the phone back to Blake.
+
+  - id: before-result
+    frames: out/frames/before-result
+    rate: 10
+    narration: Blake's hand is just bigger. He drew two cards, but nothing showed him which ones.
+
+  - id: after-setup
+    frames: out/frames/after-setup
+    rate: 10
+    narration: Now with the fix. Same game, same moves.
+
+  - id: after-five
+    frames: out/frames/after-five
+    rate: 10
+    narration: Alice never sees a reveal. It would tell her Blake's cards.
+
+  - id: after-reveal
+    frames: out/frames/after-reveal
+    rate: 10
+    narration: >-
+      When Blake's turn comes, the cards travel from the deck, and flip face up.
+      It says, you drew two cards. Blake taps Continue.
+
+  - id: after-pass
+    frames: out/frames/after-pass
+    rate: 10
+    narration: Blake draws and passes. Alice's screens never show the cards he drew.
+
+  - id: done
+    frames: out/frames/done
+    rate: 10
+    narration: Blake sees his draw. Alice does not.

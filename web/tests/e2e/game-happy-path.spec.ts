@@ -156,6 +156,10 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   await passThePhone(page, 'Blake', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Alice drew a card');
   await page.getByTestId('recap-dismiss').click();
+  // Issue #27 (SPEC §4.7): Blake's first own view since his 5 resolved shows
+  // the two cards it drew; Continue brings his board.
+  await expect(page.getByTestId('draw-reveal')).toContainText('You drew 2 cards');
+  await page.getByTestId('draw-reveal-continue').click();
   await expect(page.getByTestId('board')).toBeVisible();
   expect(await hook(page, (h) => h.viewer())).toBe(1);
   expect(await hook(page, (h) => h.seq())).toBe(3);

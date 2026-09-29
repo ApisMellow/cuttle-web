@@ -440,6 +440,21 @@ function chainOriginIndex(history: readonly AppliedMove[], i: number): number {
   return -1;
 }
 
+/**
+ * Issue #27 (SPEC §4.7): who drew for `history[i]`, an entry that resolved
+ * a 5 (`drawn !== null`, SPEC §2.7): the 5's player, which is the entry's
+ * own `by` for a 5 that resolved in its own apply (a OneOff, or a SevenPick
+ * whose sub-move was the 5), else the `by` of the one-off that opened the
+ * Decline's or Counter's chain. Reads kinds and `by` only, never a card.
+ * null when `history[i]` resolved no 5.
+ */
+export function fiveDrawer(history: readonly AppliedMove[], i: number): PlayerId | null {
+  const entry = history[i];
+  if (entry === undefined || entry.drawn === null) return null;
+  const origin = isOneOffEntry(entry) ? i : chainOriginIndex(history, i);
+  return origin < 0 ? null : history[origin].by;
+}
+
 function drewText(count: number): string {
   if (count === 0) return 'drew no cards';
   return count === 1 ? 'drew 1 card' : `drew ${count} cards`;
