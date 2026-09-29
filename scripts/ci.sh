@@ -52,6 +52,11 @@ else
 fi
 echo
 
+# web/dist is untracked, but main.go's `//go:embed all:web/dist` needs it to
+# exist before the Go steps compile. Writes a placeholder only when
+# web/dist/index.html is missing; never touches a real build.
+./scripts/ensure-dist.sh
+
 step_names=()
 step_statuses=()
 

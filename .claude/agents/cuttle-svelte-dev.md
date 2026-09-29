@@ -150,5 +150,4 @@ forms in the playbook's "Paths and Bash hygiene" table.
 5. **Gate**: the `ci.sh` table and test counts.
 6. **Testids** added, renamed or removed.
 7. **Assumptions**, each with its SPEC section.
-8. **Open issues**: SPEC tensions, unfinished parts, and whether a build
-   overwrote `web/dist/index.html`.
+8. **Open issues**: SPEC tensions and unfinished parts.

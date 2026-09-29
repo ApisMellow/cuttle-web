@@ -144,5 +144,4 @@ rebuilds on its own.
 5. **Gate**: the `ci.sh` table and test counts.
 6. **Engine citations**: rule → v0.2.0 `file:line`.
 7. **Assumptions**, each with its SPEC section.
-8. **Open issues**: SPEC tensions, engine defects, unfinished parts, and
-   whether a build overwrote `web/dist/index.html`.
+8. **Open issues**: SPEC tensions, engine defects and unfinished parts.

@@ -55,8 +55,8 @@ non-blocking.
   tooling and scripts (`web/vite.config.ts`, `web/playwright.config.ts`,
   `web/eslint.config.js`, `scripts/*`, `go.mod`) need an explicit grant.
 - Hygiene: no machine-local absolute or home-relative paths, no secrets, no
-  `replace` in `go.mod`, no `wasm_exec.js`, no modified
-  `web/dist/index.html`, no `.only`.
+  `replace` in `go.mod`, no `wasm_exec.js`, no tracked `web/dist/` files,
+  no `.only`.
 
 ### 2. Run the gate yourself
 
@@ -158,8 +158,8 @@ changes behavior is blocking.
 ### 9. Close
 
 Re-run `git -C <worktree> status --porcelain --untracked-files=all` and
-compare it with step 1. If a build in the worktree overwrote
-`web/dist/index.html`, report it for the git agent.
+compare it with step 1. `web/dist/` is gitignored, so builds should not
+change the status.
 
 ## Verdict format
 

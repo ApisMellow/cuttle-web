@@ -4,9 +4,6 @@
 # Node / Vite / Svelte
 node_modules/
 dist/
-!web/dist/
-web/dist/*
-!web/dist/index.html
 .vite/
 .svelte-kit/
 
