@@ -31,7 +31,7 @@
   //     the real hand; the prompt holds the action bar until a pair stages.
   //   - ScrapBrowser (R6): an idle scrap-pile tap opens browse mode; a 3's
   //     scrap-pick collapse opens pick mode (StagingStore.scrapPick).
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import type { Card, Envelope, PlayerId } from '../bridge/schema';
   import { MoveKind, Phase } from '../enums';
@@ -137,9 +137,53 @@
     }
   });
 
+  // ---- Desktop keyboard (W25) ---------------------------------------------
+  // A click that a key press produced (Enter/Space on a focused button)
+  // moves focus to the first lit target, so the next Tab or Enter is on a
+  // target rather than wrapping through the rest of the page. A pointer
+  // click never moves focus. Escape clears a selection or a staged move.
+  let keyboardActivation = false;
+  let screenEl: HTMLDivElement | undefined = $state();
+
+  function testIdForKey(key: TargetKey): string {
+    if (key === 'deck') return 'deck-pile';
+    if (key === 'scrap') return 'scrap-pile';
+    if (key.startsWith('hand:')) return `hand-card-${key.slice('hand:'.length)}`;
+    if (key.startsWith('seven:')) return `seven-card-${key.slice('seven:'.length)}`;
+    return key.replace(/:/g, '-');
+  }
+
+  function focusFirstTarget(): void {
+    void tick().then(() => {
+      for (const key of staging.highlighted) {
+        const el = screenEl?.querySelector<HTMLElement>(`[data-testid="${testIdForKey(key)}"]`);
+        if (el) {
+          el.focus();
+          return;
+        }
+      }
+    });
+  }
+
+  function onWindowKeydown(event: KeyboardEvent): void {
+    keyboardActivation = event.key === 'Enter' || event.key === ' ';
+    if (event.key !== 'Escape' || board === null) return;
+    if (staging.state === 'staged' || staging.chooser !== null || staging.scrapPick !== null) staging.cancel();
+    else staging.clearSelection();
+  }
+
   function onBoardTap(key: TargetKey): void {
     const viewer = board?.state.viewer;
     if (viewer === undefined) return;
+    const fromKeyboard = keyboardActivation;
+    keyboardActivation = false;
+    tapStaging(key, viewer);
+    if (fromKeyboard && staging.state === 'selected' && staging.chooser === null && staging.scrapPick === null) {
+      focusFirstTarget();
+    }
+  }
+
+  function tapStaging(key: TargetKey, viewer: PlayerId): void {
     // R6: with nothing selected, the scrap pile opens the browser. When the
     // scrap is a lit target (a dead-end 7) or a card is selected, the tap
     // belongs to staging (SPEC §6.1: an unlit tap clears the selection).
@@ -204,7 +248,9 @@
   });
 </script>
 
-<div data-testid="game-screen" class="game-screen">
+<svelte:window onkeydown={onWindowKeydown} onpointerdown={() => (keyboardActivation = false)} />
+
+<div data-testid="game-screen" class="game-screen" bind:this={screenEl}>
   <h1 class="game-screen__sr-only">{session.names[0]} vs {session.names[1]}</h1>
 
   {#if withheld}
@@ -238,6 +284,7 @@
       inert={staging.inert}
       {deckEnabled}
       ontap={onBoardTap}
+      ontapblank={() => staging.clearSelection()}
       {lastMoveText}
       {theme}
       handTray={revealed === null ? undefined : sevenTray}

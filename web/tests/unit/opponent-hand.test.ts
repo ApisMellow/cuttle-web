@@ -71,3 +71,11 @@ describe('OpponentHand redaction (SPEC §3.2)', () => {
     expect(hand(el).textContent).toContain('6 cards');
   });
 });
+
+describe('W25: count noun agrees with the number', () => {
+  it('"1 card", never "1 cards"', () => {
+    const el = render({ handCount: 1, hand: null });
+    expect(hand(el).textContent).toContain('1 card');
+    expect(hand(el).textContent).not.toContain('1 cards');
+  });
+});

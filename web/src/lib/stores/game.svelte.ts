@@ -36,6 +36,7 @@ import {
   type CurtainView,
   advance as advanceCurtainState,
   next as nextCurtainState,
+  opening as openingCurtain,
 } from './curtain.svelte';
 import { session as defaultSession, type SessionStore } from './session.svelte';
 import { SNAPSHOT_KEY, SNAPSHOT_VERSION, type Snapshot, decodeSnapshot, encodeSnapshot } from './snapshot';
@@ -104,7 +105,7 @@ export class GameStore {
   #seed: string | null = null;
   #dealer: PlayerId | null = null;
   /** The (pre, move, post) that produced the current non-'none' curtain — needed by `advance()`/`recapFor` while a curtain is up, since `envelope` is null then. Cleared once the curtain settles back to 'none'. */
-  #pendingCtx: { pre: CurtainView; move: AppliedMove; post: CurtainView } | null = null;
+  #pendingCtx: { pre: CurtainView; move: AppliedMove | null; post: CurtainView } | null = null;
 
   /** The only full `PlayerView` (+ legalMoves/descriptions) in memory. `null` whenever nobody's view is currently safe to show (SPEC §3.3 rule 4). */
   envelope = $state<Envelope | null>(null);
@@ -160,23 +161,31 @@ export class GameStore {
     this.#seed = seed;
     this.#dealer = dealerAssigned;
 
-    this.error = null;
-    this.#pendingCtx = null;
+    // W25 (privacy, SPEC §3.3 rule 4, §4.5): the game starts behind the
+    // curtain, addressed to the first actor. Whoever tapped "New game" may
+    // not be that player, so the deal's envelope is dropped here, unread,
+    // and the first actor's view is fetched fresh at `none` like any turn.
+    const first = result.state.active;
+    const curtain = openingCurtain(first);
+    const firstView: CurtainView = { active: first, phase: result.state.phase };
+    const history = result.history.map(withoutIndex);
     const freshLastSeenSeq: Record<PlayerId, number> = { 0: 0, 1: 0 };
 
     this.#writeSnapshot({
-      history: result.history,
+      history,
       lastSeenSeq: freshLastSeenSeq,
-      viewer: result.state.viewer,
-      curtain: { kind: 'none' },
+      viewer: first,
+      curtain,
     });
 
-    this.history = result.history;
+    this.error = null;
+    this.#pendingCtx = { pre: firstView, move: null, post: firstView };
+    this.history = history;
     this.seq = result.seq;
     this.lastSeenSeq = freshLastSeenSeq;
-    this.curtain = { kind: 'none' };
-    this.envelope = result;
-    this.viewer = result.state.viewer;
+    this.curtain = curtain;
+    this.envelope = null;
+    this.viewer = null;
     this.screen = 'game';
     this.notice = null;
   }
@@ -311,6 +320,23 @@ export class GameStore {
     }
   }
 
+  /**
+   * W25: the result screen's Home button. Allowed only at `result`: the game
+   * is over and already persisted, so Home can Resume it (to see the
+   * result) or start a new one. Drops every view-bearing field on the way
+   * out, since the home screen needs none of them.
+   */
+  goHome(): void {
+    if (this.curtain.kind !== 'result') {
+      throw new Error(`GameStore.goHome() is only allowed at result (curtain: ${this.curtain.kind})`);
+    }
+    this.envelope = null;
+    this.viewer = null;
+    this.#pendingCtx = null;
+    this.curtain = { kind: 'none' };
+    this.screen = 'home';
+  }
+
   /** §4.6: unseen, recap-visible history for one viewer. */
   recapFor(viewer: PlayerId): AppliedMove[] {
     return this.history.filter((h) => h.seq > this.lastSeenSeq[viewer]).filter(isRecapVisible);
@@ -365,10 +391,14 @@ export class GameStore {
     this.viewer = withheld ? null : snap.viewer;
 
     const lastMove = result.history.at(-1);
+    const restoredView: CurtainView = { active: result.state.active, phase: result.state.phase };
     this.#pendingCtx =
-      curtain.kind === 'none' || curtain.kind === 'result' || lastMove === undefined
+      curtain.kind === 'none' || curtain.kind === 'result'
         ? null
-        : {
+        : lastMove === undefined
+          ? // W25: a curtain with no move behind it is the opening deal's.
+            { pre: restoredView, move: null, post: restoredView }
+          : {
             // `pre.active` is exactly `mv.by` (§2.7: "by: pre-state Active");
             // `pre.phase` is never read by `advance()`/`afterRecap()` (only
             // a fresh `next()` call consults it, and restore never replays

@@ -11,7 +11,7 @@ import * as curtainModule from '../../src/lib/stores/curtain.svelte';
 import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
-import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, playerView, startGame } from './game-test-support';
 
 // Wraps (never replaces) the real machine's `advance`, so a test can see the
 // CurtainContext the store hands it — the only window onto the store's
@@ -100,7 +100,7 @@ describe('carry-over 4: no PlayerView of the previous holder survives across a c
       apply: () => postMoveEnvelope,
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
 
@@ -124,7 +124,7 @@ describe('carry-over 4: no PlayerView of the previous holder survives across a c
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
 
@@ -145,7 +145,7 @@ describe('carry-over 4: no PlayerView of the previous holder survives across a c
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
 
@@ -171,7 +171,7 @@ describe('carry-over 5: recap is built with isRecapVisible + lastSeenSeq, stampe
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
 
@@ -206,7 +206,7 @@ describe('carry-over 5: recap is built with isRecapVisible + lastSeenSeq, stampe
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     await store.advanceCurtain(); // reveal
 
@@ -234,7 +234,7 @@ describe('carry-over 5: recap is built with isRecapVisible + lastSeenSeq, stampe
     });
     const store = new GameStore({ engine, storage, session });
     // Pretend P2 already saw seq 1 (nothing new for them).
-    await store.newGame();
+    await startGame(store, engine);
     store.lastSeenSeq = { 0: 0, 1: 1 };
     await store.apply(0);
 
@@ -261,7 +261,7 @@ describe('R14 synthetic acknowledgment integration', () => {
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
 
     await store.apply(0);
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'acknowledge' });
@@ -292,7 +292,7 @@ describe('carry-over 6: snapshot is written synchronously, before the reactive U
       apply: () => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     const preApplyEnvelope = store.envelope;
     expect(preApplyEnvelope).not.toBeNull();
 
@@ -328,8 +328,8 @@ describe('carry-over 6: snapshot is written synchronously, before the reactive U
 
 describe('B1: the acknowledger\'s PlayerView does not survive the handoff back to the mover', () => {
   it('7 round trip: after the synthetic ack hands the phone back to A, no O card identity is reachable anywhere in the store', async () => {
-    const { store } = sevenRoundTrip();
-    await store.newGame();
+    const { store, engine } = sevenRoundTrip();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     // Sanity: during O's ack, O's own envelope is legitimately exposed.
@@ -376,7 +376,7 @@ describe('B1: the acknowledger\'s PlayerView does not survive the handoff back t
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'acknowledge' });
     await advanceUntil(store, () => store.curtain.kind === 'ack');
@@ -410,7 +410,8 @@ describe('B2: the mover-only AppliedMove.index never survives behind a curtain',
         }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
+    vi.mocked(curtainModule.advance).mockClear(); // only this move's sequence, not the opening deal's
     await store.apply(0);
 
     expect(store.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'counter' });
@@ -430,7 +431,7 @@ describe('B2: the mover-only AppliedMove.index never survives behind a curtain',
     // The private pending context, observed at the only place it flows: the machine's advance().
     const ctxMoves = vi.mocked(curtainModule.advance).mock.calls.map(([, ctx]) => ctx.move);
     expect(ctxMoves.length).toBeGreaterThan(0);
-    expect(ctxMoves.some(hasOwnIndex)).toBe(false);
+    expect(ctxMoves.some((m) => m !== null && hasOwnIndex(m))).toBe(false);
 
     // The persisted curtain/history carry no index either while the curtain is up.
     const persisted = JSON.parse(storage.getItem(SNAPSHOT_KEY) as string);
@@ -448,7 +449,7 @@ describe('B2: the mover-only AppliedMove.index never survives behind a curtain',
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history: [ownOlder, appliedMove({ by: 0, kind: Kind.Draw, seq: 1 })] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'none');
 
@@ -470,12 +471,12 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
       apply: () => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] }),
       view,
     });
-    return { store: new GameStore({ engine, storage, session }), view };
+    return { store: new GameStore({ engine, storage, session }), view, engine };
   }
 
   it('probe 1: there is no public call that fetches another player\'s view while P0 holds the phone', async () => {
-    const { store, view } = simpleGame();
-    await store.newGame();
+    const { store, view, engine } = simpleGame();
+    await startGame(store, engine);
     expect((store as unknown as Record<string, unknown>).setViewer).toBeUndefined();
 
     await store.refresh(); // the only public re-fetch: the CURRENT viewer, nobody else
@@ -486,8 +487,8 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
   });
 
   it('probe 2: during the reveal to O, no public call restores the mover\'s envelope', async () => {
-    const { store, view } = simpleGame();
-    await store.newGame();
+    const { store, view, engine } = simpleGame();
+    await startGame(store, engine);
     await store.apply(0);
     await store.advanceCurtain(); // reveal to P1
     expect(store.curtain).toEqual({ kind: 'reveal', to: 1 });
@@ -499,8 +500,8 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
   });
 
   it('refresh() throws in handoff, recap, synthetic ack and result too', async () => {
-    const { store } = simpleGame();
-    await store.newGame();
+    const { store, engine } = simpleGame();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.curtain.kind).toBe('handoff');
     await expect(store.refresh()).rejects.toThrow();
@@ -510,7 +511,7 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
     await expect(store.refresh()).rejects.toThrow();
 
     const trip = sevenRoundTrip();
-    await trip.store.newGame();
+    await startGame(trip.store, trip.engine);
     await trip.store.apply(0);
     await advanceUntil(trip.store, () => trip.store.curtain.kind === 'ack');
     await expect(trip.store.refresh()).rejects.toThrow();
@@ -520,7 +521,7 @@ describe('B3: viewer changes happen only through the curtain machine', () => {
 describe('N5: apply() is guarded by the curtain', () => {
   it('throws before touching the bridge in handoff, reveal, recap and a synthetic ack', async () => {
     const { store, engine } = sevenRoundTrip();
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     vi.mocked(engine.apply).mockClear();
     for (let i = 0; i < 6 && store.curtain.kind !== 'none'; i++) {
@@ -538,7 +539,7 @@ describe('N5: apply() is guarded by the curtain', () => {
       apply: vi.fn(() => envelope({ state: playerView({ active: 0, viewer: 0, phase: Phase.GameOver, winner: 0 }), lastMove: win, history: [win] })),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.curtain.kind).toBe('result');
     await expect(store.apply(0)).rejects.toThrow();
@@ -558,7 +559,7 @@ describe('N5: apply() is guarded by the curtain', () => {
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history: [oneOff] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: false });
@@ -574,7 +575,7 @@ describe('N5: apply() is guarded by the curtain', () => {
       apply: vi.fn(),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await expect(store.apply(0)).rejects.toThrow();
     expect(engine.apply).not.toHaveBeenCalled();
   });
@@ -633,27 +634,27 @@ describe('B5: carry-over 6 ordering on every curtain transition, not only apply(
       apply: () => envelope({ state: playerView({ active: 1, viewer: 0, phase: Phase.AwaitingCounter }), lastMove: oneOff, history: [oneOff] }),
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p, phase: Phase.AwaitingCounter }), history: [oneOff] }),
     });
-    return { store: new GameStore({ engine, storage, session }), storage };
+    return { store: new GameStore({ engine, storage, session }), storage, engine };
   }
 
   it('handoff -> reveal', async () => {
-    const { store, storage } = counterGame();
-    await store.newGame();
+    const { store, storage, engine } = counterGame();
+    await startGame(store, engine);
     await store.apply(0);
     await expectPersistBeforeUpdate(store, storage, 'reveal');
   });
 
   it('reveal -> recap', async () => {
-    const { store, storage } = counterGame();
-    await store.newGame();
+    const { store, storage, engine } = counterGame();
+    await startGame(store, engine);
     await store.apply(0);
     await store.advanceCurtain();
     await expectPersistBeforeUpdate(store, storage, 'recap');
   });
 
   it('recap -> ack (real counter window, fetches a view)', async () => {
-    const { store, storage } = counterGame();
-    await store.newGame();
+    const { store, storage, engine } = counterGame();
+    await startGame(store, engine);
     await store.apply(0);
     await store.advanceCurtain();
     await store.advanceCurtain();
@@ -669,7 +670,7 @@ describe('B5: carry-over 6 ordering on every curtain transition, not only apply(
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p }), history: [drawMove] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     await store.advanceCurtain();
     await store.advanceCurtain();
@@ -678,8 +679,8 @@ describe('B5: carry-over 6 ordering on every curtain transition, not only apply(
   });
 
   it('synthetic ack -> handoff back (the 7 round trip), persisted with viewer = the new holder', async () => {
-    const { store, storage } = sevenRoundTrip();
-    await store.newGame();
+    const { store, storage, engine } = sevenRoundTrip();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     const writes = observeWrites(store, storage);
@@ -704,7 +705,7 @@ describe('N2: a handoff persists viewer = curtain.to (not the mover)', () => {
       apply: () => envelope({ state: playerView({ active: 1, viewer: 0 }), lastMove: drawMove, history: [drawMove] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
 
     const persisted = JSON.parse(storage.getItem(SNAPSHOT_KEY) as string);
@@ -723,7 +724,7 @@ describe('N4: opponent.hand [] (visible, empty) survives a viewer change', () =>
       view: (p) => envelope({ state: playerView({ active: 1, viewer: p, opponent: { handCount: 0, hand: [], points: [], permanents: [] } }), history: [drawMove] }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'none');
 
@@ -751,12 +752,12 @@ describe('SPEC §4.6 (amended 2026-09-27): a successful apply stamps lastSeenSeq
       },
       view: (p) => envelope({ state: playerView({ active: p, viewer: p }), history: moves.slice(0, applied) }),
     });
-    return { store: new GameStore({ engine, storage, session }), storage, moves };
+    return { store: new GameStore({ engine, storage, session }), storage, moves, engine };
   }
 
   it('the snapshot written by that apply already carries the mover\'s stamp', async () => {
-    const { store, storage } = twoRounds();
-    await store.newGame();
+    const { store, storage, engine } = twoRounds();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.lastSeenSeq).toEqual({ 0: 1, 1: 0 });
     const persisted = JSON.parse(storage.getItem(SNAPSHOT_KEY) as string);
@@ -765,8 +766,8 @@ describe('SPEC §4.6 (amended 2026-09-27): a successful apply stamps lastSeenSeq
   });
 
   it('after one full round, the incoming player\'s recap contains only the opponent\'s move', async () => {
-    const { store, moves } = twoRounds();
-    await store.newGame();
+    const { store, moves, engine } = twoRounds();
+    await startGame(store, engine);
     await store.apply(0); // P0 draws
     await advanceUntil(store, () => store.curtain.kind === 'none'); // P1 sees seq 1
     await store.apply(0); // P1 draws
@@ -779,8 +780,8 @@ describe('SPEC §4.6 (amended 2026-09-27): a successful apply stamps lastSeenSeq
   });
 
   it('a mover\'s recap on their next turn never includes their own previous move', async () => {
-    const { store, moves } = twoRounds();
-    await store.newGame();
+    const { store, moves, engine } = twoRounds();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'none');
     await store.apply(0); // P1 draws
@@ -803,7 +804,7 @@ describe('SPEC §4.6 (amended 2026-09-27): a successful apply stamps lastSeenSeq
       apply: () => ({ ok: false, code: 'ILLEGAL_MOVE', message: 'no' }),
     });
     const store = new GameStore({ engine, storage, session });
-    await store.newGame();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.lastSeenSeq).toEqual({ 0: 0, 1: 0 });
   });
@@ -851,7 +852,7 @@ function oddChainRun(opts: { failViewOnce?: PlayerId } = {}) {
     view,
   });
   const store = new GameStore({ engine, storage, session });
-  return { store, storage, view, full };
+  return { store, storage, view, full, engine };
 }
 
 function persisted(storage: Storage) {
@@ -860,8 +861,8 @@ function persisted(storage: Storage) {
 
 describe('B-R1: the acknowledger\'s own indexed history does not survive the synthetic-ack handback', () => {
   it('odd-chain cancel: at the handoff back and the reveal, no own index key in history, curtain, the persisted snapshot, or recapFor', async () => {
-    const { store, storage } = oddChainRun();
-    await store.newGame();
+    const { store, storage, engine } = oddChainRun();
+    await startGame(store, engine);
     await store.apply(0); // P0 counters
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     expect(store.viewer).toBe(1);
@@ -889,8 +890,8 @@ describe('B-R1: the acknowledger\'s own indexed history does not survive the syn
 
 describe('R2: a failed view() fetch leaves the sequence resumable', () => {
   it('reveal -> none fails once, the curtain stays put with the error, and a retry reaches the resting state', async () => {
-    const { store, view } = oddChainRun({ failViewOnce: 0 });
-    await store.newGame();
+    const { store, view, engine } = oddChainRun({ failViewOnce: 0 });
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     await store.advanceCurtain(); // handoff back to P0
@@ -910,8 +911,8 @@ describe('R2: a failed view() fetch leaves the sequence resumable', () => {
   });
 
   it('recap -> ack fails once, then the retry reaches the ack', async () => {
-    const { store } = oddChainRun({ failViewOnce: 1 });
-    await store.newGame();
+    const { store, engine } = oddChainRun({ failViewOnce: 1 });
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'recap');
     await store.advanceCurtain(); // fails
@@ -924,8 +925,8 @@ describe('R2: a failed view() fetch leaves the sequence resumable', () => {
 
 describe('R3: SPEC §4.6 (amended again 2026-09-27): leaving recap stamps lastSeenSeq[viewer]', () => {
   it('the acknowledger is stamped at recap dismissal, in that transition\'s write, before the store updates', async () => {
-    const { store, storage } = oddChainRun();
-    await store.newGame();
+    const { store, storage, engine } = oddChainRun();
+    await startGame(store, engine);
     await store.apply(0);
     expect(store.lastSeenSeq).toEqual({ 0: 2, 1: 0 }); // mover stamped by apply
     await advanceUntil(store, () => store.curtain.kind === 'recap');
@@ -947,8 +948,8 @@ describe('R3: SPEC §4.6 (amended again 2026-09-27): leaving recap stamps lastSe
   });
 
   it('end state after the odd-chain run, and the acknowledger\'s next recap does not repeat what they already saw', async () => {
-    const { store, storage, full } = oddChainRun();
-    await store.newGame();
+    const { store, storage, full, engine } = oddChainRun();
+    await startGame(store, engine);
     await store.apply(0);
     await advanceUntil(store, () => store.curtain.kind === 'ack');
     await store.advanceCurtain(); // handoff back to P0 — P1 never reaches 'none'

@@ -109,4 +109,11 @@
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
+
+  /* W25 (desktop keyboard): a visible focus ring on every target, drawn
+     inset so a clipping row or well can't hide it. */
+  .deck-pile:focus-visible {
+    outline: 3px solid var(--cu-pearl, #eee8f1);
+    outline-offset: -3px;
+  }
 </style>

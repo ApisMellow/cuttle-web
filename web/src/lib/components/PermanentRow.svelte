@@ -151,4 +151,11 @@
     font-size: var(--cu-text-sm, 14px);
     color: var(--cu-muted, #b4a8be);
   }
+
+  /* W25 (desktop keyboard): a visible focus ring on every target, drawn
+     inset so a clipping row or well can't hide it. */
+  .permanent-row__card:focus-visible {
+    outline: 3px solid var(--cu-pearl, #eee8f1);
+    outline-offset: -3px;
+  }
 </style>

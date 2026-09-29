@@ -99,3 +99,31 @@ describe('ScoreBar (SPEC §3.3 rule 2)', () => {
     expect([...el.querySelectorAll('[data-testid]')].map((n) => n.getAttribute('data-testid'))).toEqual(['score-bar']);
   });
 });
+
+describe('W25 turn header (public: names and view.active)', () => {
+  const scoreboard: PlayerView['scoreboard'] = {
+    you: { points: 0, threshold: 21, kings: 0, hasWon: false },
+    opponent: { points: 0, threshold: 21, kings: 0, hasWon: false },
+  };
+
+  it('names the viewer and marks their turn: "Alice, your turn"', () => {
+    host = document.createElement('div');
+    document.body.append(host);
+    instance = mount(ScoreBar, { target: host, props: { scoreboard, opponentName: 'Blake', youName: 'Alice', active: 'you' } });
+    flushSync();
+    const text = bar(host).textContent ?? '';
+    expect(text).toContain('Alice, your turn');
+    expect(text).toContain('Blake');
+    expect(text).not.toContain('You');
+  });
+
+  it('marks the opponent side when it is their turn', () => {
+    host = document.createElement('div');
+    document.body.append(host);
+    instance = mount(ScoreBar, { target: host, props: { scoreboard, opponentName: 'Blake', youName: 'Alice', active: 'opponent' } });
+    flushSync();
+    const text = bar(host).textContent ?? '';
+    expect(text).toContain('Blake’s turn');
+    expect(text).not.toContain('your turn');
+  });
+});

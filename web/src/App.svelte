@@ -147,6 +147,14 @@
   function handleRematch(): void {
     void game.newGame();
   }
+
+  // W25: the final points per player, read verbatim off the viewer-relative
+  // scoreboard (SPEC §3.3 rule 2: mapped to seats, never recomputed).
+  function finalScores(view: NonNullable<typeof game.view>): Record<0 | 1, number> {
+    const you = view.scoreboard.you.points;
+    const opp = view.scoreboard.opponent.points;
+    return view.viewer === 0 ? { 0: you, 1: opp } : { 0: opp, 1: you };
+  }
 </script>
 
 <main data-testid="app-shell">
@@ -187,7 +195,9 @@
       state={{ winner: game.view.winner, stalemate: game.view.stalemate }}
       names={session.names}
       tally={session.tally}
+      scores={finalScores(game.view)}
       onRematch={handleRematch}
+      onHome={() => game.goHome()}
     />
   {:else}
     <GameScreen />

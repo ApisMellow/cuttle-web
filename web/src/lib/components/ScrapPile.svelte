@@ -92,4 +92,11 @@
     text-align: center;
     pointer-events: none;
   }
+
+  /* W25 (desktop keyboard): a visible focus ring on every target, drawn
+     inset so a clipping row or well can't hide it. */
+  .scrap-pile__well:focus-visible {
+    outline: 3px solid var(--cu-pearl, #eee8f1);
+    outline-offset: -3px;
+  }
 </style>

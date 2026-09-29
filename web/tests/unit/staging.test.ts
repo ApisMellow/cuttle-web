@@ -715,6 +715,12 @@ function probeCrossTalk(envelope: Envelope): void {
         // hand index and whose board key is exactly the tapped one —
         // never a foreign card's move.
         const staged = envelope.legalMoves[store.stagedIndex as number];
+        if (key === 'deck') {
+          // W25: a deck tap while a card is selected stages Draw instead,
+          // and only ever Draw (the deck is never a hand card's target).
+          expect(staged.Kind).toBe(MoveKind.Draw);
+          continue;
+        }
         expect(staged.HandIndex).toBe(handIndex);
         expect(boardTargetKey(staged)).toBe(key);
       }

@@ -14,6 +14,7 @@ import {
   handoffLabel,
   needsSyntheticAck,
   next,
+  opening,
 } from '../../src/lib/stores/curtain.svelte';
 import type { CurtainContext, CurtainState, CurtainView, HandoffReason, RecapEntry } from '../../src/lib/stores/curtain.svelte';
 
@@ -91,7 +92,7 @@ function ctx(pre: PlayerView, mv: AppliedMove, post: PlayerView, recap: Partial<
 
 /** Walks the receiving sequence from next() until it rests (none/result/real ack). */
 function walk(c: CurtainContext): CurtainState[] {
-  const states: CurtainState[] = [next(c.pre, c.move, c.post)];
+  const states: CurtainState[] = [c.move === null ? opening(c.post.active) : next(c.pre, c.move, c.post)];
   for (let i = 0; i < 20; i++) {
     const s = states[states.length - 1];
     if (s.kind === 'none' || s.kind === 'result' || (s.kind === 'ack' && !s.synthetic)) return states;
@@ -446,5 +447,28 @@ describe('R14 indistinguishability — paired real/synthetic walks', () => {
       const labels = (xs: CurtainState[]) => xs.flatMap((s) => (s.kind === 'handoff' ? [handoffLabel(s.reason)] : []));
       expect(labels(synthetic), c.name).toEqual(labels(real));
     }
+  });
+});
+
+describe('W25: the opening deal\'s curtain (move null)', () => {
+  const first: CurtainView = { active: 1, phase: 0 as Phase };
+  const openingCtx = (recap: RecapEntry[] = [], view: CurtainView = first): CurtainContext => ({
+    pre: view,
+    move: null,
+    post: view,
+    recapFor: () => recap,
+  });
+
+  it('is a handoff to the first actor with the neutral turn label', () => {
+    expect(opening(1)).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
+    expect(handoffLabel('turn')).toBe('Your turn');
+  });
+
+  it('walks handoff -> reveal -> none, with no synthetic ack', () => {
+    expect(walk(openingCtx())).toEqual([
+      { kind: 'handoff', to: 1, reason: 'turn' },
+      { kind: 'reveal', to: 1 },
+      { kind: 'none' },
+    ]);
   });
 });

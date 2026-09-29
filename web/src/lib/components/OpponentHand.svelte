@@ -44,7 +44,7 @@
       {/each}
     {/if}
   </div>
-  <span class="opponent-hand__count">{handCount} cards</span>
+  <span class="opponent-hand__count">{handCount} {handCount === 1 ? 'card' : 'cards'}</span>
 </div>
 
 <style>

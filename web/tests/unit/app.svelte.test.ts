@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BridgeResult, Card, Envelope, PlayerId } from '../../src/lib/bridge/schema';
 import { SNAPSHOT_KEY, encodeSnapshot, type Snapshot } from '../../src/lib/stores/snapshot';
-import { Kind, Phase, appliedMove, engineError, envelope, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, engineError, envelope, playerView, startGameMocked } from './game-test-support';
 
 vi.mock('../../src/lib/bridge/wasm', () => ({
   ensureEngine: vi.fn(() => Promise.resolve()),
@@ -117,7 +117,15 @@ function gameOverEnvelope(outcome: { winner: PlayerId | null; stalemate: boolean
 }
 
 async function startLiveGame(): Promise<void> {
-  await game.newGame();
+  await startGameMocked(game, bridge, openingEnvelope());
+  flushSync();
+}
+
+/** W25: a New game / Rematch started from the UI lands behind the opening curtain; walk it to the board. */
+async function passOpeningCurtain(): Promise<void> {
+  expect(game.curtain).toMatchObject({ kind: 'handoff', reason: 'turn' });
+  bridge.view.mockImplementationOnce(() => openingEnvelope());
+  for (let i = 0; i < 4 && game.curtain.kind !== 'none'; i++) await game.advanceCurtain();
   flushSync();
 }
 
@@ -204,8 +212,9 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     await Promise.resolve();
     flushSync();
     expect(newGameSpy).toHaveBeenCalledTimes(1);
-    expect(game.curtain.kind).toBe('none');
     expect(byTestId(el, 'game-screen')).not.toBeNull();
+    await passOpeningCurtain();
+    expect(game.curtain.kind).toBe('none');
 
     await liveGameOver({ winner: 1, stalemate: false });
     expect(session.tally).toEqual({ 0: 0, 1: 2 });
@@ -224,12 +233,12 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     const shell = byTestId(el, 'app-shell');
     if (!shell) throw new Error('no app-shell');
     const ids = [...shell.querySelectorAll('[data-testid]')].map((n) => n.getAttribute('data-testid')).sort();
-    expect(ids).toEqual(['rematch', 'result-screen', 'tally']);
+    expect(ids).toEqual(['final-scores', 'rematch', 'result-home', 'result-screen', 'tally']);
     expect(shell.querySelectorAll('svg, img, canvas').length).toBe(0);
     // Every text node on the screen, verbatim: headline, tally, button. Nothing else.
     const texts = [...shell.querySelectorAll('h1, p, button')].map((n) => n.textContent?.trim());
-    expect(texts).toEqual(['Alice wins!', 'Alice 1 – Blake 0', 'Rematch']);
-    expect(shell.textContent?.replace(/\s+/g, '')).toBe('Alicewins!Alice1–Blake0Rematch');
+    expect(texts).toEqual(['Alice wins!', 'Alice 1 – Blake 0', 'Final score: Alice 0 – Blake 0', 'Rematch', 'Home']);
+    expect(shell.textContent?.replace(/\s+/g, '')).toBe('Alicewins!Alice1–Blake0Finalscore:Alice0–Blake0RematchHome');
   });
 });
 
@@ -265,6 +274,7 @@ describe('App restore into result (B2, R4.2)', () => {
     click(el, 'rematch');
     await Promise.resolve();
     flushSync();
+    await passOpeningCurtain();
     await liveGameOver({ winner: 0, stalemate: false });
     expect(session.tally).toEqual({ 0: 1, 1: 0 });
   });
@@ -374,5 +384,77 @@ describe('App error boundary (SPEC §2.9)', () => {
     flushSync();
     expect(byTestId(el, 'confirm-abandon')).toBeNull();
     expect(bridge.newGame).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('W25: New game starts behind the curtain (privacy, SPEC §3.3 rule 4, §4.5)', () => {
+  const SECRET_HAND: Card[] = [
+    { Rank: 13, Suit: 3 },
+    { Rank: 4, Suit: 1 },
+  ];
+
+  it('after New game no hand card is in the DOM until the first player reveals', async () => {
+    // Blake (P1) acts first; Alice is the one who tapped New game.
+    const firstView = (p: PlayerId) =>
+      envelope({
+        state: playerView({ viewer: p, active: 1, you: { hand: SECRET_HAND, frozenHandIndices: [], points: [], permanents: [] } }),
+      });
+    bridge.newGame.mockImplementation(() => firstView(1));
+    bridge.view.mockImplementation((p: PlayerId) => firstView(p));
+    const el = await renderApp();
+    (byTestId(el, 'name-input-0') as HTMLInputElement).value = 'Alice';
+    byTestId(el, 'name-input-0')!.dispatchEvent(new Event('input'));
+    (byTestId(el, 'name-input-1') as HTMLInputElement).value = 'Blake';
+    byTestId(el, 'name-input-1')!.dispatchEvent(new Event('input'));
+    flushSync();
+
+    click(el, 'new-game');
+    await Promise.resolve();
+    flushSync();
+
+    expect(byTestId(el, 'game-screen')).not.toBeNull();
+    expect(el.querySelectorAll('[data-testid^="hand-card-"]')).toHaveLength(0);
+    expect(byTestId(el, 'board')).toBeNull();
+    expect(byTestId(el, 'curtain-gate')?.textContent).toContain('Blake');
+    expect(bridge.view).not.toHaveBeenCalled();
+
+    click(el, 'reveal-two-step'); // "I'm Blake" arms the pill: handoff -> reveal
+    await Promise.resolve();
+    flushSync();
+    expect(el.querySelectorAll('[data-testid^="hand-card-"]')).toHaveLength(0);
+    expect(byTestId(el, 'board')).toBeNull();
+
+    click(el, 'reveal-two-step'); // "Show my hand": reveal -> none
+    await Promise.resolve();
+    await Promise.resolve();
+    flushSync();
+    expect(bridge.view).toHaveBeenCalledWith(1);
+    expect(byTestId(el, 'board')).not.toBeNull();
+    expect(el.querySelectorAll('[data-testid^="hand-card-"]')).toHaveLength(SECRET_HAND.length);
+  });
+});
+
+describe('W25: result screen Home and final scores', () => {
+  it('maps the viewer-relative scoreboard to seats, and Home returns to the home screen with no view held', async () => {
+    session.setNames('Alice', 'Blake');
+    const el = await renderApp();
+    await startLiveGame();
+    const over = gameOverEnvelope({ winner: 1, stalemate: false });
+    // The final view is Alice's (viewer 0): she has 7, Blake has 21.
+    over.state.scoreboard = {
+      you: { points: 7, threshold: 21, kings: 0, hasWon: false },
+      opponent: { points: 21, threshold: 21, kings: 0, hasWon: true },
+    };
+    bridge.apply.mockImplementationOnce((): BridgeResult => over);
+    await game.apply(0);
+    flushSync();
+    expect(byTestId(el, 'final-scores')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Final score: Alice 7 – Blake 21');
+
+    click(el, 'result-home');
+    expect(byTestId(el, 'home-screen')).not.toBeNull();
+    expect(game.envelope).toBeNull();
+    expect(game.view).toBeNull();
+    // The finished game is still saved, so Home offers Resume.
+    expect(byTestId(el, 'resume')).not.toBeNull();
   });
 });
