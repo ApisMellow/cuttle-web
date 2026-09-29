@@ -139,6 +139,9 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     // Review N2: the win is checked as soon as a play resolves, not at the end of a turn.
     expect(text).toContain('You win as soon as you have 21 or more points on your side (fewer with Kings in play).');
     expect(text).not.toContain('end of your turn');
+    // Engine v0.2.1: points that reach you during their turn win at the start of yours.
+    expect(text).toContain('Points that reach your side during their turn win at the start of your next turn instead.');
+    expect(text).toContain('A 2 scrapping a Jack takes only the top one, and the card goes to whoever controls the next Jack, or back to its owner.');
     expect(text).toContain('1 King 14, 2 Kings 10, 3 Kings 7, 4 Kings 5');
     expect(text).not.toMatch(/[♣♦♥♠]/);
   });

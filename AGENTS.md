@@ -9,7 +9,7 @@ attached evidence.
 ## Environment
 
 - The Go engine is a **published module**: `github.com/ApisMellow/cuttle`,
-  pinned at `v0.2.0`, no `replace` directive committed. A temporary local
+  pinned at `v0.2.1`, no `replace` directive committed. A temporary local
   `replace` for engine development is fine — never commit it.
 - The engine is canon. The UI implements zero game rules; every rule
   question is answered by `engine.LegalMoves` / `engine.Apply` output.
@@ -146,15 +146,15 @@ its own repo root, so calling it by absolute path tests that tree.
 | §1.3: `web/src/routes/` | Doesn't exist. The shell is `web/src/App.svelte` and `web/src/main.ts`. |
 | §5.4, §3.3 rule 1: `lib/bridge/types.ts`, `raw.ts` | Don't exist. The wire types live in `lib/bridge/schema.ts`. |
 | §2.10, §7.2 item 6: smoke exclusion list | Gone. The smoke corpus is seeds 1–240, unfiltered. |
-| `engine/*.go:NNN` line numbers throughout | Predate v0.2.0. Find code by symbol; cite v0.2.0 lines. |
+| `engine/*.go:NNN` line numbers throughout | Predate v0.2.1. Find code by symbol; cite v0.2.1 lines. |
 
 ### Engine canon
 
-- The engine is `github.com/ApisMellow/cuttle@v0.2.0` in the Go module
+- The engine is `github.com/ApisMellow/cuttle@v0.2.1` in the Go module
   cache (locate it with the command above). Key files: `engine/apply.go`,
   `engine/moves.go`, `engine/state.go`, `engine/win.go`, `card/card.go`,
   `RULES.md`. Read-only.
-- Every claim about engine behavior carries a v0.2.0 `file:line` citation
+- Every claim about engine behavior carries a v0.2.1 `file:line` citation
   or a test through the real wasm. A model's memory of Cuttle is not
   evidence.
 - Never edit the engine, never commit a `replace`, never compensate for an
