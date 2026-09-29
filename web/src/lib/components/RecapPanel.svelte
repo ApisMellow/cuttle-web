@@ -102,7 +102,7 @@
 
   <div class="recap__footer">
     {#if hiddenCount > 0 && !expanded}
-      <button type="button" class="recap__expand" data-testid="recap-expand" onclick={expand}>
+      <button type="button" class="recap__expand" data-testid="recap-expand" onclick={guarded(expand)}>
         +{hiddenCount} earlier
       </button>
     {/if}
