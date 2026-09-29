@@ -69,6 +69,12 @@ jobs:
         env:
           CUTTLE_BASE: /cuttle-web/
 
+      # The Mythic card gallery is a standalone static page (gallery/README.md),
+      # not part of the Vite app. Its committed site folder is copied in
+      # as-is so it's served beside the game at /cuttle-web/gallery/.
+      - name: Add the card gallery at /gallery/
+        run: cp -R gallery/site web/dist/gallery
+
       # NOTE: no PWA/service-worker step here. `vite-plugin-pwa` (SPEC
       # §5.8, R18) is not wired up yet — "PWA/offline polish" is explicitly
       # deferred past the family beta (docs/loop-workflow.md §4.5). When it

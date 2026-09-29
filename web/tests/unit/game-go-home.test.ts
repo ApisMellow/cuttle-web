@@ -21,7 +21,7 @@ import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
-import { Kind, createFakeEngine, envelope, fakeStorage, playerView } from './game-test-support';
+import { Kind, createFakeEngine, envelope, fakeStorage, passResumeGate, playerView } from './game-test-support';
 
 /** Everything Resume must restore, as plain data. */
 function capture(store: GameStore): unknown {
@@ -38,11 +38,17 @@ function capture(store: GameStore): unknown {
   );
 }
 
-/** Home then Resume; asserts the save is untouched and the state comes back identical. */
+/**
+ * Home then Resume; asserts the save is untouched and the state comes back
+ * identical. At a resting curtain (`none`, an `ack`) Resume first raises the
+ * resume gate (SPEC §5.7, ruling 2026-09-29), holding no view; the state is
+ * compared once the gate is passed, and the gate writes nothing.
+ */
 async function homeAndResume(store: GameStore, storage: Storage): Promise<void> {
   const saved = storage.getItem(SNAPSHOT_KEY);
   expect(saved).not.toBeNull();
   const before = capture(store);
+  const resting = store.curtain.kind === 'none' || store.curtain.kind === 'ack';
 
   store.goHome();
   expect(store.screen).toBe('home');
@@ -53,6 +59,13 @@ async function homeAndResume(store: GameStore, storage: Storage): Promise<void> 
 
   await store.restore();
   expect(storage.getItem(SNAPSHOT_KEY)).toBe(saved);
+  if (resting) {
+    expect(store.curtain).toMatchObject({ kind: 'handoff', reason: 'resume' });
+    expect(store.envelope).toBeNull();
+    expect(store.viewer).toBeNull();
+    await passResumeGate(store);
+    expect(storage.getItem(SNAPSHOT_KEY)).toBe(saved);
+  }
   expect(capture(store)).toEqual(before);
 }
 

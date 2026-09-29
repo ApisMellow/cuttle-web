@@ -1,0 +1,45 @@
+size: 786x1704
+fps: 30
+engine: piper
+voice: en_US-lessac-medium
+
+scenes:
+  - id: title
+    card: Tap the deck twice to draw
+    subtitle: Cuttle, issue 24
+    duration: 3
+
+  - id: before-setup
+    frames: out/frames/before-setup
+    rate: 10
+    narration: First, the live site as it runs today. We start a new game and show the hand.
+
+  - id: before
+    frames: out/frames/before
+    rate: 10
+    narration: >-
+      Tapping the deck stages a draw, and the Confirm bar appears.
+      Tapping the deck a second time does nothing. The draw still waits for Confirm.
+
+  - id: after-setup
+    frames: out/frames/after-setup
+    rate: 10
+    narration: Now the local build with the fix. Same steps, a new game.
+
+  - id: after
+    frames: out/frames/after
+    rate: 10
+    narration: >-
+      One tap on the deck stages the draw. With the fix, the second tap draws the card,
+      and the game goes straight to the pass screen. No Confirm needed.
+
+  - id: landed
+    frames: out/frames/landed
+    rate: 10
+    narration: >-
+      The next player sees that a card was drawn, and the deck is down from forty one to forty.
+
+  - id: done
+    frames: out/frames/done
+    rate: 10
+    narration: Two taps on the deck, and the turn is done.

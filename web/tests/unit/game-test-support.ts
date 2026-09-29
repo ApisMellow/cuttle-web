@@ -199,3 +199,16 @@ export async function startGameMocked(
     bridge.view.mockClear();
   }
 }
+
+/**
+ * Resume gate (SPEC §5.7, ruling 2026-09-29): a restore into `none` or an
+ * `ack` comes back behind `handoff(reason: 'resume')` -> `reveal`. Walks
+ * both steps; throws if the store is not at the gate.
+ */
+export async function passResumeGate(store: { advanceCurtain(): Promise<void>; curtain: { kind: string; reason?: string } }): Promise<void> {
+  if (store.curtain.kind !== 'handoff' || store.curtain.reason !== 'resume') {
+    throw new Error(`expected the resume gate, found ${JSON.stringify(store.curtain)}`);
+  }
+  await store.advanceCurtain();
+  await store.advanceCurtain();
+}

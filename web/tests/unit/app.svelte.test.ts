@@ -196,7 +196,7 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     expect(game.curtain.kind).toBe('none');
     await liveGameOver({ winner: 0, stalemate: false });
     expect(session.tally).toEqual({ 0: 2, 1: 0 });
-    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 2 – Blake 0');
+    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Match: Alice 2 – Blake 0');
   });
 
   it('a stalemate leaves the tally unchanged (R3)', async () => {
@@ -248,14 +248,14 @@ describe('App tally wiring (R2.3, R3.1): only a live transition into result reco
     const texts = [...shell.querySelectorAll('h1, p, button')].map((n) => n.textContent?.trim());
     expect(texts).toEqual([
       'Alice wins!',
-      'Alice won by reaching 0 with the 10♥.',
-      'Alice 1 – Blake 0',
+      'Alice won by reaching 0 of 21 with the 10♥.',
+      'Match: Alice 1 – Blake 0',
       'Final score: Alice 0 – Blake 0',
       'Rematch',
       'Home',
     ]);
     expect(shell.textContent?.replace(/\s+/g, '')).toBe(
-      'Alicewins!Alicewonbyreaching0withthe10♥.Alice1–Blake0Finalscore:Alice0–Blake0RematchHome',
+      'Alicewins!Alicewonbyreaching0of21withthe10♥.Match:Alice1–Blake0Finalscore:Alice0–Blake0RematchHome',
     );
     expect(shell.textContent?.match(/(?:10|[2-9]|[AJQK])[♣♦♥♠]/g)).toEqual(['10♥']);
   });
@@ -276,7 +276,7 @@ describe('App restore into result (B2, R4.2)', () => {
     expect(game.curtain.kind).toBe('result');
     expect(byTestId(el, 'result-screen')).not.toBeNull();
     expect(session.tally).toEqual({ 0: 0, 1: 0 });
-    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Alice 0 – Blake 0');
+    expect(byTestId(el, 'tally')?.textContent?.trim()).toBe('Match: Alice 0 – Blake 0');
   });
 
   it('a store-level restore into result on a fresh session leaves the tally at 0-0', async () => {

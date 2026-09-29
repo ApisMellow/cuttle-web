@@ -75,7 +75,7 @@ test('1440x900: staging a 9 one-off keeps the action bar at its idle height', as
   await page.getByTestId(`hand-card-${nine.handIndex}`).click();
   await page.getByTestId('point-1-0').click();
   await page.getByTestId(`ambiguity-chooser-option-${nine.index}`).click();
-  await expect(page.getByTestId('staging-bar')).toContainText(/^Send Back Play 9. as a one-off: back to their hand/);
+  await expect(page.getByTestId('staging-bar')).toContainText(/^Send Back Play 9.: send (?:10|[2-9A]). back to their hand/);
 
   expect(await barHeight(page)).toBeCloseTo(idle, 0);
   expect(await page.getByTestId('board').evaluate((el) => el.getBoundingClientRect().height)).toBeCloseTo(boardIdle, 0);

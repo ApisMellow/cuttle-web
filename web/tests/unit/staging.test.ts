@@ -110,6 +110,39 @@ describe('StagingStore — idle/selected/staged pipeline (SPEC §6.1)', () => {
     expect(store.highlighted).toEqual(new Set(['zone:permanents']));
   });
 
+  it('tapping the selected hand card again unselects it back to idle (issue #25)', () => {
+    const legalMoves = [
+      move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 }),
+      move({ Kind: 2, HandIndex: 1, Card: HEARTS_ACE, JackTarget: null }),
+    ];
+    const store = new StagingStore(envOf(legalMoves), neverApply);
+
+    store.tap('hand:0');
+    expect(store.state).toBe('selected');
+    store.tap('hand:0');
+    expect(store.state).toBe('idle');
+    expect(store.selectedHand).toBeNull();
+    expect(store.highlighted).toEqual(new Set());
+    expect(store.stagedIndex).toBeNull();
+    expect(store.inspect).toBeNull();
+
+    // A third tap selects it afresh.
+    store.tap('hand:0');
+    expect(store.state).toBe('selected');
+    expect(store.selectedHand).toBe(0);
+    expect(store.highlighted).toEqual(new Set(['zone:points']));
+  });
+
+  it('tapping the root hand card while staged does nothing; only Confirm/Cancel act (SPEC §6.1)', () => {
+    const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 })];
+    const store = new StagingStore(envOf(legalMoves), neverApply);
+    store.tap('hand:0');
+    store.tap('zone:points');
+    store.tap('hand:0');
+    expect(store.state).toBe('staged');
+    expect(store.stagedIndex).toBe(0);
+  });
+
   it('cancel() while merely selected (no chooser) is a no-op — Cancel is only wired to staged and the chooser (SPEC §6.1, §6.4)', () => {
     const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 })];
     const store = new StagingStore(envOf(legalMoves), neverApply);
@@ -434,6 +467,74 @@ describe('StagingStore — Draw and Pass go straight to staged (no target step, 
     store.choose(1);
     expect(store.state).toBe('staged');
     expect(store.stagedIndex).toBe(1);
+  });
+
+  // Issue #24: a second deck tap while the draw is staged commits it,
+  // exactly as Confirm would (still two taps, R12).
+  it('a second tap(\'deck\') while Draw is staged commits it through confirm(), once', async () => {
+    const calls: number[] = [];
+    const apply = async (index: number) => {
+      calls.push(index);
+    };
+    const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 }), move({ Kind: 0 })];
+    const store = new StagingStore(envOf(legalMoves), apply);
+
+    expect(store.tap('deck')).toBeUndefined(); // the first tap only stages
+    expect(store.state).toBe('staged');
+    expect(calls).toEqual([]);
+
+    const committed = store.tap('deck');
+    expect(committed).toBeInstanceOf(Promise);
+    expect(store.state).toBe('applying');
+    expect(store.tap('deck')).toBeUndefined(); // a third, rapid tap is inert
+    await committed;
+
+    expect(calls).toEqual([1]);
+    expect(store.state).toBe('idle');
+    expect(store.stagedIndex).toBeNull();
+  });
+
+  it('deck tap with a card selected stages Draw; a second deck tap commits it (issue #24 after W25)', async () => {
+    const calls: number[] = [];
+    const apply = async (index: number) => {
+      calls.push(index);
+    };
+    const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 }), move({ Kind: 0 })];
+    const store = new StagingStore(envOf(legalMoves), apply);
+
+    store.tap('hand:0');
+    expect(store.state).toBe('selected');
+    store.tap('deck');
+    expect(store.state).toBe('staged');
+    expect(store.stagedIndex).toBe(1);
+    expect(calls).toEqual([]);
+
+    await store.tap('deck');
+    expect(calls).toEqual([1]);
+  });
+
+  it('a deck tap while a non-Draw move is staged does nothing (only Confirm/Cancel act)', () => {
+    const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 }), move({ Kind: 0 })];
+    const store = new StagingStore(envOf(legalMoves), neverApply);
+    store.tap('hand:0');
+    store.tap('zone:points');
+    expect(store.state).toBe('staged');
+
+    expect(store.tap('deck')).toBeUndefined();
+    expect(store.state).toBe('staged');
+    expect(store.stagedIndex).toBe(0);
+  });
+
+  it('a deck re-tap that commits hands back confirm()\'s rejection, and the store still clears', async () => {
+    const failure = new Error('engine rejected the move');
+    const apply = async () => {
+      throw failure;
+    };
+    const store = new StagingStore(envOf([move({ Kind: 0 })]), apply);
+    store.tap('deck');
+
+    await expect(store.tap('deck')).rejects.toBe(failure);
+    expect(store.state).toBe('idle');
   });
 
   it('passAvailable is true only when legalMoves is exactly [Pass]; tap(\'pass\') stages it', () => {

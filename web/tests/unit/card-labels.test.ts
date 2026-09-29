@@ -84,7 +84,7 @@ describe('effects: one source for cards, chooser, staging and the Rules sheet', 
     expect(cardEffectLine(card(10))).toBe('No one-off: play it for points or to scuttle.');
     expect(cardEffectLine(card(2))).toBe('One-off: scrap one royal or glasses 8, or stop a one-off as it’s played.');
     expect(cardEffectLine(card(11))).toBe('Permanent: steal one of their point cards.');
-    expect(cardEffectLine(card(12))).toBe('Permanent: their 2s, 9s and Jacks can’t target your cards, except Queens.');
+    expect(cardEffectLine(card(12))).toBe('Permanent: their 2s, 9s and Jacks can’t target your other cards.');
     expect(cardEffectLine(card(13))).toBe('Permanent: you need fewer points to win.');
   });
 
@@ -111,7 +111,7 @@ describe('in-play badges', () => {
     expect(inPlayBadge(card(13), 'permanent', { goal: 14 })).toBe('Goal 14');
     expect(inPlayBadge(card(13), 'permanent')).toBeNull();
     expect(inPlayBadge(card(12), 'permanent')).toBe('Protects');
-    expect(inPlayBadge(card(8), 'permanent')).toBe('Sees hand');
+    expect(inPlayBadge(card(8), 'permanent')).toBe('8 Sees hand');
     expect(inPlayBadge(card(11), 'jack', { stolen: true })).toBe('Stole');
     expect(inPlayBadge(card(11), 'jack', { stolen: false })).toBeNull();
     expect(inPlayBadge(card(11), 'jack')).toBeNull();

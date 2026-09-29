@@ -1,8 +1,10 @@
 <script module lang="ts">
   // Module-level so it's a real named export other files can import (a
   // Svelte instance-script `export const` is a component-instance export,
-  // not an ES module binding).
-  export const DEFAULT_REASON = 'No legal moves for this card right now.';
+  // not an ES module binding). The text lives in lib/cardText.ts.
+  import { NO_MOVES_REASON } from '../cardText';
+
+  export const DEFAULT_REASON = NO_MOVES_REASON;
 </script>
 
 <script lang="ts">
@@ -14,14 +16,13 @@
   // resolves `inspect` itself and never reaches into any hand but the one
   // it's given.
   //
-  // Privacy (brief, AGENTS.md redaction rules): the reason is fixed, generic
-  // text that never varies with game state, so it can never encode anything
-  // about the opponent's hand or the deck — the one shape of "reason" this
-  // round's `StagingStore` can support without inventing a hidden-information
-  // channel (`inspect` only ever fires for the VIEWER'S OWN hand, SPEC §3.2).
-  // A future round with a richer legality explanation still starts from
-  // public state only; until then, generic is the only text that provably
-  // can't leak.
+  // Privacy (AGENTS.md redaction rules): `reason` is chosen by the
+  // integrator with `handCardReason` (lib/blockedReason.ts, playtest
+  // 2026-09-29) from public board state and the viewer's own hand only (a
+  // frozen card, an opponent Queen, no opponent points), so it can never
+  // encode anything about the opponent's hand or the deck. Without one it
+  // falls back to the generic line. `inspect` only ever fires for the
+  // VIEWER'S OWN hand (SPEC §3.2).
   import type { Card } from '../bridge/schema';
   import { cardEffectLine, cardName } from '../cardText';
   import '../styles/card-geometry.css';

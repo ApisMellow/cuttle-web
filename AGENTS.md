@@ -305,8 +305,11 @@ Hard rejects. Each came up in rounds 1–2.
   must fail if the order flips.
 - A failed fetch clears pending context. Test a failure followed by a retry.
 - Restore by curtain kind: withhold the view at `handoff`, `reveal`,
-  `recap`; expose the persisted viewer's envelope at `none`, either ack,
-  and `result`. Test every kind.
+  `recap`; at `none` and either ack, raise the resume gate
+  (`handoff` reason `resume` -> `reveal`) and fetch the view only once it
+  is passed; expose the envelope at once only at `result`. The gate is
+  never written to the save. Test every kind (SPEC §5.7, ruling
+  2026-09-29).
 - `Snapshot.engineState` is opaque to TS. Never read inside it.
 - Any change to the `Snapshot` or persisted `AppliedMove` shape needs the
   brief to say "bump `v`" or "no bump". If it says neither, stop and report.

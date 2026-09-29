@@ -198,7 +198,7 @@ describe('Card labels privacy: only face-up cards the viewer can see', () => {
     expectLabelsOnlyWhereAllowed(el);
     const badges = [...el.querySelectorAll('[data-card-label="badge"]')].map((b) => b.textContent);
     // Alice: King (goal 14), Queen, glasses, stolen Jack. Blake: Queen, glasses.
-    expect(badges.sort()).toEqual(['Goal 14', 'Protects', 'Protects', 'Sees hand', 'Sees hand', 'Stole'].sort());
+    expect(badges.sort()).toEqual(['Goal 14', 'Protects', 'Protects', '8 Sees hand', '8 Sees hand', 'Stole'].sort());
     expect(q(el, 'perm-0-0')?.querySelector('[data-card-label="badge"]')?.textContent).toBe('Goal 14');
     expect(q(el, 'point-0-0')?.querySelector('[data-card-label="badge"]')?.textContent).toBe('Stole');
   });

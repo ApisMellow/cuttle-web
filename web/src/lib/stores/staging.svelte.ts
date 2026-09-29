@@ -267,11 +267,20 @@ export class StagingStore {
     this.#applyFn = apply;
   }
 
-  /** SPEC §6.1 — the single entry point for every board/deck/pass tap. */
-  tap(key: TargetKey): void {
+  /**
+   * SPEC §6.1 — the single entry point for every board/deck/pass tap.
+   * Returns `confirm()`'s promise when the tap commits a staged draw (issue
+   * #24), so the integrator can report a failure; otherwise `undefined`.
+   */
+  tap(key: TargetKey): Promise<void> | undefined {
     if (this.state === 'applying') return; // inert: the board is locked while applying (§6.1)
     const env = this.#getEnv();
     if (!env) return;
+
+    // Issue #24: tapping the deck again while its Draw is staged is the
+    // same as Confirm. Still two taps (R12), and still through confirm(),
+    // the only caller of apply. Any other staged move ignores the deck.
+    if (this.state === 'staged' && key === 'deck' && this.#stagedIsDraw(env)) return this.confirm();
 
     this.inspect = null; // any tap dismisses a prior detail popover
 
@@ -290,7 +299,12 @@ export class StagingStore {
       this.#handleTargetTap(key, env);
       return;
     }
-    // state === 'staged': only confirm()/cancel() act (SPEC §6.1 — Confirm/Cancel are the only controls once staged).
+    // state === 'staged': only confirm()/cancel() act (SPEC §6.1 — Confirm/Cancel are the only controls once staged),
+    // plus the deck re-tap above, which is a confirm().
+  }
+
+  #stagedIsDraw(env: StagingEnv): boolean {
+    return this.stagedIndex !== null && env.legalMoves[this.stagedIndex]?.Kind === MoveKind.Draw;
   }
 
   /** SPEC §6.4 — selects a candidate from the ambiguity chooser. Always lands on `staged`, never on `apply` directly. */
@@ -458,7 +472,10 @@ export class StagingStore {
     const byKey = candidatesByTargetKey(handIndex, env.legalMoves);
     if (byKey.size === 0) {
       // SPEC §6.1 — a dimmed hand card tap does NOT enter `selected`; it
-      // opens the integrator's detail popover instead.
+      // opens the integrator's detail popover instead. Playtest 2026-09-29:
+      // a card selected before it is dropped first, so its lit targets
+      // don't stay highlighted behind the popover.
+      this.#clearToIdle();
       this.inspect = handIndex;
       return;
     }
@@ -489,8 +506,15 @@ export class StagingStore {
   }
 
   #handleTargetTap(key: TargetKey, env: StagingEnv): void {
-    // Tapping a different (or the same) hand card while selected re-selects
-    // (SPEC §6.1), even though `key` isn't a "target" in the §6.4 sense.
+    // Issue #25: a second tap on the selected card itself unselects it.
+    const root =
+      this.selectedReveal !== null ? `seven:${this.selectedReveal}` : this.selectedHand !== null ? `hand:${this.selectedHand}` : null;
+    if (key === root) {
+      this.#clearToIdle();
+      return;
+    }
+    // Tapping a different hand card while selected re-selects (SPEC §6.1),
+    // even though `key` isn't a "target" in the §6.4 sense.
     if (key.startsWith('hand:')) {
       this.#selectHand(Number(key.slice('hand:'.length)), env);
       return;

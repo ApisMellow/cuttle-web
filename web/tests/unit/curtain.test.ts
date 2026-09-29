@@ -384,6 +384,10 @@ describe('handoff label — SPEC §4.5 (amended 2026-09-27)', () => {
     expect(handoffLabel('turn')).toBe('Your turn');
     expect(handoffLabel('seven-return')).toBe('Your turn');
   });
+
+  it('the resume gate reads "Resume game", one label whatever it resumes into (SPEC §4.5, §5.7, ruling 2026-09-29)', () => {
+    expect(handoffLabel('resume')).toBe('Resume game');
+  });
 });
 
 describe('R14 indistinguishability — paired real/synthetic walks', () => {

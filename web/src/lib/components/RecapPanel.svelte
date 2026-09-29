@@ -21,8 +21,9 @@
   import '../styles/card-geometry.css';
 
   import type { AppliedMove, PlayerId } from '../bridge/schema';
-  import { formatRecapLine, recapCards } from '../recap';
+  import { formatRecapLines, recapCards } from '../recap';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
+  import { game } from '../stores/game.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
 
@@ -32,9 +33,19 @@
     names: readonly [string, string];
     onadvance: () => void;
     theme?: CardTheme;
+    /**
+     * Playtest 2026-09-29: the game's history, so a Counter names what it
+     * stops even when the one-off is older than this recap, and a Jack
+     * steal can say it took back the actor's own card. Public (every `index`
+     * is stripped behind a curtain) and the same on both R14 paths.
+     * Defaults to the game store's.
+     */
+    history?: readonly AppliedMove[];
   }
 
-  let { entries, viewer, names, onadvance, theme = getTheme(DEFAULT_THEME_ID) }: RecapPanelProps = $props();
+  let { entries, viewer, names, onadvance, theme = getTheme(DEFAULT_THEME_ID), history }: RecapPanelProps = $props();
+
+  const fullHistory = $derived(history ?? game.history);
 
   /** SPEC §4.6: "At most the last 6 entries, oldest first." */
   const MAX_VISIBLE = 6;
@@ -45,11 +56,11 @@
   const visible = $derived(
     viewer === null ? [] : expanded || hiddenCount === 0 ? entries : entries.slice(entries.length - MAX_VISIBLE),
   );
-  const lines = $derived(
-    viewer === null
-      ? []
-      : visible.map((entry) => ({ seq: entry.seq, cards: recapCards(entry), text: formatRecapLine(entry, viewer, names) })),
-  );
+  const lines = $derived.by(() => {
+    if (viewer === null) return [];
+    const texts = formatRecapLines(visible, viewer, names, fullHistory);
+    return visible.map((entry, k) => ({ seq: entry.seq, cards: recapCards(entry), text: texts[k] }));
+  });
 
   function expand(): void {
     expanded = true;
