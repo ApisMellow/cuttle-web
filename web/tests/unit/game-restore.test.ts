@@ -247,7 +247,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     });
   }
 
-  it('real counter window (ack, synthetic:false): behind the resume gate, then the decider\'s envelope is exposed and apply() works', async () => {
+  it('counter window (ack): behind the resume gate, then the decider\'s envelope is exposed and apply() works', async () => {
     const decline = appliedMove({ by: 1, kind: Kind.Decline, seq: 2 });
     const restored = envelope({
       ...viewerEnvelope(1, 1, Phase.AwaitingCounter),
@@ -256,7 +256,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     });
     const apply = vi.fn(() => envelope({ state: playerView({ viewer: 1, active: 1, phase: Phase.Normal }), lastMove: decline, history: [oneOff, decline] }));
     const { store } = restoreWith(
-      baseSnapshot({ viewer: 1, curtain: { kind: 'ack', to: 1, synthetic: false }, history: [oneOff] }),
+      baseSnapshot({ viewer: 1, curtain: { kind: 'ack', to: 1 }, history: [oneOff] }),
       restored,
       { apply, view: () => restored },
     );
@@ -264,7 +264,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     expect(store.view).toBeNull();
     await passResumeGate(store);
 
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: false });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 1 });
     expect(store.viewer).toBe(1);
     expect(store.view?.phase).toBe(Phase.AwaitingCounter);
     expect(store.legalMoves).toHaveLength(1);
@@ -275,24 +275,8 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     expect(store.error).toBeNull();
   });
 
-  it('synthetic ack: behind the resume gate, then the acknowledger\'s envelope is exposed and the sequence can continue', async () => {
-    const view = vi.fn((p: 0 | 1) => viewerEnvelope(p, 1, Phase.Normal));
-    const { store } = restoreWith(
-      baseSnapshot({ viewer: 1, curtain: { kind: 'ack', to: 1, synthetic: true }, history: [oneOff], lastSeenSeq: { 0: 1, 1: 0 } }),
-      viewerEnvelope(1, 1, Phase.Normal),
-      { view },
-    );
-    await store.restore();
-    expect(store.viewer).toBeNull();
-    await passResumeGate(store);
-    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: true });
-    expect(store.viewer).toBe(1);
-    expect(store.envelope).not.toBeNull();
-
-    await store.advanceCurtain(); // post.active (1) === ack target -> none
-    expect(store.curtain).toEqual({ kind: 'none' });
-    expect(store.viewer).toBe(1);
-  });
+  // A pre-ruling save resting at a synthetic ack is covered in
+  // curtain-one-off-ruling.test.ts (it comes back as that player's reveal).
 
   it('result: the final view (winner, scoreboard) is exposed', async () => {
     const restored = envelope({ state: playerView({ viewer: 0, active: 0, phase: Phase.GameOver, winner: 0 }), history: [oneOff] });
@@ -328,7 +312,7 @@ describe('N1 at the store: a structurally inconsistent snapshot is discarded lik
     const storage = fakeStorage();
     storage.setItem(
       SNAPSHOT_KEY,
-      encodeSnapshot(baseSnapshot({ viewer: 0, curtain: { kind: 'ack', to: 1, synthetic: false }, history: [appliedMove({ by: 0, kind: Kind.OneOff, seq: 1 })] })),
+      encodeSnapshot(baseSnapshot({ viewer: 0, curtain: { kind: 'ack', to: 1 }, history: [appliedMove({ by: 0, kind: Kind.OneOff, seq: 1 })] })),
     );
     const engine = createFakeEngine();
     const store = new GameStore({ engine, storage, session: new SessionStore() });

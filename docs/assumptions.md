@@ -123,8 +123,8 @@ per section so a later batch can see the reasoning without re-deriving it.
 - **`AppliedMove.subKind` (§2.7, §4.3; ApisMellow-approved).** It holds the
   SubMove's `MoveKind` as a bare number, or `null` when there is no SubMove
   (§2.8(d) pointer style). It is always present and visible to both viewers.
-  The SubMove's kind is public once it is played, and the synthetic-ack side
-  needs it.
+  The SubMove's kind is public once it is played. (It once served the
+  synthetic ack, retired 2026-09-29.)
 
 - **`restore` requires `Pending` to be present if and only if the phase is 1,
   2 or 3 (§2.9 `BAD_REQUEST`).** A mismatch is rejected and the held state is
@@ -369,7 +369,7 @@ per section so a later batch can see the reasoning without re-deriving it.
 
 Logged by the orchestrator from developer reports and review rulings. Full verdicts in `docs/loop-log/round-01.md`.
 
-- **Curtain machine (W1, `lib/stores/curtain.svelte.ts`).** The real counter window is `{kind:'ack', synthetic:false}`; it rests until a bridge `apply` and a fresh `next()`, and `advance()` on it throws. After a synthetic ack, control hands back to `post.active` when that isn't the acknowledger, with reason `seven-return` for SevenChoosing and `turn` otherwise; this covers the 7's round trip and a Counter-with-no-2 that cancels on an odd chain (§4.3, §4.4). Game over beats the synthetic ack (no curtain on a winning move). A dead-end SevenPick (`subKind` null) is a plain `turn` curtain. `advance()` on `none`/`result` throws `INTERNAL`.
+- **Curtain machine (W1, `lib/stores/curtain.svelte.ts`).** *Superseded 2026-09-29 (SPEC §4.2, §4.3): the synthetic ack and its `synthetic` flag are gone; the sentences below about a synthetic ack no longer apply.* The counter window is `{kind:'ack'}`; it rests until a bridge `apply` and a fresh `next()`, and `advance()` on it throws. After a synthetic ack, control hands back to `post.active` when that isn't the acknowledger, with reason `seven-return` for SevenChoosing and `turn` otherwise; this covers the 7's round trip and a Counter-with-no-2 that cancels on an odd chain (§4.3, §4.4). Game over beats the synthetic ack (no curtain on a winning move). A dead-end SevenPick (`subKind` null) is a plain `turn` curtain. `advance()` on `none`/`result` throws `INTERNAL`.
 - **The machine sees only `{active, phase}` (W1 review).** Every `pre`/`post` it takes is `CurtainView = Pick<PlayerView,'active'|'phase'>`, so the store never has to keep the mover's hand in memory across a curtain (§3.3 rule 4).
 - **Handoff label (SPEC §4.5 amended).** `handoffLabel()` maps `turn`/`seven-return` to "Your turn" and `counter`/`acknowledge`/`discard` to "Your response". The internal reason never reaches the DOM before the reveal gate.
 - **Hold gate (`lib/curtain.ts`).** Timer-injectable; `pointerdown` after `dispose()` is a no-op.
@@ -396,7 +396,7 @@ Logged by the orchestrator from developer reports and review rulings. Full verdi
   - A raised curtain needs a non-empty history.
   - `lastSeenSeq` entries must be numbers.
   - Anything malformed is discarded, with a notice, just like a version mismatch.
-- **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at a real or synthetic ack, and at `result`. *Superseded 2026-09-29 (SPEC §5.7 "Resume always raises a curtain"): `none` and either ack now come back behind a resume gate for the saved viewer, and only `result` is exposed at once.*
+- **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at an ack, and at `result`. *Superseded 2026-09-29 (SPEC §5.7 "Resume always raises a curtain"): `none` and either ack now come back behind a resume gate for the saved viewer, and only `result` is exposed at once.*
 - **`lastSeenSeq` stamping (SPEC §4.6, amended twice 2026-09-27; ApisMellow delegated the call).** A stamp happens on the mover's successful `apply`, on recap dismissal, and at the transition into `none`. Each stamp is written in that transition's synchronous snapshot write. The stamp is symmetric across the real and synthetic counter paths, so it adds no R14 signal.
 - **`AppliedMove.targetCard` (W6).** It is always present on the wire, and it is read from the pre-state.
   - For a rank-2 one-off aimed at a Jack-stacked point, it names the **top Jack**, because that is the card the engine scraps (engine `apply.go:700-718`).

@@ -50,9 +50,9 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R13.3 | Reveal gate: hold-with-abort and two-step fallback | `vitest: "R13.3: the hold duration is the single constant 600 ms"`<br>`vitest: "R13.3: pointerup\|pointercancel\|pointerleave before 600 ms aborts …"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | implemented |
 | R13.4 | Curtain tap targets ≥44px; no auto-advance | — | — | e2e-test | implemented |
 | R14.1 | Real counter window renders correctly | — | — | e2e-test | implemented |
-| R14.2 | Synthetic ack indistinguishable from real decline | `vitest: "R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff …"`<br>`vitest: "R14.2: real and synthetic paths walk identical curtain sequences"` | vitest (unit-test done; e2e-test open) | e2e-test, unit-test | implemented |
+| R14.2 | ~~Synthetic ack indistinguishable from real decline~~ (superseded 2026-09-29, SPEC §4.3: no synthetic ack) | `vitest: "R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff …"`<br>`vitest: "R14.2: real and synthetic paths walk identical curtain sequences"` | vitest (unit-test done; e2e-test open) | e2e-test, unit-test | implemented |
 | R14.3 | Counter chain parity and repeated curtains | `vitest: "R14.3: issues one counter curtain per counter link"` | vitest (unit-test done; e2e-test open) | unit-test, e2e-test | implemented |
-| R14.4 | Seven's synthetic-ack round trip | — | — | e2e-test | implemented |
+| R14.4 | ~~Seven's synthetic-ack round trip~~ (superseded 2026-09-29, SPEC §4.3: a 7 with no 2 goes straight to its pick) | — | — | e2e-test | implemented |
 | R15.1 | Four curtains to opponent for discard | `e2e: pickers.spec.ts` (seed 17 4-discard line) | Playwright | e2e-test | verified |
 | R15.2 | One-card and empty-hand discard branches | `vitest: "R15.2: a 1-card discarding hand pre-selects …"`<br>`vitest: "R15.2: the picker never renders outside PhaseAwaitingDiscard"`<br>`vitest (real WASM): pinned replay seed 2 / ply 23, 4 vs empty hand lands in phase 0` | vitest | unit-test | verified |
 | R15.3 | Curtain returns to discarder with no leak | — | — | e2e-test | implemented |

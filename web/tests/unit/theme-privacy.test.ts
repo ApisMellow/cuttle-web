@@ -173,10 +173,9 @@ describe('Mythic active: face images only for cards the viewer may see', () => {
   for (const curtain of [
     { kind: 'handoff', to: 1, reason: 'turn' },
     { kind: 'reveal', to: 1 },
-    { kind: 'ack', to: 1, synthetic: false },
-    { kind: 'ack', to: 1, synthetic: true },
+    { kind: 'ack', to: 1 },
   ] as const) {
-    it(`behind the curtain (${curtain.kind}${'synthetic' in curtain ? `, synthetic=${curtain.synthetic}` : ''}) no face image and no playmat is in the DOM`, async () => {
+    it(`behind the curtain (${curtain.kind}) no face image and no playmat is in the DOM`, async () => {
       const el = await start();
       // the board showed faces and the playmat a moment ago
       expect(faceKeys(el).length).toBeGreaterThan(0);

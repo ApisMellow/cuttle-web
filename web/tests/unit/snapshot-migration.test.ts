@@ -56,10 +56,12 @@ async function restoreFrom(raw: string): Promise<{ store: GameStore; storage: St
   return { store, storage };
 }
 
-/** One step onward from a restored state: through the curtain, or a decline at a real counter window. */
+/** One step onward from a restored state: through the curtain, or a decline at the counter window. */
 async function stepOn(store: GameStore): Promise<void> {
+  // A 5's draw reveal (SPEC §4.7) can come up once the gate is passed.
+  if (store.drawReveal !== null) store.dismissDrawReveal();
   const c = store.curtain;
-  if (c.kind === 'ack' && !c.synthetic) {
+  if (c.kind === 'ack') {
     const decline = store.envelope!.legalMoves.findIndex((m) => m.Kind === Kind.Decline);
     await store.apply(decline);
   } else if (c.kind !== 'none' && c.kind !== 'result') {
@@ -110,9 +112,9 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
     await createWasmEngine();
     const wanted: CurtainState['kind'][] = ['handoff', 'reveal', 'recap', 'ack', 'none', 'result'];
     const captured = new Map<string, string>();
-    const key = (c: CurtainState): string => (c.kind === 'ack' ? `ack-${c.synthetic ? 'synthetic' : 'real'}` : c.kind);
+    const key = (c: CurtainState): string => c.kind;
 
-    for (let seed = 1; seed <= 12 && captured.size < wanted.length + 1; seed++) {
+    for (let seed = 1; seed <= 12 && captured.size < wanted.length; seed++) {
       const storage = fakeStorage();
       const live = new GameStore({ storage, session: new SessionStore() });
       await live.newGame({ seed: String(seed), dealer: 0 });
@@ -120,8 +122,13 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       for (let ply = 0; ply < 400 && live.curtain.kind !== 'result'; ply++) {
         const k = key(live.curtain);
         if (!captured.has(k)) captured.set(k, storage.getItem(SNAPSHOT_KEY)!);
+        if (live.drawReveal !== null) {
+          // SPEC §4.7: the 5's reveal holds the store until it is dismissed.
+          live.dismissDrawReveal();
+          continue;
+        }
         const c = live.curtain;
-        if (c.kind === 'none' || (c.kind === 'ack' && !c.synthetic)) {
+        if (c.kind === 'none' || c.kind === 'ack') {
           const moves = live.envelope!.legalMoves;
           x = (x * 1103515245 + 12345) >>> 0;
           await live.apply(x % moves.length);
@@ -131,7 +138,7 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       }
       if (live.curtain.kind === 'result' && !captured.has('result')) captured.set('result', storage.getItem(SNAPSHOT_KEY)!);
     }
-    expect([...captured.keys()].sort()).toEqual(['ack-real', 'ack-synthetic', 'handoff', 'none', 'recap', 'result', 'reveal']);
+    expect([...captured.keys()].sort()).toEqual(['ack', 'handoff', 'none', 'recap', 'result', 'reveal']);
 
     // The bridge holds one game at a time, so each restore runs to the end
     // of its checks before the next one starts.
@@ -141,7 +148,7 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       if (kind === 'result') return { before };
       // SPEC §5.7 (ruling 2026-09-29): `none` and an `ack` resume behind the
       // resume gate, which writes nothing; pass it, then play on.
-      if (kind === 'none' || kind.startsWith('ack')) await passResumeGate(store);
+      if (kind === 'none' || kind === 'ack') await passResumeGate(store);
       await stepOn(store);
       return { before, after: { error: store.error, curtain: store.curtain, view: store.view }, persisted: persisted(storage) };
     }

@@ -1,17 +1,13 @@
 <script lang="ts">
-  // P2 W13, SPEC §4.3 (R14), §6.3 Counter/Decline rows, design.md §8 ("the
-  // ack and counter prompts reuse this frame") — ONE component for the real
-  // counter window and the synthetic acknowledgment.
+  // P2 W13, SPEC §4.3, §6.3 Counter/Decline rows, design.md §8 ("the
+  // ack and counter prompts reuse this frame") — the counter window. Since
+  // the 2026-09-29 ruling it appears only when the responder holds a legal
+  // 2, so `options` always holds at least one Counter.
   //
-  // Privacy (R14): the acting player must not be able to tell "the opponent
-  // had no 2" from "the opponent declined". The two paths therefore differ
-  // in exactly one thing, the counter buttons in `options`, which are empty
-  // on the synthetic path. Everything else is built from props that are the
-  // same on both paths: the history-derived chain (`counterPromptEntries`),
-  // the viewer and the names. No view-derived value (scores, pending,
-  // hand, board) renders here, because at a synthetic ack the one-off has
-  // already resolved and those values would differ. The component never
-  // learns which path it is on.
+  // It renders the history-derived chain (`counterPromptEntries`), the
+  // viewer and the names, never `pending` or another view-derived value. The
+  // curtain skips the recap before this screen when the prompt shows every
+  // unseen entry, so the one-off appears once.
   //
   // "Let it resolve" is a one-tap confirm (SPEC §6.3: Decline commits no
   // card). It sits in the dismiss-pill slot, bottom-anchored, and the
@@ -30,8 +26,7 @@
 
   import type { AppliedMove, PlayerId } from '../bridge/schema';
   // Amended 2026-09-28: option and staged text go through `plainMoveText`
-  // ("Counter with 2♣: stop their card."), never raw engine text. Same on
-  // both paths; the synthetic ack simply has no options.
+  // ("Counter with 2♣: stop their card."), never raw engine text.
   import { formatRecapLines, plainMoveText, recapCards } from '../recap';
   import type { ChooserCandidate } from '../stores/staging.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
@@ -44,7 +39,7 @@
     /** The player deciding (the ack's `to`). */
     viewer: PlayerId;
     names: readonly [string, string];
-    /** One per legal Counter move (engine index + description). `[]` on the synthetic ack. */
+    /** One per legal Counter move (engine index + description). */
     options: ChooserCandidate[];
     onresolve: () => void;
     oncounter: (index: number) => void;
@@ -90,8 +85,8 @@
 
   // r16 (desktop keyboard; review B1): focus never falls to <body> here,
   // and never lands on a control by itself: on arrival it goes to the
-  // heading (Tab reaches the options and "Let it resolve"), identically on
-  // the real and synthetic paths (R14). A click produced by a key that went
+  // heading (Tab reaches the options and "Let it resolve"). A click produced
+  // by a key that went
   // down before this screen mounted, or by an auto-repeat, is ignored
   // (lib/keyGuard.ts), so a key held or mashed on the reveal can't resolve
   // or counter. Staging a counter moves focus to Confirm; Cancel brings it
@@ -159,9 +154,8 @@
   </div>
 
   <div class="counter-prompt__footer">
-    <!-- W25: disabled only while a counter is staged. Unstaged (the only
-         state the synthetic ack can be in) it carries no disabled attribute,
-         so the two paths stay identical (R14). -->
+    <!-- W25: disabled only while a counter is staged; unstaged it carries
+         no disabled attribute. -->
     <button
       type="button"
       class="counter-prompt__resolve"

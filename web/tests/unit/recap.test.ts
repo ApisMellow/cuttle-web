@@ -124,10 +124,10 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: Decline is never shown in the recap (R14)', () => {
-    // ApisMellow, 2026-09-27: a real decline writes a `Decline` history entry;
-    // the synthetic R14 acknowledgment writes none. Recapping a `Decline`
-    // would tell the acting player the opponent actually held a
-    // counter-2, and would change whether a recap screen appears at all.
+    // ApisMellow, 2026-09-27: a decline writes a `Decline` history entry,
+    // and "let it resolve" says nothing the one-off's own line doesn't.
+    // (The original reason, the synthetic acknowledgment, was retired
+    // 2026-09-29; the filter stays.)
     const entry = move({ by: 0, kind: 6, description: 'decline to counter' });
     expect(isRecapVisible(entry)).toBe(false);
     expect(() => formatRecapLine(entry, 1, NAMES)).toThrow();

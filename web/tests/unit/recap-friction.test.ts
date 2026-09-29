@@ -3,11 +3,11 @@
 // screen's winning-move line. SPEC §4.6 (amended 2026-09-28), §6.4.
 //
 // Privacy is strict tier here. The two guarantees this file proves:
-//   - R14: the recap and the counter prompt never read `drawn`, so the
-//     synthetic path (the 5 already resolved, `drawn` set) and the real
-//     counter window (not resolved, `drawn` null) read identically. Only the
-//     board's last-move line, which renders after resolution on both paths,
-//     reports the count, and it reads the same on both paths.
+//   - The recap and the counter prompt never read `drawn`, so a 5 that
+//     resolved at once (`drawn` set) and one still in a counter window
+//     (`drawn` null) read identically. Only the board's last-move line,
+//     which renders after resolution, reports the count, and it reads the
+//     same however the 5 resolved.
 //   - No line ever names a drawn card: history carries a count, never the
 //     cards, and the only card tokens in a line are cards that were played.
 
@@ -104,11 +104,11 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     expect(lastMoveLine([five(0, 1, 0)], 1, NAMES)).toBe('Alice played 5♥ as a one-off and drew no cards.');
   });
 
-  it('R14 (strict): a 5 resolved by a real Decline reads exactly like the synthetic path', () => {
+  it('a 5 resolved by a Decline reads exactly like one that resolved at once', () => {
     const real = [five(0, 1, null), decline(1, 2, 2)];
-    const synthetic = [five(0, 1, 2)];
+    const atOnce = [five(0, 1, 2)];
     for (const viewer of [0, 1] as const) {
-      expect(lastMoveLine(real, viewer, NAMES)).toBe(lastMoveLine(synthetic, viewer, NAMES));
+      expect(lastMoveLine(real, viewer, NAMES)).toBe(lastMoveLine(atOnce, viewer, NAMES));
     }
     expect(lastMoveLine(real, 1, NAMES)).toBe('Alice played 5♥ as a one-off and drew 2 cards.');
   });

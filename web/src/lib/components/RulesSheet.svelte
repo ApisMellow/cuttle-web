@@ -20,7 +20,7 @@
   // No card glyphs: ranks are words or numerals and suits are named
   // (SPEC §5.6 rule 1: only the theme draws a rank with its suit).
 
-  import { rulesOneOffLines, rulesPermanentLines, type RulesLine } from '../cardText';
+  import { ONE_OFF_TIMING, rulesOneOffLines, rulesPermanentLines, type RulesLine } from '../cardText';
 
   interface RulesSheetProps {
     onclose: () => void;
@@ -68,6 +68,7 @@
     <section>
       <h3>One-offs</h3>
       <p>Play the card for its effect, then it goes to the scrap. A 10 is points only.</p>
+      <p>{ONE_OFF_TIMING}</p>
       <ul class="rules__list">
         {#each ONE_OFFS as line (line.rank)}
           <li><b>{heading(line)}</b> {line.text}</li>

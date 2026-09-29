@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // Playtest friction round (2026-09-28): the component halves.
-//   - CounterPrompt (strict, R14): a 5 whose `drawn` is already set (the
-//     synthetic path) renders byte-identically to one still waiting (the
-//     real counter window). Plain option text.
+//   - CounterPrompt (strict): the prompt never reads `drawn`; a 5 entry with
+//     `drawn` set renders byte-identically to one still waiting. Plain
+//     option text.
 //   - ResultScreen: the winning-move line.
 //   - Rules: the home screen's Rules button opens a cheat-sheet with one
 //     line per one-off rank, and Close shuts it.
@@ -50,12 +50,12 @@ describe('CounterPrompt and the 5 (R14, strict)', () => {
     oncounter: () => {},
   });
 
-  it('a resolved 5 (synthetic ack) and a waiting 5 (real window) render identical DOM', () => {
-    const synthetic = render(CounterPrompt, props([fiveEntry(2)]));
+  it('the prompt never reads `drawn`: a 5 entry with a count renders like a waiting 5', () => {
+    const counted = render(CounterPrompt, props([fiveEntry(2)]));
     const real = render(CounterPrompt, props([fiveEntry(null)]));
-    expect(synthetic.innerHTML).toBe(real.innerHTML);
+    expect(counted.innerHTML).toBe(real.innerHTML);
     expect(real.textContent).toContain('Blake played 5♥ as a one-off to draw 2 cards.');
-    expect(synthetic.textContent).not.toMatch(/drew/);
+    expect(counted.textContent).not.toMatch(/drew/);
   });
 
   it('counter buttons and the staged counter use plain wording', () => {
@@ -144,6 +144,16 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     expect(text).toContain('A 2 scrapping a Jack takes only the top one, and the card goes to whoever controls the next Jack, or back to its owner.');
     expect(text).toContain('1 King 14, 2 Kings 10, 3 Kings 7, 4 Kings 5');
     expect(text).not.toMatch(/[♣♦♥♠]/);
+  });
+
+  it('ruling 2026-09-29: the One-offs section says a one-off happens at once and a 2 is the only answer', () => {
+    const el = render(RulesButton, {});
+    el.querySelector<HTMLButtonElement>('[data-testid="home-rules"]')!.click();
+    flushSync();
+    const sheet = el.querySelector('[data-testid="rules-sheet"]')!;
+    const oneOffs = [...sheet.querySelectorAll('section')].find((s) => s.querySelector('h3')?.textContent === 'One-offs')!;
+    const paragraphs = [...oneOffs.querySelectorAll('p')].map((p) => p.textContent ?? '');
+    expect(paragraphs).toContain('A one-off happens right away and ends your turn. Your opponent can answer with a 2 if they have one.');
   });
 
   it('review B2/N3: the 9 line is true for a stolen card; the Jack and 7 lines cover the 9 and the dead end', () => {

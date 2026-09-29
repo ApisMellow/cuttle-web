@@ -11,8 +11,9 @@
 // 2♥ 3♣ A♥ K♦ Q♣, Blake 5♥ 9♥ 8♦ 4♦ 5♠ 4♥. Alice draws (keeping her 2),
 // Blake plays 5♥ as a one-off, so Alice gets a REAL counter window. Every
 // state on the way (opening handoff and reveal, the board, Blake's handoff,
-// reveal and recap, Alice's response handoff, reveal, recap and the real
-// ack) is round-tripped through Home -> Resume and then played on.
+// reveal and recap, Alice's response handoff, reveal and the real ack; the
+// recap before it is skipped, since the prompt shows the 5) is round-tripped
+// through Home -> Resume and then played on.
 
 import { describe, expect, it } from 'vitest';
 
@@ -107,7 +108,7 @@ describe('Home -> Resume round-trips the save at every curtain kind (real engine
     // Blake: 5 as a one-off. Alice holds 2♥: a real counter window.
     await store.apply(moveIndex(Kind.OneOff, 5));
     await roundTripAndAdvanceTo('ack');
-    expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: false });
+    expect(store.curtain).toEqual({ kind: 'ack', to: 0 });
     expect(store.envelope!.legalMoves.some((m) => m.Kind === Kind.Counter)).toBe(true);
 
     // The restored window still plays: Alice lets it resolve.
@@ -139,7 +140,7 @@ async function walk(
   const store = new GameStore({ storage, session: new SessionStore() });
   const visited: string[] = [];
   async function here(): Promise<void> {
-    visited.push(store.curtain.kind + ('synthetic' in store.curtain ? `:${store.curtain.synthetic ? 'synthetic' : 'real'}` : ''));
+    visited.push(store.curtain.kind + ('to' in store.curtain ? `:${store.curtain.to}` : ''));
     if (roundTrip) await homeAndResume(store, storage);
   }
   async function settle(target: 'none' | 'ack' | 'result'): Promise<void> {
@@ -159,26 +160,30 @@ async function walk(
   return { end: capture(store), save: saveWithoutTime(storage), visited };
 }
 
-describe('Home -> Resume at a synthetic ack and at result (real engine)', () => {
-  it('synthetic ack: every step round-trips, and the resumed game ends exactly where the uninterrupted one does', async () => {
+describe('Home -> Resume after a one-off Alice cannot answer, and at result (real engine)', () => {
+  it('no 2 to answer (ruling 2026-09-29): every step round-trips, no ack anywhere, and the resumed game ends exactly where the uninterrupted one does', async () => {
     await createWasmEngine();
-    // Alice plays 2♥ for points; Blake plays 5♥ as a one-off; Alice holds no 2.
+    // Alice plays 2♥ for points; Blake plays 5♥ as a one-off; Alice holds no
+    // 2, so it resolves at once: Blake sees his draw, then Alice's turn.
     const script: Parameters<typeof walk>[0] = async ({ store, settle, move }) => {
       await store.newGame({ seed: '42', dealer: 1 });
       await settle('none');
       await store.apply(move(Kind.PlayPoint, 2));
       await settle('none');
       await store.apply(move(Kind.OneOff, 5));
-      await settle('ack');
-      expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: true });
-      await store.advanceCurtain(); // "Let it resolve": no bridge call on the synthetic path
+      expect(store.drawReveal).toMatchObject({ to: 1, beforePass: true });
+      store.dismissDrawReveal();
+      expect(store.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'turn' });
       await settle('none');
+      expect(store.viewer).toBe(0);
       await store.apply(move(Kind.Draw));
       await settle('none');
+      // Blake's next board: the draw was already shown, resumed or not.
+      expect(store.drawReveal).toBeNull();
     };
     const resumed = await walk(script, true);
     const continued = await walk(script, false);
-    expect(resumed.visited).toContain('ack:synthetic');
+    expect(resumed.visited.some((v) => v.startsWith('ack'))).toBe(false);
     expect(resumed.visited).toEqual(continued.visited);
     expect(resumed.end).toEqual(continued.end);
     expect(resumed.save).toEqual(continued.save);
@@ -192,7 +197,12 @@ describe('Home -> Resume at a synthetic ack and at result (real engine)', () => 
     // Play to the end: draw while the engine offers it, else its first move;
     // every curtain is walked; a counter window is let resolve.
     for (let ply = 0; ply < 400 && store.curtain.kind !== 'result'; ply++) {
-      if (store.curtain.kind !== 'none' && !(store.curtain.kind === 'ack' && !store.curtain.synthetic)) {
+      // Issue #27 (SPEC §4.7): a 5's draw reveal is continued like a tap.
+      if (store.drawReveal !== null) {
+        store.dismissDrawReveal();
+        continue;
+      }
+      if (store.curtain.kind !== 'none' && store.curtain.kind !== 'ack') {
         await store.advanceCurtain();
         continue;
       }
