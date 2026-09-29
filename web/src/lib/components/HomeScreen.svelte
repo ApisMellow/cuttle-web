@@ -23,7 +23,9 @@
 
   import { game } from '../stores/game.svelte';
   import { session } from '../stores/session.svelte';
+  import { settings } from '../stores/settings.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
+  import { DEFAULT_THEME_ID, listThemeChoices } from '../theme';
 
   let name0 = $state('');
   let name1 = $state('');
@@ -110,6 +112,16 @@
   function handleResume(): void {
     void game.restore();
   }
+
+  // PRD §10 A-6: the card-style picker. A look preference only: it lives in
+  // the settings store (its own storage key), never in the game snapshot.
+  // Catalog themes appear once the tiny catalog has loaded; a saved choice
+  // that isn't listed (offline, removed theme) shows as the default, and
+  // the board falls back to it anyway (SPEC §5.6 rule 4).
+  const themeChoices = $derived(listThemeChoices());
+  const selectedTheme = $derived(
+    themeChoices.some((choice) => choice.id === settings.themeId) ? settings.themeId : DEFAULT_THEME_ID,
+  );
 </script>
 
 <div data-testid="home-screen" class="home-screen">
@@ -129,6 +141,26 @@
       <input data-testid="name-input-1" type="text" placeholder="Player 2" bind:value={name1} />
     </label>
   </div>
+
+  {#if themeChoices.length > 1}
+    <fieldset class="home-screen__themes">
+      <legend>Card style</legend>
+      <div class="home-screen__theme-options">
+        {#each themeChoices as choice (choice.id)}
+          <label class="home-screen__theme-option" data-testid={`theme-option-${choice.id}`}>
+            <input
+              type="radio"
+              name="card-style"
+              value={choice.id}
+              checked={selectedTheme === choice.id}
+              onchange={() => settings.setThemeId(choice.id)}
+            />
+            <span>{choice.label}</span>
+          </label>
+        {/each}
+      </div>
+    </fieldset>
+  {/if}
 
   <div class="home-screen__actions">
     {#if hasSnapshot}
@@ -206,6 +238,57 @@
     background: var(--cu-ink-raised);
     color: var(--cu-pearl);
     font-size: var(--cu-text-md);
+  }
+
+  .home-screen__themes {
+    margin: 0;
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+
+  .home-screen__themes legend {
+    padding: 0;
+    margin-bottom: var(--cu-space-1);
+    font-size: var(--cu-text-sm);
+    color: var(--cu-muted);
+  }
+
+  .home-screen__theme-options {
+    display: flex;
+    gap: var(--cu-space-2);
+  }
+
+  .home-screen__theme-option {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cu-space-2);
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    padding: 0 var(--cu-space-3);
+    border: 1px solid var(--cu-ink-line);
+    border-radius: var(--cu-radius-control);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-size: var(--cu-text-md);
+    cursor: pointer;
+  }
+
+  .home-screen__theme-option:has(input:checked) {
+    border-color: var(--cu-ochre);
+    box-shadow: inset 0 0 0 1px var(--cu-ochre);
+  }
+
+  .home-screen__theme-option:has(input:focus-visible) {
+    outline: 2px solid var(--cu-iris);
+    outline-offset: 2px;
+  }
+
+  .home-screen__theme-option input {
+    accent-color: var(--cu-ochre);
+    margin: 0;
   }
 
   .home-screen__actions {

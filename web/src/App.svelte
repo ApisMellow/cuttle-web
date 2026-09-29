@@ -30,6 +30,8 @@
   import { ensureEngine } from './lib/bridge/wasm';
   import { game } from './lib/stores/game.svelte';
   import { session } from './lib/stores/session.svelte';
+  import { settings } from './lib/stores/settings.svelte';
+  import { ensureThemeLoaded, loadThemeCatalog } from './lib/theme';
   import { SNAPSHOT_KEY, decodeSnapshot } from './lib/stores/snapshot';
   import './lib/styles/tokens.css';
 
@@ -37,6 +39,19 @@
 
   let engineStatus = $state<EngineStatus>('loading');
   let engineError = $state<string | null>(null);
+
+  // PRD §10 A-6: bitmap themes load lazily. The catalog is read after
+  // first paint; a theme's manifest only once it is the chosen one (on a
+  // reload with a saved choice, that is right away). Until then every card
+  // renders the vector baseline (SPEC §5.6 rule 4). Neither call throws.
+  onMount(() => {
+    void loadThemeCatalog();
+  });
+
+  $effect(() => {
+    const id = settings.themeId;
+    untrack(() => void ensureThemeLoaded(id));
+  });
 
   onMount(() => {
     ensureEngine()

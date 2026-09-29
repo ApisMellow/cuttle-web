@@ -15,10 +15,13 @@ web/dist/*
 *.test
 *.out
 
-# WASM build artifacts
+# WASM build artifacts (scripts/build-wasm.sh writes these two into
+# web/static/; everything else there is source: icons, the web manifest,
+# card themes)
 /build/
 *.wasm
-web/static/
+/web/static/cuttle.wasm
+/web/static/wasm_exec.js
 
 # Editor noise
 .idea/

@@ -766,8 +766,8 @@ requirements:
     acceptance:
       - "unit-test: the sum of accepted theme asset bytes (declared CardTheme.assetBytes, after naming/dimension/compression normalization) is ≤ 4 MB compressed (PRD R22, SPEC §5.6 'Asset budget')"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-08 (themes, loop/r08-themes, pending review, not yet merged): vitest web/tests/unit/theme-mythic-assets.test.ts 'declared assetBytes equals the real total and is within the 4 MB budget (R22.3)', run for every theme in the shipped catalog; plus 'every image the manifest names exists'. Mythic declares 1,436,240 bytes (1.37 MiB). SPEC §5.6 amended (Mythic, per-card WebP instead of atlases)."
     fails: 0
 
   - id: R22.4
@@ -779,6 +779,7 @@ requirements:
     status: todo
     evidence: ""
     fails: 0
+    notes: "Not yet applicable (2026-09-28, round-08 themes): the app has no PWA plugin, so there is no sw.js and no precache manifest. Bitmap images are plain files loaded lazily per displayed card. Revisit when SPEC §5.8 lands."
 
   # ---------------------------------------------------------------------
   # R23 — Theme-layer integration
@@ -790,8 +791,8 @@ requirements:
       - "unit-test: CardTheme registry entries conform to the Face/Back component contract (CardFaceProps: card, size, state); no component outside lib/theme/ renders a rank or suit glyph directly (SPEC §5.6 rule 1)"
       - "e2e-test: swapping the active theme never changes board layout or triggers a reflow — the --cuttle-card-aspect ratio token (about 1.3; amended 2026-09-28 by ApisMellow, was 2.5:3.5) and the three size tokens stay fixed regardless of the active theme (SPEC §5.6 rule 2)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows)."
+    status: implemented
+    evidence: "PARTIAL round-02 (W8): unit bullet done — web/tests/unit/theme.test.ts \"every registry entry conforms to the Face/Back component contract\" (every entry x 3 sizes x 5 states x 3 cards; data-size/data-state reflected; phrasing root); web/tests/unit/theme-glyph-boundary.test.ts (no rank/suit glyph in any encoding and no theme-internal import outside lib/theme/). Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e bullet (theme swap never reflows). | IMPLEMENTED round-08 (themes, loop/r08-themes, pending review, not yet merged): e2e web/tests/e2e/themes.spec.ts 'swapping Classic for Mythic never moves or resizes anything on the board' (the same golden-deal game, resumed with Mythic chosen, has every [data-testid] box identical to Classic at 393×852); the unit contract now also covers bitmap faces, web/tests/unit/theme-bitmap.test.ts 'bitmap Face/Back contract (SPEC §5.6, R23.1)'."
     fails: 0
 
   - id: R23.2
@@ -800,9 +801,10 @@ requirements:
     acceptance:
       - "e2e-test: a menu control switches CardTheme.id, persists the choice in settings.svelte.ts across reload, independently of game-state persistence (SPEC §5.6 rule 5, §5.7)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-08 (themes, loop/r08-themes, pending review, not yet merged): e2e web/tests/e2e/themes.spec.ts 'the home screen offers Classic and Mythic; the pick persists across a reload and never enters the save' (options ≥ 44 px, only the catalog loaded before a pick, choice survives reload, the game save names no theme); vitest web/tests/unit/home-theme-picker.test.ts (picker hidden with one style, Classic checked by default, choice stored under the settings key, an unlisted saved choice shows Classic); vitest web/tests/unit/theme-save-resume.test.ts (the save is identical under both styles bar the timestamp, and resumes the same under either)."
     fails: 0
+    notes: "Ruling 2026-09-28 (round-08 themes): the control is a 'Card style' picker on the home screen, not a menu, because no in-game menu exists yet; changing style mid-game is Home, pick, Resume. SPEC §5.6 rule 5 ruling records it. The acceptance's 'menu control' is met by the home-screen control until a menu exists."
 
   - id: R23.3
     prd: R23
@@ -810,9 +812,10 @@ requirements:
     acceptance:
       - "e2e-test: forcing a bitmap theme's available() to false (simulated missing/failed asset) falls back to the vector theme silently, per card, with no layout shift (SPEC §5.6 rule 4)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED round-08 (themes, loop/r08-themes, pending review, not yet merged): e2e web/tests/e2e/themes.spec.ts 'a face image that fails to load falls back to the vector face for that card only, in the same box' (A♥'s image requests aborted; that card draws vector, the other four stay Mythic, every hand-card box the same size); vitest web/tests/unit/theme-bitmap.test.ts 'per-slot fallback to vector' (missing face, failed face, missing or failed back, glasses, playmat) and 'a manifest that fails to load falls back to vector (rule 4)'."
     fails: 0
+    notes: "Mechanism differs from the acceptance text (2026-09-28): a bitmap theme's available() stays true, and fallback happens per slot at the image level (missing from the manifest or failed to load), which is what the e2e forces. SPEC §5.6 'Bitmap themes are data' records it."
 
   - id: R23.4
     prd: R23

@@ -12,7 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BridgeResult, Envelope, Move, PlayerId, PlayerView, PointEntry } from '../../src/lib/bridge/schema';
 import { stagingAffordances } from '../../src/lib/affordances';
+import type { Component } from 'svelte';
+import { ensureThemeLoaded, getTheme, resetThemeCatalogForTests } from '../../src/lib/theme';
+import type { CardFaceProps } from '../../src/lib/theme/types';
 import { Kind, Phase, appliedMove, envelope, playerView, startGameMocked } from './game-test-support';
+import { THEMES_URL, fakeFetch, mythicRoutes } from './theme-fixture';
 
 const bridge = vi.hoisted(() => ({
   newGame: vi.fn(),
@@ -365,6 +369,36 @@ describe('GameScreen curtain gate (R13.2, SPEC §4.5)', () => {
     for (const card of el.querySelectorAll('[data-testid^="hand-card-"]')) {
       expect(card.getAttribute('aria-pressed')).toBe('false');
       expect((card as HTMLElement).dataset.staged).toBe('false');
+    }
+  });
+});
+
+describe('GameScreen clears bitmap image failures at each handoff (A-6)', () => {
+  it('an image that failed during Alice’s view is retried for Blake, not inherited', async () => {
+    resetThemeCatalogForTests();
+    await ensureThemeLoaded('mythic', { fetch: fakeFetch(mythicRoutes()), themesUrl: THEMES_URL });
+    const Face = getTheme('mythic').Face as Component<CardFaceProps & Record<string, unknown>>;
+    const faceHost = document.createElement('div');
+    document.body.append(faceHost);
+    const face = mount(Face, { target: faceHost, props: { card: ACE, size: 'field' } });
+    try {
+      flushSync();
+      const el = await start();
+      for (let i = 0; i < 2; i++) {
+        faceHost.querySelector('img')!.dispatchEvent(new Event('error'));
+        flushSync();
+      }
+      expect(faceHost.querySelector('img')).toBeNull();
+
+      applyToHandoff();
+      await playAceForPoints(el);
+      expect(game.curtain.kind).toBe('handoff');
+      flushSync();
+      expect(faceHost.querySelector('img')).not.toBeNull();
+    } finally {
+      unmount(face);
+      faceHost.remove();
+      resetThemeCatalogForTests();
     }
   });
 });
