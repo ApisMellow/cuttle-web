@@ -28,6 +28,9 @@ export const REQUIRED_ENTRIES = [
   'themes/index.json',
 ];
 
+/** Weights of the bundled UI font (`--cu-weight-regular`, `--cu-weight-bold`). */
+export const UI_FONT_WEIGHTS = [400, 700];
+
 /** The card gallery is a separate static page and never enters the precache. */
 export const EXCLUDED_PREFIXES = ['gallery/'];
 
@@ -85,6 +88,11 @@ export function checkPrecache(distDir) {
   }
   if (![...urls].some((u) => /^assets\/.+\.js$/.test(u))) problems.push('missing from precache: the app JS bundle');
   if (![...urls].some((u) => /^assets\/.+\.css$/.test(u))) problems.push('missing from precache: the app CSS bundle');
+  // The UI font is bundled, not a system font: offline play must keep it.
+  for (const weight of UI_FONT_WEIGHTS) {
+    const re = new RegExp(`^assets/atkinson-hyperlegible-next-latin-${weight}-normal-.+\\.woff2$`);
+    if (![...urls].some((u) => re.test(u))) problems.push(`missing from precache: the UI font (latin ${weight} woff2)`);
+  }
 
   let totalBytes = 0;
   for (const url of urls) {

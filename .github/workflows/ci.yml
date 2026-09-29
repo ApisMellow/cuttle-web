@@ -1,0 +1,62 @@
+name: CI
+
+# Runs the full mechanical gate (scripts/ci.sh, SPEC §7.6) on every pull
+# request to main and on every push to main, so a PR shows pass/fail
+# before it merges.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run per ref. A new push to a PR cancels the stale run; runs on main
+# are never cancelled so every main commit gets a result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Same Node line as pages.yml.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      # playwright.config.ts has a single chromium project.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Run the gate
+        run: ./scripts/ci.sh
+
+      # The config uses the list reporter; traces and screenshots from
+      # failed or retried tests land in web/test-results.
+      - name: Upload Playwright results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: |
+            web/test-results
+            web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
