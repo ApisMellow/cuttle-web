@@ -1108,6 +1108,7 @@ R12 is absolute: **no single tap ever applies a move.** Every commit is `select 
 ```
 
 - **Cancel** is always available while staged and returns to `idle`.
+- Tapping the selected card itself again (a hand card, or the 7's revealed card) clears to `idle` *(added 2026-09-29, issue #25)*; once staged, only Confirm/Cancel act.
 - Tapping a different hand card while `selected` re-selects. Tapping a **non-highlighted** area while `selected` clears to `idle` and never stages anything (R9's explicit non-goal).
 - Cards with no legal play render **dimmed but still inspectable** (R9) — tapping one opens a card-detail popover and does not enter `selected`. The popover shows only the tapped card from the viewer's own hand, never hidden information (no opponent card, no deck card, nothing from another viewer's history) *(2026-09-28: privacy bound restated while the popover is built)*.
 - While `applying`, the whole board is inert. A second Confirm tap must be impossible.

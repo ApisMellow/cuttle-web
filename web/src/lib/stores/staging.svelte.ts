@@ -492,8 +492,15 @@ export class StagingStore {
   }
 
   #handleTargetTap(key: TargetKey, env: StagingEnv): void {
-    // Tapping a different (or the same) hand card while selected re-selects
-    // (SPEC §6.1), even though `key` isn't a "target" in the §6.4 sense.
+    // Issue #25: a second tap on the selected card itself unselects it.
+    const root =
+      this.selectedReveal !== null ? `seven:${this.selectedReveal}` : this.selectedHand !== null ? `hand:${this.selectedHand}` : null;
+    if (key === root) {
+      this.#clearToIdle();
+      return;
+    }
+    // Tapping a different hand card while selected re-selects (SPEC §6.1),
+    // even though `key` isn't a "target" in the §6.4 sense.
     if (key.startsWith('hand:')) {
       this.#selectHand(Number(key.slice('hand:'.length)), env);
       return;
