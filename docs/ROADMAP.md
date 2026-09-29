@@ -5,6 +5,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 ## Next
 
 - **Theme picker.** A menu control to choose the deck look, remembered between visits. The first theme after the default vector cards is Mythic (below).
+- **Card labels.** Each card carries a short name and a label for its effect, so you can read the table at a glance. For example, a King in play shows the new points needed to win (21, 14, 10, 7, 5), a Queen shows that it protects, a Jack shows that it steals, and a one-off says what it does. Names may come from the theme (a Mythic King could have its own name), and the labels stay readable at phone size.
 - **Learn-as-you-play help.** A short rules screen, plus one line under each one-off that says what it does ("5: draw two", "9: send a card back to its owner's hand"). Aimed at a first-time player.
 - **Clearer recaps.** Every recap says what actually happened: which cards were drawn, and what a one-off did.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.
