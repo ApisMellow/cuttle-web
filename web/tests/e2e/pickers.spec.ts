@@ -128,8 +128,12 @@ for (const { width, height } of [
     await page.getByTestId('name-input-0').fill('Alice');
     await page.getByTestId('name-input-1').fill('Blake');
     await page.getByTestId('new-game').click();
-    await expect(page.getByTestId('board')).toBeVisible();
+    // W25: every new game starts behind the curtain, including the hook's redeal.
+    await expect(page.getByTestId('curtain-gate')).toBeVisible();
+    await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(0);
     await hook(page, (h) => h.newGame('17', 0));
+    await passThePhone(page, 'Blake', 'Your turn');
+    await expect(page.getByTestId('board')).toBeVisible();
     await expect.poll(() => hook(page, (h) => h.viewer())).toBe(1);
 
     // 1. Blake plays the 4. Alice discards two cards on her own hand.

@@ -128,3 +128,72 @@ export function fakeStorage(): Storage {
     },
   } as Storage;
 }
+
+/**
+ * W25: `newGame()` now starts behind the opening curtain (handoff -> reveal
+ * -> none, addressed to the first actor). Suites that use `newGame` only as
+ * setup call this instead: it walks the store's REAL opening sequence, with
+ * `engine.view` answering from the deal's own envelope for just that walk,
+ * so a suite's `view` stub and its call counts are untouched. It stops at
+ * the first resting state (`none`, or a real counter window when the deal
+ * fixture sits at AwaitingCounter).
+ */
+export async function startGame(
+  store: { newGame(opts?: { seed?: string; dealer?: PlayerId }): Promise<void>; advanceCurtain(): Promise<void>; curtain: { kind: string } },
+  engine: GameEngine,
+  opts?: { seed?: string; dealer?: PlayerId },
+): Promise<void> {
+  const originalNewGame = engine.newGame;
+  const originalView = engine.view;
+  let dealt: ReturnType<GameEngine['newGame']> | null = null;
+  engine.newGame = (o) => {
+    dealt = originalNewGame(o);
+    return dealt;
+  };
+  try {
+    await store.newGame(opts);
+    if (dealt === null) return;
+    const deal = dealt;
+    engine.view = () => deal;
+    for (let i = 0; i < 4 && ['handoff', 'reveal', 'recap'].includes(store.curtain.kind); i++) {
+      await store.advanceCurtain();
+    }
+  } finally {
+    engine.newGame = originalNewGame;
+    engine.view = originalView;
+  }
+}
+
+interface MockFn {
+  mockImplementation(fn: (...args: never[]) => unknown): unknown;
+  getMockImplementation(): ((...args: never[]) => unknown) | undefined;
+  mockReset(): unknown;
+  mockClear(): unknown;
+}
+
+/**
+ * W25: `startGame` for suites that mock the `lib/bridge/engine` module
+ * (the store's default engine) instead of injecting a fake. Deals `deal`,
+ * then walks the store's real opening sequence with `view` answering from
+ * `deal`, and leaves `view` as it found it with no calls recorded.
+ */
+export async function startGameMocked(
+  store: { newGame(opts?: { seed?: string; dealer?: PlayerId }): Promise<void>; advanceCurtain(): Promise<void>; curtain: { kind: string } },
+  bridge: { newGame: MockFn; view: MockFn },
+  deal: Envelope,
+  opts?: { seed?: string; dealer?: PlayerId },
+): Promise<void> {
+  bridge.newGame.mockImplementation(() => deal);
+  const prior = bridge.view.getMockImplementation();
+  bridge.view.mockImplementation(() => deal);
+  try {
+    await store.newGame(opts);
+    for (let i = 0; i < 4 && ['handoff', 'reveal', 'recap'].includes(store.curtain.kind); i++) {
+      await store.advanceCurtain();
+    }
+  } finally {
+    if (prior) bridge.view.mockImplementation(prior);
+    else bridge.view.mockReset();
+    bridge.view.mockClear();
+  }
+}

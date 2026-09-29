@@ -137,6 +137,7 @@
 
   --cu-lift-selected: -8px;
   --cu-lift-staged: -12px;
+  --cu-lift-hover: -4px;          /* W25: mouse hover on a hand card */
 }
 
 /* Roomy tier (W22): iPhone 15 Plus / Pro Max class, 430x932. Not a

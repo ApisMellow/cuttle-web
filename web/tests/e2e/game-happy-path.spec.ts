@@ -75,10 +75,22 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   await page.getByTestId('name-input-0').fill('Alice');
   await page.getByTestId('name-input-1').fill('Blake');
   await page.getByTestId('new-game').click();
-  await expect(page.getByTestId('board')).toBeVisible();
+
+  // W25 (privacy): a new game starts behind the curtain to the first player,
+  // so whoever tapped New game sees no hand until that player reveals.
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(0);
+  await expect(page.getByTestId('board')).toHaveCount(0);
 
   // Golden deal: Alice (P1) holds 2♥ 3♣ A♥ K♦ Q♣ and acts first.
   await hook(page, (h) => h.newGame('42', 1));
+  expect(await curtainKind(page)).toBe('handoff');
+  await expect(page.getByTestId('curtain-gate')).toContainText('Alice');
+  await expect(page.getByTestId('curtain-gate')).toContainText('Your turn');
+  await page.getByTestId('reveal-two-step').click();
+  await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(0);
+  await page.getByTestId('reveal-two-step').click(); // no recap at the deal
+  await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId('player-hand').locator('[data-testid^="hand-card-"]')).toHaveCount(5);
   expect(await hook(page, (h) => h.viewer())).toBe(0);
   await expect(page.getByTestId('deck-pile')).toHaveAttribute('data-disabled', 'false');

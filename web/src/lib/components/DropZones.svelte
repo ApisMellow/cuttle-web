@@ -97,9 +97,10 @@
     cursor: pointer;
   }
 
+  /* W25: inset, so the row's own clipping can't hide the ring. */
   .drop-zone__hit:focus-visible {
-    outline: 2px solid var(--cu-pearl, #eee8f1);
-    outline-offset: 2px;
+    outline: 3px solid var(--cu-pearl, #eee8f1);
+    outline-offset: -3px;
   }
 
   .drop-zone__label {

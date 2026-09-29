@@ -73,7 +73,7 @@ describe('persisted snapshot shape', () => {
     expect(decoded.snapshot.names).toEqual(['Alice', 'Blake']);
     expect(decoded.snapshot.seed).toBe('7');
     expect(decoded.snapshot.dealer).toBe(0);
-    expect(decoded.snapshot.curtain).toEqual({ kind: 'none' });
+    expect(decoded.snapshot.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' }); // W25 opening curtain
     expect(typeof decoded.snapshot.savedAt).toBe('string');
   });
 

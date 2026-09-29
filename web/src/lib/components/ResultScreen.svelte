@@ -21,10 +21,14 @@
     state: Pick<PlayerView, 'winner' | 'stalemate'>;
     names: [string, string];
     tally: Record<PlayerId, number>;
+    /** W25: each player's final points, read verbatim off the final scoreboard by the app layer. */
+    scores?: Record<PlayerId, number>;
     onRematch: () => void;
+    /** W25: back to the home screen. */
+    onHome?: () => void;
   }
 
-  let { state, names, tally, onRematch }: ResultScreenProps = $props();
+  let { state, names, tally, scores, onRematch, onHome }: ResultScreenProps = $props();
 
   const headline = $derived(
     state.winner !== null
@@ -40,9 +44,21 @@
   <p data-testid="tally" class="result-screen__tally">
     {names[0]} {tally[0]} – {names[1]} {tally[1]}
   </p>
-  <button type="button" data-testid="rematch" class="result-screen__button" onclick={onRematch}>
-    Rematch
-  </button>
+  {#if scores}
+    <p data-testid="final-scores" class="result-screen__scores">
+      Final score: {names[0]} {scores[0]} – {names[1]} {scores[1]}
+    </p>
+  {/if}
+  <div class="result-screen__actions">
+    <button type="button" data-testid="rematch" class="result-screen__button" onclick={onRematch}>
+      Rematch
+    </button>
+    {#if onHome}
+      <button type="button" data-testid="result-home" class="result-screen__button result-screen__button--quiet" onclick={onHome}>
+        Home
+      </button>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -77,6 +93,31 @@
     font-variant-numeric: tabular-nums;
     color: var(--cu-muted);
     margin: 0;
+  }
+
+  .result-screen__scores {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--cu-tap-min);
+    box-sizing: border-box;
+    margin: 0;
+    font-size: var(--cu-text-md);
+    font-variant-numeric: tabular-nums;
+    color: var(--cu-pearl);
+  }
+
+  .result-screen__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--cu-space-3);
+  }
+
+  .result-screen__button--quiet {
+    border: 1px solid var(--cu-ink-line);
+    background: transparent;
+    color: var(--cu-pearl);
   }
 
   .result-screen__button {

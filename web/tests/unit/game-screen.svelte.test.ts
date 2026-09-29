@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BridgeResult, Envelope, Move, PlayerId, PlayerView, PointEntry } from '../../src/lib/bridge/schema';
 import { stagingAffordances } from '../../src/lib/affordances';
-import { Kind, Phase, appliedMove, envelope, playerView } from './game-test-support';
+import { Kind, Phase, appliedMove, envelope, playerView, startGameMocked } from './game-test-support';
 
 const bridge = vi.hoisted(() => ({
   newGame: vi.fn(),
@@ -168,8 +168,7 @@ async function click(el: HTMLElement, id: string): Promise<void> {
 }
 
 async function start(env: Envelope = p0Opening()): Promise<HTMLDivElement> {
-  bridge.newGame.mockImplementation(() => env);
-  await game.newGame({ seed: '1' });
+  await startGameMocked(game, bridge, env, { seed: '1' });
   return render();
 }
 
@@ -653,5 +652,29 @@ describe('GameScreen last-move line text (R20.1, SPEC §4.6)', () => {
       envelope({ state, history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
     );
     expect(lastMoveLine(el)).toBe('Alice played 4♣ as a one-off.');
+  });
+});
+
+describe('W25 deck tap and blank-space deselect', () => {
+  it('with a hand card selected, one deck tap stages Draw (Confirm still required)', async () => {
+    const el = await start();
+    await click(el, 'hand-card-0');
+    expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('true');
+    await click(el, 'deck-pile');
+    expect(q(el, 'staging-bar')?.textContent).toContain('draw a card');
+    expect(bridge.apply).not.toHaveBeenCalled();
+  });
+
+  it('a tap on the score bar or empty board space clears the selection', async () => {
+    const el = await start();
+    await click(el, 'hand-card-0');
+    await click(el, 'score-bar');
+    expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('false');
+
+    await click(el, 'hand-card-0');
+    expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('true');
+    await click(el, 'board');
+    expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('false');
+    expect(q(el, 'staging-bar')).toBeNull();
   });
 });

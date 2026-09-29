@@ -136,6 +136,15 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* W25: a hover lift for mouse users, smaller than the selected lift.
+     Only on devices that really hover, so a tap never leaves a card raised;
+     never on a dimmed, selected or staged card. */
+  @media (hover: hover) {
+    .hand-card:hover:not([aria-pressed='true'], [data-staged='true'], [data-dimmed='true']) {
+      transform: translateY(var(--cu-lift-hover, -4px));
+    }
+  }
+
   .hand-card[aria-pressed='true'] {
     transform: translateY(var(--cu-lift-selected, -8px));
   }

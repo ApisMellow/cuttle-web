@@ -144,17 +144,26 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
   });
 
   it.each([
-    ['handoff', { kind: 'handoff', to: 1, reason: 'turn' }],
-    ['reveal', { kind: 'reveal', to: 1 }],
+    ['handoff counter', { kind: 'handoff', to: 1, reason: 'counter' }],
+    ['handoff acknowledge', { kind: 'handoff', to: 1, reason: 'acknowledge' }],
+    ['recap', { kind: 'recap', to: 1, entries: [] }],
     ['ack', { kind: 'ack', to: 1, synthetic: false }],
     ['result', { kind: 'result' }],
-  ])('rejects a non-"none" curtain (%s) with an empty history', (_label, curtain) => {
+  ])('rejects a non-"none", non-opening curtain (%s) with an empty history', (_label, curtain) => {
     const raw = JSON.stringify({ ...validSnapshot({ viewer: 1 }), curtain });
     expect(decodeSnapshot(raw)).toEqual(expect.objectContaining({ ok: false, reason: 'malformed' }));
   });
 
   it('rejects a curtain whose target is not the persisted viewer', () => {
     expect(decodeSnapshot(withHistory({ kind: 'reveal', to: 1 }, 0))).toEqual(expect.objectContaining({ ok: false, reason: 'malformed' }));
+  });
+
+  it.each([
+    ['handoff turn', { kind: 'handoff', to: 1, reason: 'turn' }],
+    ['reveal', { kind: 'reveal', to: 1 }],
+  ])('W25: the opening curtain (%s) with an empty history is valid (a fresh game behind the curtain)', (_label, curtain) => {
+    const raw = JSON.stringify({ ...validSnapshot({ viewer: 1 }), curtain });
+    expect(decodeSnapshot(raw).ok).toBe(true);
   });
 
   it('none with an empty history is still valid (a fresh game)', () => {

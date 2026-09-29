@@ -55,9 +55,14 @@
   let acted = false;
 
   function resolve(): void {
-    if (acted) return;
+    if (acted || staged !== null) return; // W25: a staged counter locks it
     acted = true;
     onresolve();
+  }
+
+  /** W25: the engine's description, sentence-cased for the staging bar ("Counter with 2♣"). */
+  function sentenceCase(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   function stage(option: ChooserCandidate): void {
@@ -92,7 +97,7 @@
 
   <div class="counter-prompt__options">
     {#if staged !== null}
-      <StagingBar description={staged.description} onconfirm={confirmCounter} oncancel={cancelCounter} />
+      <StagingBar description={sentenceCase(staged.description)} onconfirm={confirmCounter} oncancel={cancelCounter} />
     {:else}
       {#each options as option (option.index)}
         <button
@@ -108,7 +113,16 @@
   </div>
 
   <div class="counter-prompt__footer">
-    <button type="button" class="counter-prompt__resolve" data-testid="counter-resolve" onclick={resolve}>
+    <!-- W25: disabled only while a counter is staged. Unstaged (the only
+         state the synthetic ack can be in) it carries no disabled attribute,
+         so the two paths stay identical (R14). -->
+    <button
+      type="button"
+      class="counter-prompt__resolve"
+      data-testid="counter-resolve"
+      disabled={staged !== null}
+      onclick={resolve}
+    >
       Let it resolve
     </button>
   </div>
@@ -210,5 +224,10 @@
     color: var(--cu-on-accent, #241c2b);
     font-size: var(--cu-text-md, 16px);
     cursor: pointer;
+  }
+
+  .counter-prompt__resolve:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 </style>

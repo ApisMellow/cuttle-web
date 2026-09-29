@@ -56,7 +56,8 @@ export type CurtainView = Pick<PlayerView, 'active' | 'phase'>;
  */
 export interface CurtainContext {
   pre: CurtainView;
-  move: AppliedMove;
+  /** The applied move this sequence follows, or `null` for the opening deal (W25: see `opening`). */
+  move: AppliedMove | null;
   post: CurtainView;
   /** Unseen history for a player, evaluated when that player passes the reveal gate. */
   recapFor(viewer: PlayerId): RecapEntry[];
@@ -141,9 +142,20 @@ function assertReachable(pre: CurtainView, mv: AppliedMove): void {
   }
 }
 
-/** True when the §4.3 synthetic ack is part of this move's sequence (game over pre-empts it, §4.4). */
-function syntheticAckPending(pre: CurtainView, mv: AppliedMove, post: CurtainView): boolean {
-  return post.phase !== PhaseGameOver && needsSyntheticAck(pre, mv, post);
+/** True when the §4.3 synthetic ack is part of this move's sequence (game over pre-empts it, §4.4). The opening deal has no move, so no ack. */
+function syntheticAckPending(pre: CurtainView, mv: AppliedMove | null, post: CurtainView): boolean {
+  return mv !== null && post.phase !== PhaseGameOver && needsSyntheticAck(pre, mv, post);
+}
+
+/**
+ * W25: the curtain a new game starts behind. The player who tapped "New
+ * game" is not necessarily the first actor, so the deal is handed to the
+ * first actor exactly like a turn (SPEC §4.5): handoff -> reveal -> none.
+ * Its sequence is advanced with a `CurtainContext` whose `move` is `null`
+ * and whose `pre`/`post` are both the first actor's `CurtainView`.
+ */
+export function opening(first: PlayerId): CurtainState {
+  return { kind: 'handoff', to: first, reason: 'turn' };
 }
 
 /**

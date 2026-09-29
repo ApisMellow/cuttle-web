@@ -117,4 +117,11 @@
     box-shadow: 0 1px 3px rgb(0 0 0 / 40%);
     cursor: pointer;
   }
+
+  /* W25 (desktop keyboard): a visible focus ring on every target, drawn
+     inset so a clipping row or well can't hide it. */
+  .seven-reveal__card:focus-visible {
+    outline: 3px solid var(--cu-pearl, #eee8f1);
+    outline-offset: -3px;
+  }
 </style>

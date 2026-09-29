@@ -10,7 +10,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Envelope, Move, PlayerView } from '../../src/lib/bridge/schema';
-import { envelope, Phase, playerView } from './game-test-support';
+import { envelope, Phase, playerView, startGameMocked } from './game-test-support';
 
 const bridge = vi.hoisted(() => ({
   newGame: vi.fn(),
@@ -148,8 +148,7 @@ async function click(el: HTMLElement, id: string): Promise<void> {
 }
 
 async function start(env: Envelope = p0Opening()): Promise<HTMLDivElement> {
-  bridge.newGame.mockImplementation(() => env);
-  await game.newGame({ seed: '1' });
+  await startGameMocked(game, bridge, env, { seed: '1' });
   return render();
 }
 

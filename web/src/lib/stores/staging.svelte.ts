@@ -355,6 +355,17 @@ export class StagingStore {
   }
 
   /**
+   * W25: a tap on empty board space or the score bar. Clears a selected card
+   * (with no modal open) back to idle; a staged move keeps waiting for
+   * Confirm/Cancel, and the chooser and pick sheet keep their own Cancel.
+   */
+  clearSelection(): void {
+    if (this.state !== 'selected' || this.chooser !== null || this.scrapPick !== null) return;
+    if (this.discard !== null) return; // discard picks toggle on the cards themselves
+    this.#clearToIdle();
+  }
+
+  /**
    * Called by the integrator on every `apply` and every viewer change (SPEC §5.3). Idempotent.
    * At a discard position it also lights every hand card as pickable, and a
    * one-card hand's single move arrives pre-staged (R15.2, SPEC §6.3) — still
@@ -507,6 +518,10 @@ export class StagingStore {
     if (!indices || indices.length === 0) {
       // SPEC §6.1, R9.4 — tapping a non-highlighted key clears to idle and stages nothing.
       this.#clearToIdle();
+      // W25 (live playtest): the deck is never a selected card's target, so
+      // a deck tap means "draw instead". When Draw is legal it stages in the
+      // same tap, exactly as from idle; still only Confirm applies it (R12).
+      if (key === 'deck') this.#handleRootTap(key, env);
       return;
     }
 

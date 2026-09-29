@@ -143,3 +143,28 @@ describe('ResultScreen renders neither hand (round-2 carry-over)', () => {
     expect(ids.sort()).toEqual(['rematch', 'result-screen', 'tally']);
   });
 });
+
+describe('W25: Home button and final scores', () => {
+  it('shows each player\'s final points, and Home calls onHome', () => {
+    const onHome = vi.fn();
+    host = document.createElement('div');
+    document.body.append(host);
+    instance = mount(ResultScreen, {
+      target: host,
+      props: {
+        state: { winner: 0, stalemate: false },
+        names: ['Alice', 'Blake'] as [string, string],
+        tally: { 0: 1, 1: 0 },
+        scores: { 0: 22, 1: 9 },
+        onRematch: () => {},
+        onHome,
+      },
+    });
+    flushSync();
+    expect(host.querySelector('[data-testid="final-scores"]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Final score: Alice 22 – Blake 9',
+    );
+    host.querySelector<HTMLButtonElement>('[data-testid="result-home"]')!.click();
+    expect(onHome).toHaveBeenCalledTimes(1);
+  });
+});

@@ -83,7 +83,8 @@ function isLastSeenSeq(value: unknown): value is Record<PlayerId, number> {
  * validate, not this module's (SPEC §5.7 "opaque... never inspected").
  *
  * Two cross-field checks, both about the store's own bookkeeping rather than
- * the game: a curtain can only be up after at least one applied move, and a
+ * the game: a curtain can only be up after at least one applied move (except
+ * the opening deal's handoff 'turn' and its reveal, W25), and a
  * curtain addressed to a player is persisted with that player as `viewer`
  * (the store writes it that way; a mismatch would make restore fetch — and,
  * at an `ack`, expose — the wrong player's view).
@@ -104,7 +105,8 @@ function isWellFormed(obj: Record<string, unknown>): obj is Record<keyof Snapsho
     isPlayerId(obj.dealer);
   if (!shaped) return false;
   const curtain = obj.curtain as CurtainState;
-  if (curtain.kind !== 'none' && (obj.history as unknown[]).length === 0) return false;
+  const opening = (curtain.kind === 'handoff' && curtain.reason === 'turn') || curtain.kind === 'reveal';
+  if (curtain.kind !== 'none' && !opening && (obj.history as unknown[]).length === 0) return false;
   if ('to' in curtain && curtain.to !== obj.viewer) return false;
   return true;
 }

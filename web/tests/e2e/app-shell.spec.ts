@@ -58,6 +58,11 @@ test('R4.3: New game confirms abandoning an in-progress game; cancel keeps it, c
   // Confirm: back to Home, and a fresh game replaces the abandoned one.
   await page.reload();
   await expect(page.getByTestId('home-screen')).toBeVisible();
+  // W25: the saved game's names refill the fields after a reload; blank
+  // them so the defaults below prove the abandoned game is gone.
+  await expect(page.getByTestId('name-input-0')).toHaveValue('Alice');
+  await page.getByTestId('name-input-0').fill('');
+  await page.getByTestId('name-input-1').fill('');
   await page.getByTestId('new-game').click();
   await expect(page.getByTestId('confirm-abandon')).toBeVisible();
   await page.getByTestId('confirm-abandon').click();
