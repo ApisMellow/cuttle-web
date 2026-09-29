@@ -14,7 +14,7 @@
   // caller's contract (SPEC §2.7), not by anything this component enforces.
   import type { Card } from '../bridge/schema';
   import '../styles/card-geometry.css';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
+  import { DEFAULT_THEME_ID, cardSpokenName, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
 
   interface OpponentHandProps {
@@ -38,7 +38,9 @@
       {/each}
     {:else}
       {#each hand as card, index (index)}
-        <span class="opponent-hand__card" style={`--i: ${index}`}>
+        <!-- r16 (a11y): face up under glasses, so the viewer may see (and
+             hear) each card. The hidden branch above stays unnamed. -->
+        <span class="opponent-hand__card" style={`--i: ${index}`} role="img" aria-label={cardSpokenName(card)}>
           <theme.Face {card} size="mini" />
         </span>
       {/each}

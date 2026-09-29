@@ -60,11 +60,11 @@ describe('theme registry (SPEC §5.6)', () => {
     expect(listThemes().map((t) => t.id)).toEqual(['vector']);
   });
 
-  it('DEFAULT_THEME_ID is a single constant naming vector (rule 5)', () => {
-    expect(DEFAULT_THEME_ID).toBe('vector');
+  it('DEFAULT_THEME_ID is a single constant naming Mythic (rule 5, owner ruling 2026-09-29)', () => {
+    expect(DEFAULT_THEME_ID).toBe('mythic');
   });
 
-  it('getTheme(DEFAULT_THEME_ID) returns the vector theme', () => {
+  it('getTheme(DEFAULT_THEME_ID) is the vector theme until Mythic has loaded (rule 4)', () => {
     expect(getTheme(DEFAULT_THEME_ID)).toBe(vectorTheme);
   });
 
@@ -92,8 +92,18 @@ describe('theme registry (SPEC §5.6)', () => {
         'resetThemeCatalogForTests',
         // A-6: forget bitmap image load errors (called at each handoff). No glyph.
         'clearImageFailures',
+        // r16: a card's accessible name in words ("King of Hearts"). Words,
+        // never a glyph, and only ever an aria-label.
+        'cardSpokenName',
       ].sort(),
     );
+  });
+
+  it('cardSpokenName names a card in words, with no glyph', () => {
+    expect(themeIndex.cardSpokenName({ Rank: 13, Suit: 2 })).toBe('King of Hearts');
+    expect(themeIndex.cardSpokenName({ Rank: 1, Suit: 3 })).toBe('Ace of Spades');
+    expect(themeIndex.cardSpokenName({ Rank: 10, Suit: 1 })).toBe('10 of Diamonds');
+    expect(themeIndex.cardSpokenName({ Rank: 11, Suit: 0 })).toBe('Jack of Clubs');
   });
 
   it('settings.svelte.ts takes the default from lib/theme/default, not the component-bearing index', () => {

@@ -37,6 +37,7 @@
   // jsdom has no `window.matchMedia`, so detection is defensive.
   import type { PlayerId } from '../bridge/schema';
   import { createHoldGate, HOLD_DURATION_MS, type HoldGate } from '../curtain';
+  import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
 
   interface RevealGateProps {
     name: string;
@@ -162,6 +163,46 @@
     abortHold();
     advanceOnce();
   }
+
+  // ---- Keyboard (r16, desktop) -------------------------------------------
+  // Review B1 (privacy): nothing here takes focus on arrival (HandoffPanel
+  // focuses its text, and one Tab reaches the pill, which comes first in
+  // the DOM), and a pill click produced by a key that went down before this
+  // screen mounted, or by an auto-repeat, is ignored (lib/keyGuard.ts). So
+  // the previous player's key presses can't walk through the curtain.
+  // The ring also works from the keyboard: Space or Enter held on it is a
+  // press and hold, released early (or on blur) it resets, like a pointer.
+  let guard: KeyActivationGuard | null = null;
+  $effect(() => {
+    const g = keyActivationGuard();
+    guard = g;
+    return () => {
+      g.dispose();
+      if (guard === g) guard = null;
+    };
+  });
+
+  function onPillActivate(): void {
+    if (guard !== null && !guard.allows()) return;
+    onPillClick();
+  }
+
+  function isHoldKey(event: KeyboardEvent): boolean {
+    return event.key === ' ' || event.key === 'Enter';
+  }
+
+  function onRingKeydown(event: KeyboardEvent): void {
+    if (!isHoldKey(event)) return;
+    event.preventDefault();
+    if (event.repeat || gate !== null) return;
+    onRingDown();
+  }
+
+  function onRingKeyup(event: KeyboardEvent): void {
+    if (!isHoldKey(event)) return;
+    event.preventDefault();
+    onRingUp();
+  }
 </script>
 
 <div
@@ -169,6 +210,12 @@
   data-primary={primary}
   style={`--cu-dur-hold: ${HOLD_DURATION_MS}ms`}
 >
+  <!-- r16: the pill comes first in the DOM (both are absolutely placed, so
+       nothing moves on screen): one Tab from the focused text reaches it. -->
+  <button type="button" class="reveal__pill" data-testid="reveal-two-step" onclick={onPillActivate}>
+    {pillText}
+  </button>
+
   <button
     type="button"
     class="reveal__ring"
@@ -178,12 +225,11 @@
     onpointerup={onRingUp}
     onpointercancel={onRingUp}
     onpointerleave={onRingUp}
+    onkeydown={onRingKeydown}
+    onkeyup={onRingKeyup}
+    onblur={onRingUp}
   >
     Hold
-  </button>
-
-  <button type="button" class="reveal__pill" data-testid="reveal-two-step" onclick={onPillClick}>
-    {pillText}
   </button>
 </div>
 

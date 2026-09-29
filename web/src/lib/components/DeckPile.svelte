@@ -41,6 +41,7 @@
   data-state={state}
   data-disabled={disabled ? 'true' : 'false'}
   aria-disabled={disabled ? 'true' : 'false'}
+  aria-label={`Deck, ${count} ${count === 1 ? 'card' : 'cards'}`}
   onclick={ontap}
 >
   <span class="deck-pile__card"><theme.Back size="hand" /></span>

@@ -85,6 +85,22 @@ async function expectInViewport(page: Page, testid: string): Promise<void> {
 }
 
 /**
+ * r16 (friction 5): the scrap sheet drops from the top and ends above your
+ * own Points row, so it never covers your rows or your hand. Checked at the
+ * full phone heights; with Mobile Safari's toolbars (393x660) the board
+ * scrolls under the sheet anyway.
+ */
+async function expectOwnRowsClear(page: Page): Promise<void> {
+  const size = page.viewportSize()!;
+  if (size.height < 800) return;
+  const sheet = await page.getByTestId('scrap-browser').boundingBox();
+  for (const id of ['zone-points', 'zone-permanents', 'player-hand']) {
+    const box = await page.getByTestId(id).boundingBox();
+    expect(box!.y, `${id} starts below the scrap sheet`).toBeGreaterThanOrEqual(sheet!.y + sheet!.height);
+  }
+}
+
+/**
  * Hands the phone over: handoff -> reveal (two-step) -> recap if any. The
  * board stays out of the DOM until the receiver is looking.
  */
@@ -122,6 +138,7 @@ async function playOneOff(page: Page, pattern: RegExp): Promise<HookMove> {
 // reveal in it) and the action bar never do.
 for (const { width, height } of [
   { width: 393, height: 852 },
+  { width: 430, height: 932 },
   { width: 393, height: 660 },
 ]) {
   test(`${width}x${height}: a 4 discard, a 7 reveal and a 3 scrap pick, all by tapping`, async ({ page }) => {
@@ -180,6 +197,11 @@ for (const { width, height } of [
 
     await expect(page.getByTestId('seven-reveal')).toBeVisible();
     await expect(page.getByTestId('seven-reveal')).toContainText('Top of the deck');
+    // r16 (friction 4): your own hand stays in sight, small and read-only.
+    const minis = page.getByTestId('seven-reveal').locator('[data-seven-hand] [role="img"]');
+    await expect(minis.first()).toBeVisible();
+    expect(await minis.count()).toBeGreaterThanOrEqual(1);
+    expect(await page.getByTestId('seven-reveal').locator('[data-seven-hand] [data-testid]').count()).toBe(0);
     await expectFits(page);
     await expectInViewport(page, 'seven-reveal');
     const pick = await findMove(page, /^7: play 8. as point card$/, Kind.SevenPick);
@@ -209,9 +231,10 @@ for (const { width, height } of [
     expect(scrapCount).toBeGreaterThanOrEqual(3);
     await page.getByTestId('scrap-pile').click();
     await expect(page.getByTestId('scrap-browser')).toHaveAttribute('data-mode', 'browse');
-    await expect(page.getByTestId('scrap-browser').locator('.cuttle-card-face')).toHaveCount(scrapCount);
+    await expect(page.getByTestId('scrap-browser').locator('.scrap-browser__card')).toHaveCount(scrapCount);
     await expectFits(page);
     await expectInViewport(page, 'scrap-browser');
+    await expectOwnRowsClear(page);
     await page.getByTestId('scrap-browser-close').click();
     await expect(page.getByTestId('scrap-browser')).toHaveCount(0);
 
@@ -227,6 +250,11 @@ for (const { width, height } of [
     await expect(page.getByTestId('staging-bar')).toHaveCount(0);
     await expectFits(page);
     await expectInViewport(page, 'scrap-browser');
+    await expectOwnRowsClear(page);
+    // The 3 being played stays in view below the sheet.
+    const threeBox = await page.getByTestId(`hand-card-${threes[0].handIndex}`).boundingBox();
+    const sheetBox = await page.getByTestId('scrap-browser').boundingBox();
+    expect(threeBox!.y, 'the 3 sits below the scrap sheet').toBeGreaterThanOrEqual(sheetBox!.y + sheetBox!.height);
     const take = threes[threes.length - 1];
     await page.getByTestId(`scrap-pick-${take.scrapIndex}`).click();
     await expect(page.getByTestId('scrap-browser')).toHaveCount(0);

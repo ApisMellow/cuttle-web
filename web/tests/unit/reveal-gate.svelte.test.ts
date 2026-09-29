@@ -191,6 +191,105 @@ describe('RevealGate controls and content (SPEC §4.5, design.md §8)', () => {
   });
 });
 
+describe('Keyboard (r16, desktop)', () => {
+  function key(el: HTMLElement, type: 'keydown' | 'keyup', k: string, repeat = false): void {
+    holdButton(el).dispatchEvent(new KeyboardEvent(type, { key: k, repeat, bubbles: true, cancelable: true }));
+    flushSync();
+  }
+
+  it('review B1: never takes focus itself; the pill comes first in Tab order', () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const el = render({ name: 'Alice', stage: 'handoff', revealPreference: 'hold', onadvance: () => {} });
+    expect(document.activeElement).not.toBe(pill(el));
+    expect(document.activeElement).not.toBe(holdButton(el));
+    const buttons = [...el.querySelectorAll('button')];
+    expect(buttons.indexOf(pill(el))).toBeLessThan(buttons.indexOf(holdButton(el)));
+  });
+
+  function windowKey(k: string, repeat: boolean, type: 'keydown' | 'keyup' = 'keydown'): void {
+    window.dispatchEvent(new KeyboardEvent(type, { key: k, repeat, bubbles: true, cancelable: true }));
+  }
+
+  it('review B1: a pill click from an auto-repeated Enter (a key held across the curtain) is ignored', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine();
+    windowKey('Enter', true);
+    tap(el); // the activation that repeat keydown would produce, in the same task
+    expect(calls).toEqual([]);
+    tick(1);
+    // A fresh press after the curtain came up works.
+    windowKey('Enter', false);
+    tap(el);
+    expect(calls).toEqual(['handoff']);
+  });
+
+  it('review B1: a Space whose keydown came before the curtain mounted does not activate the pill on keyup', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine();
+    windowKey(' ', false, 'keyup'); // no keydown seen since mount
+    tap(el);
+    expect(calls).toEqual([]);
+    tick(1);
+    windowKey(' ', false);
+    tick(1);
+    windowKey(' ', false, 'keyup');
+    tap(el);
+    expect(calls).toEqual(['handoff']);
+  });
+
+  it('re-review B1: a repeated keydown on the ring with no hold running arms nothing', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine();
+    for (let i = 0; i < 30; i++) {
+      key(el, 'keydown', 'Enter', true);
+      tick(40);
+    }
+    expect(calls).toEqual([]);
+    expect(ring(el)).toBe('0');
+    key(el, 'keydown', ' ', true);
+    tick(HOLD_DURATION_MS * 2);
+    expect(calls).toEqual([]);
+  });
+
+  it('review B2: blurring the ring mid-hold resets it and reveals nothing', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine({ stage: 'reveal' });
+    key(el, 'keydown', ' ');
+    tick(300);
+    expect(Number(ring(el))).toBeGreaterThan(0);
+    holdButton(el).dispatchEvent(new FocusEvent('blur'));
+    flushSync();
+    expect(ring(el)).toBe('0');
+    tick(HOLD_DURATION_MS * 2);
+    expect(calls).toEqual([]);
+  });
+
+  it('Space held on the ring is a press and hold: arms at once, reveals at 600 ms; key repeats add nothing', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine();
+    key(el, 'keydown', ' ');
+    expect(calls).toEqual(['handoff']);
+    tick(200);
+    key(el, 'keydown', ' ', true);
+    tick(HOLD_DURATION_MS - 201);
+    expect(calls).toEqual(['handoff']);
+    tick(1);
+    expect(calls).toEqual(['handoff', 'reveal']);
+  });
+
+  it('releasing Space early resets the ring and reveals nothing', () => {
+    vi.useFakeTimers();
+    const { el, calls } = renderMachine();
+    key(el, 'keydown', ' ');
+    tick(300);
+    expect(Number(ring(el))).toBeGreaterThan(0);
+    key(el, 'keyup', ' ');
+    expect(ring(el)).toBe('0');
+    tick(HOLD_DURATION_MS * 3);
+    expect(calls).toEqual(['handoff']);
+  });
+});
+
 describe('Arming from handoff (ruling A1)', () => {
   it('pill path: "I\'m NAME" advances handoff -> reveal once, then "Show my hand" completes it', () => {
     const { el, calls } = renderMachine();

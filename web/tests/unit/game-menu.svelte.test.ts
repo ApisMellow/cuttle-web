@@ -271,12 +271,14 @@ describe('opening and closing the menu', () => {
 // ---------------------------------------------------------------------------
 
 describe('Rules from the menu (R17.2)', () => {
-  it('opens the rules sheet over the game without unmounting it; closing returns focus to the menu button', async () => {
+  it('opens the rules sheet over the menu and the game without unmounting either; closing returns to the menu (r16)', async () => {
     const el = await liveBoard();
     const before = held();
     await click(el, 'menu-button');
+    q(el, 'menu-rules')?.focus();
     await click(el, 'menu-rules');
-    expect(q(el, 'game-menu')).toBeNull();
+    // r16 (playtest friction 8): the menu stays open under the sheet.
+    expect(q(el, 'game-menu')).not.toBeNull();
     expect(q(el, 'rules-sheet')).not.toBeNull();
     expect(q(el, 'game-screen')).not.toBeNull();
     expect(q(el, 'board')).not.toBeNull();
@@ -284,17 +286,26 @@ describe('Rules from the menu (R17.2)', () => {
 
     await click(el, 'rules-close');
     expect(q(el, 'rules-sheet')).toBeNull();
-    expect(document.activeElement).toBe(q(el, 'menu-button'));
+    expect(q(el, 'game-menu')).not.toBeNull();
+    expect(document.activeElement).toBe(q(el, 'menu-rules'));
     expect(held()).toBe(before);
+
+    await click(el, 'menu-close');
+    expect(q(el, 'game-menu')).toBeNull();
+    expect(document.activeElement).toBe(q(el, 'menu-button'));
   });
 
-  it('Escape closes the rules sheet and does not reach the board (a selection survives)', async () => {
+  it('Escape closes the rules sheet back to the menu, and does not reach the board (a selection survives)', async () => {
     const el = await liveBoard();
     await click(el, 'hand-card-0');
     await click(el, 'menu-button');
     await click(el, 'menu-rules');
     await key('Escape');
     expect(q(el, 'rules-sheet')).toBeNull();
+    expect(q(el, 'game-menu')).not.toBeNull();
+    expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('true');
+    await key('Escape');
+    expect(q(el, 'game-menu')).toBeNull();
     expect(q(el, 'hand-card-0')?.getAttribute('aria-pressed')).toBe('true');
   });
 

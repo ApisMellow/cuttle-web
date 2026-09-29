@@ -184,3 +184,63 @@ describe('W25: a staged counter locks "Let it resolve"', () => {
     expect(real.querySelector('[data-testid="counter-resolve"]')?.hasAttribute('disabled')).toBe(false);
   });
 });
+
+describe('CounterPrompt focus (r16, desktop keyboard)', () => {
+  const settle = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+    flushSync();
+  };
+
+  it('review B1: starts on the heading (not a control), on both paths', () => {
+    const real = render({ options: [{ index: 7, description: 'counter with 2♥' }] });
+    expect(document.activeElement).toBe(real.querySelector('.counter-prompt__heading'));
+    const synthetic = render({ options: [] });
+    expect(document.activeElement).toBe(synthetic.querySelector('.counter-prompt__heading'));
+  });
+
+  it('re-review B2 (R12): a fresh press stages the counter, but a repeated Enter on the staged Confirm (or Cancel) does nothing', async () => {
+    const countered: number[] = [];
+    const el = render({ options: [{ index: 7, description: 'counter with 2♥' }], oncounter: (i) => countered.push(i) });
+    el.querySelector<HTMLButtonElement>('[data-testid="counter-option-7"]')!.click();
+    flushSync();
+    await settle();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
+    el.querySelector<HTMLButtonElement>('[data-testid="staging-confirm"]')!.click();
+    el.querySelector<HTMLButtonElement>('[data-testid="staging-cancel"]')!.click();
+    flushSync();
+    expect(countered).toEqual([]);
+    expect(el.querySelector('[data-testid="staging-confirm"]')).not.toBeNull();
+    // After the repeat's task, a fresh press confirms.
+    await new Promise((r) => setTimeout(r, 0));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: false }));
+    el.querySelector<HTMLButtonElement>('[data-testid="staging-confirm"]')!.click();
+    expect(countered).toEqual([7]);
+  });
+
+  it('review B1: an auto-repeated Enter cannot resolve or counter', () => {
+    const calls: string[] = [];
+    const el = render({
+      options: [{ index: 7, description: 'counter with 2♥' }],
+      onresolve: () => calls.push('resolve'),
+    });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
+    el.querySelector<HTMLButtonElement>('[data-testid="counter-resolve"]')!.click();
+    el.querySelector<HTMLButtonElement>('[data-testid="counter-option-7"]')!.click();
+    flushSync();
+    expect(calls).toEqual([]);
+    expect(el.querySelector('[data-testid="staging-confirm"]')).toBeNull();
+  });
+
+  it('staging a counter moves focus to Confirm; Cancel brings it back to the first option', async () => {
+    const el = render({ options: [{ index: 7, description: 'counter with 2♥' }] });
+    el.querySelector<HTMLButtonElement>('[data-testid="counter-option-7"]')!.click();
+    flushSync();
+    await settle();
+    expect(document.activeElement).toBe(el.querySelector('[data-testid="staging-confirm"]'));
+    el.querySelector<HTMLButtonElement>('[data-testid="staging-cancel"]')!.click();
+    flushSync();
+    await settle();
+    expect(document.activeElement).toBe(el.querySelector('[data-testid="counter-option-7"]'));
+  });
+});

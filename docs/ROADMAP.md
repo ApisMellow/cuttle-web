@@ -12,7 +12,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 
 ## Themes
 
-**In progress:** a Card style picker on the home screen and in the in-game menu, with Classic (the vector cards) and Mythic, the first painted deck. The choice is remembered between visits. Mythic has faces and a card back but no playmat yet. Every theme keeps the rank and suit readable in the upper-left corner at phone size, and falls back to the plain vector cards if its art fails to load (PRD A-6, R23).
+**In progress:** a Card style picker on the home screen and in the in-game menu, with Classic (the vector cards) and Mythic, the first painted deck. The choice is remembered between visits. Mythic is the default; Classic available. Mythic has faces and a card back but no playmat yet. Every theme keeps the rank and suit readable in the upper-left corner at phone size, and falls back to the plain vector cards if its art fails to load (PRD A-6, R23).
 
 - **Mythic (first):** a full 52-card painted deck in the spirit of classic fantasy card games. Colour follows what each rank does: the Ace wipes the board, the 2 counters, the Jack steals. Sideways goggles mark a glasses 8.
 - **New Classic card back:** the standard vector deck gets a new back design, replacing the current plain back.

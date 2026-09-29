@@ -54,9 +54,33 @@ async function play(page: Page, description: string, zone: 'zone-points' | 'zone
   await page.getByTestId('staging-confirm').click();
 }
 
-test.use({ viewport: { width: 393, height: 852 } });
+/** True when the topmost element at the centre of `testid`'s box is that element (or inside it), not the chooser. */
+async function uncovered(page: Page, testid: string): Promise<boolean> {
+  const box = await page.getByTestId(testid).boundingBox();
+  if (box === null) return false;
+  return page.evaluate(
+    ([id, x, y]) => {
+      const el = document.elementFromPoint(x as number, y as number);
+      return el !== null && el.closest('[data-testid="ambiguity-chooser"]') === null && el.closest(`[data-testid="${id}"]`) !== null;
+    },
+    [testid, box.x + box.width / 2, box.y + Math.min(box.height / 2, 20)] as const,
+  );
+}
 
-test('393x852: the 9 chooser leaves your own Permanents row fully visible', async ({ page }) => {
+function overlaps(a: { y: number; height: number }, b: { y: number; height: number }): boolean {
+  return a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+// r16 (2026-09-29 playtest, friction 5): the sheet used to sit over the hand
+// and hid the 9 being played. It now sits on the centre strip, so the 9 in
+// the hand, its target on the other side and your own Permanents row all
+// stay uncovered, at both phone sizes.
+for (const { width, height } of [
+  { width: 393, height: 852 },
+  { width: 430, height: 932 },
+]) {
+test(`${width}x${height}: the 9 chooser leaves your own Permanents row, the 9 and its target fully visible`, async ({ page }) => {
+  await page.setViewportSize({ width, height });
   await page.goto('/');
   await page.getByTestId('name-input-0').fill('Alice');
   await page.getByTestId('name-input-1').fill('Blake');
@@ -89,7 +113,17 @@ test('393x852: the 9 chooser leaves your own Permanents row fully visible', asyn
   expect(row).not.toBeNull();
   expect(sheet).not.toBeNull();
   expect(row!.y, 'Permanents row starts on screen').toBeGreaterThanOrEqual(0);
-  expect(row!.y + row!.height, 'Permanents row ends above the chooser').toBeLessThanOrEqual(sheet!.y);
+  expect(row!.y + row!.height, 'Permanents row ends on screen').toBeLessThanOrEqual(height);
+  expect(overlaps(row!, sheet!), 'the chooser and the Permanents row do not overlap').toBe(false);
+
+  // r16: the 9 being played and the card it targets stay uncovered too.
+  const hand = await page.getByTestId(`hand-card-${scuttle!.handIndex}`).boundingBox();
+  const target = await page.getByTestId(scuttle!.targetKey!.replace(/:/g, '-')).boundingBox();
+  expect(overlaps(hand!, sheet!), 'the chooser and the 9 in the hand do not overlap').toBe(false);
+  expect(overlaps(target!, sheet!), 'the chooser and its target do not overlap').toBe(false);
+  expect(await uncovered(page, `hand-card-${scuttle!.handIndex}`)).toBe(true);
+  expect(await uncovered(page, scuttle!.targetKey!.replace(/:/g, '-'))).toBe(true);
+  expect(sheet!.y, 'the chooser starts on screen').toBeGreaterThanOrEqual(0);
 
   // Nothing covers the glasses: the topmost element at the card's centre is inside the row.
   const glasses = await page.getByTestId('perm-0-0').boundingBox();
@@ -103,7 +137,7 @@ test('393x852: the 9 chooser leaves your own Permanents row fully visible', asyn
   expect(hit).toBe(true);
 
   // The sheet is inside the viewport, its controls are real tap targets, and the page doesn't scroll.
-  expect(sheet!.y + sheet!.height).toBeLessThanOrEqual(852);
+  expect(sheet!.y + sheet!.height).toBeLessThanOrEqual(height);
   for (const id of ['ambiguity-chooser-cancel']) {
     const box = await page.getByTestId(id).boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -123,3 +157,4 @@ test('393x852: the 9 chooser leaves your own Permanents row fully visible', asyn
   expect(fit.sw).toBeLessThanOrEqual(fit.cw);
   expect(fit.sh).toBeLessThanOrEqual(fit.ih);
 });
+}

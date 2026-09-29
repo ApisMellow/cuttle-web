@@ -20,7 +20,7 @@
   // there, so GameScreen's own Escape (clear a selection or a staged move)
   // never fires under the menu.
   import { settings } from '../stores/settings.svelte';
-  import { DEFAULT_THEME_ID, listThemeChoices } from '../theme';
+  import { listThemeChoices, vectorTheme } from '../theme';
   import RulesSheet from './RulesSheet.svelte';
 
   interface GameMenuProps {
@@ -30,13 +30,11 @@
     names: readonly [string, string];
     /** Close the panel. The host focuses the menu button. */
     onclose: () => void;
-    /** Focus the menu button without closing anything (before the Rules sheet opens, so it returns focus there). */
-    focusopener: () => void;
     onhome: () => void;
     onnewgame: () => void;
   }
 
-  let { open, anchor = 'column', names, onclose, focusopener, onhome, onnewgame }: GameMenuProps = $props();
+  let { open, anchor = 'column', names, onclose, onhome, onnewgame }: GameMenuProps = $props();
 
   let rulesOpen = $state(false);
   let confirming = $state(false);
@@ -44,7 +42,7 @@
 
   const themeChoices = $derived(listThemeChoices());
   const selectedTheme = $derived(
-    themeChoices.some((choice) => choice.id === settings.themeId) ? settings.themeId : DEFAULT_THEME_ID,
+    themeChoices.some((choice) => choice.id === settings.themeId) ? settings.themeId : vectorTheme.id,
   );
 
   function close(): void {
@@ -52,10 +50,12 @@
     onclose();
   }
 
+  // r16 (2026-09-29 playtest, friction 8): Rules opens OVER the menu, and
+  // closing it comes back to the menu with focus on its Rules item (the
+  // sheet returns focus to whatever opened it). It used to close the whole
+  // menu first.
   function openRules(): void {
     confirming = false;
-    focusopener();
-    onclose();
     rulesOpen = true;
   }
 
@@ -95,7 +95,7 @@
         else close();
         return;
       }
-      if (event.key !== 'Tab' || !open) return;
+      if (event.key !== 'Tab' || !open || rulesOpen) return;
       const items = focusables();
       if (items.length === 0) return;
       const first = items[0];

@@ -44,6 +44,8 @@
     ontapblank?: () => void;
     /** The in-game menu button, rendered in the score bar's reserved slot (design.md §6). */
     menu?: Snippet;
+    /** r16: drawn over the centre strip (the integrator's ambiguity chooser). */
+    centerOverlay?: Snippet;
   }
 
   let {
@@ -61,6 +63,7 @@
     handTray,
     ontapblank,
     menu,
+    centerOverlay,
   }: BoardProps = $props();
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
@@ -113,6 +116,7 @@
     {staged}
     ontap={tap}
     {theme}
+    {names}
   />
   <CenterZone
     deckCount={view.deckCount}
@@ -127,6 +131,7 @@
     {lastMoveText}
     ontap={tap}
     {theme}
+    overlay={centerOverlay}
   />
   <PlayerZone
     you={view.you}
@@ -141,6 +146,7 @@
     {theme}
     {handTray}
     {watchedBy}
+    {names}
   />
 </div>
 
