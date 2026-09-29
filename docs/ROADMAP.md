@@ -25,7 +25,7 @@ The work-in-progress source art and its review sheet are on the `art/source-asse
 
 ## Later
 
-- **Two-phone online play.** Each player uses their own phone, and a small server relays moves and keeps each hand hidden. This is the v2 design in PRD §7.
+- **Two-phone online play.** Each player uses their own phone. A small server runs the game and sends each phone only its own view, so each hand stays hidden. Decisions are in PRD §10 A-7 and the work plan is `docs/two-phone-plan.md`.
 - **Offline play.** A service worker so the installed home-screen app works without a connection.
 - **Player colours:** an optional colour for each player, possibly tied to theme suits.
 - **An accessibility pass:** screen-reader labels for every card and action, and contrast checks for every theme.

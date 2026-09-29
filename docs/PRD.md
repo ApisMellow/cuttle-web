@@ -206,3 +206,24 @@ A-1 and A-3 described one art theme. ApisMellow wants **several themes**, and pl
 - **Webb playmat and card backs:** photographic deep-space art that could pair with any theme.
 
 R23 is extended from a theme toggle to a theme picker. No new R numbers until the first theme ships.
+
+### A-7 — Two-phone online play (2026-09-29, product owner)
+
+Two-phone play moves from design-ahead to planned work. The implementation plan is `docs/two-phone-plan.md`. Decisions:
+
+- **Host:** a DigitalOcean droplet (about $4–6/month, always on) runs one Go binary behind Caddy. GitHub Pages stays the static host for the app. This supersedes A6 (Fly.io) and confirms A-4's DigitalOcean assumption.
+- **The server is authoritative.** It runs the same Go engine natively and holds the full state. Each phone only ever receives its own redacted view (R7, SPEC §3). A client-authoritative relay is ruled out. The bridge's view code moves into an importable package that the wasm build and the server share.
+- **Storage:** SQLite (a pure-Go driver, no cgo), one file, nothing scaled. This supersedes §7's "in-memory rooms, no database".
+- **Game life:** an online game with no moves for **1 day** is deleted. This supersedes §7's "~1 h idle".
+- **Modes:** pass-and-play and table mode (issue #37) stay alongside online play. The Home screen offers all three, and the one-phone modes keep working offline.
+- **Scale:** family beta, very low load.
+- **Domain:** pending. Either a subdomain of a domain the product owner has, or an sslip.io name with an automatic certificate. The server origin is configurable, so this blocks only the final deploy.
+
+Consequences recorded here so later readers aren't surprised:
+
+- **G4's "transport swap" holds only in part.** The envelope and index-based moves carry over unchanged. The synchronous store interface doesn't: online play gets its own async store with a push path, and the curtain, handoff and reveal gate are off in online mode.
+- **SPEC OQ-9 is closed for online play.** An online client stores only its seat record (room code, seat, token, names), never game state.
+- **R14 online:** only the responder's phone shows the counter prompt, and only when they hold a 2. After every counterable move the mover sees a neutral "responding" state for a uniform minimum of about 1.5 s, enforced by the server, so a quick "no 2" isn't told apart from a quick decline. A long think remains a tell, as at a real table.
+- **No push notifications in the first online release.** Web Push is a later option.
+
+This amendment adds no new R numbers yet. Ledger entries for online play are added when its first work item starts.
