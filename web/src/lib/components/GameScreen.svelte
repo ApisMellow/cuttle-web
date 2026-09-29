@@ -21,7 +21,8 @@
   // withheld curtain), DrawRevealPanel takes the place of the board or the
   // counter prompt. Continuing (tap, key, or 3 s) calls
   // `game.dismissDrawReveal()`, which brings the board, the counter prompt,
-  // or (before the pass) the saved handoff.
+  // or (before the pass) the saved handoff. Before the pass it gets only the
+  // drawn cards; the menu (`menuOpen`) pauses its 3 s wait.
   //
   // Stuck curtain (brief): if `engine.view` fails while the curtain leaves
   // reveal/recap, the store keeps the curtain and sets `game.error`, and
@@ -131,8 +132,13 @@
   /**
    * SPEC §4.7 privacy gate for the draw reveal, independent of the store's
    * own: only at `none` or an `ack`, and only when the exposed envelope and
-   * the store's viewer are both the drawer. The hand comes from that
+   * the store's viewer are both the drawer. The cards come from that
    * envelope; the store holds indices only.
+   *
+   * Before the pass the phone is about to change hands, so the panel gets
+   * ONLY the drawn cards (every one of them marked drawn), never the rest of
+   * the hand. At the drawer's own next view it gets the whole hand with the
+   * drawn indices marked.
    */
   const drawReveal = $derived.by((): { hand: Card[]; indices: number[] } | null => {
     const reveal = game.drawReveal;
@@ -140,7 +146,10 @@
     const kind = game.curtain.kind;
     if (reveal === null || env === null || (kind !== 'none' && kind !== 'ack')) return null;
     if (env.state.viewer !== reveal.to || game.viewer !== reveal.to) return null;
-    return { hand: env.state.you.hand, indices: reveal.indices };
+    const hand = env.state.you.hand;
+    if (!reveal.beforePass) return { hand, indices: reveal.indices };
+    const drawnCards = reveal.indices.flatMap((i) => (hand[i] === undefined ? [] : [hand[i]]));
+    return { hand: drawnCards, indices: drawnCards.map((_, i) => i) };
   });
   const revealed = $derived(board === null ? null : sevenCards(board));
   const withheld = $derived(
@@ -352,8 +361,13 @@
   // No `board === null` guard (review N1): every control `bestFocusTarget`
   // can return lives in the board branch, and staging and the scrap sheet
   // reset at every curtain, so behind a curtain it finds nothing to focus.
+  // Issue #27: `drawReveal` is tracked too. While the reveal is up the board
+  // branch is unmounted, so this finds nothing and never takes focus from
+  // the panel's Continue; when Continue unmounts at the drawer's next board
+  // (nothing else here changes then), focus lands on the board.
   $effect(() => {
     void board;
+    void drawReveal;
     void staging.state;
     void staging.stagedIndex;
     void staging.chooser;
@@ -493,6 +507,7 @@
       hand={drawReveal.hand}
       drawn={drawReveal.indices}
       reducedMotion={settings.reducedMotion}
+      paused={menuOpen}
       oncontinue={() => game.dismissDrawReveal()}
       {theme}
     />

@@ -120,7 +120,7 @@ async function playFiveBlakeEmpty() {
 describe('before the pass: the drawer sees the draw on their own screen, then the handoff', () => {
   it('the reveal comes up on the mover\'s own board, naming the last `drawn` hand indices', async () => {
     const { store } = await playFiveBlakeEmpty();
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: true });
     expect(store.curtain).toEqual({ kind: 'none' });
     expect(store.viewer).toBe(0);
     expect(store.envelope?.state.viewer).toBe(0);
@@ -166,7 +166,7 @@ describe('before the pass: the drawer sees the draw on their own screen, then th
     expect(engine.apply).toHaveBeenCalledTimes(1);
     expect(engine.view).not.toHaveBeenCalled();
     expect(storage.getItem(SNAPSHOT_KEY)).toBe(before);
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: true });
   });
 
   it('Blake never gets a reveal: after the handoff his board carries none', async () => {
@@ -226,7 +226,7 @@ describe('before the pass: a 5 that drew one card, or none', () => {
 
   it('one card left in the deck: one card is shown', async () => {
     const { store } = await playFive(1, [KING, D1]);
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1], beforePass: true });
   });
 
   it('nothing drawn: no reveal, the handoff comes up at once', async () => {
@@ -286,7 +286,7 @@ describe('after resolution, synthetic path: the reveal waits for Alice\'s next b
     engine.view = vi.fn(() => aliceView(next, [KING, D1, D2]));
     await walk(store, () => store.curtain.kind === 'none');
     expect(store.viewer).toBe(0);
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
   });
 
   it('continuing leaves Alice on her own board, curtain none, able to play', async () => {
@@ -316,7 +316,7 @@ describe('after resolution, synthetic path: the reveal waits for Alice\'s next b
     const { next } = await blakeTurnThenBack(store, engine, [fiveEntry(1, 2, false)], 2);
     engine.view = vi.fn(() => aliceView(next, [KING, D1, D2, RETURNED], { you: you([KING, D1, D2, RETURNED], [3]) }));
     await walk(store, () => store.curtain.kind === 'none');
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
   });
 
   it('Alice\'s first board is a 4\'s discard: the draw is the end of her hand, a stale freeze there is ignored', async () => {
@@ -326,7 +326,7 @@ describe('after resolution, synthetic path: the reveal waits for Alice\'s next b
       aliceView(next, [KING, D1, D2], { phase: Phase.AwaitingDiscard, you: you([KING, D1, D2], [2]) }),
     );
     await walk(store, () => store.curtain.kind === 'none');
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
   });
 
   it('while the reveal is up Alice cannot move until she continues', async () => {
@@ -349,7 +349,7 @@ describe('after resolution, synthetic path: the reveal waits for Alice\'s next b
     await again.restore();
     expect(again.drawReveal).toBeNull();
     await walk(again, () => again.curtain.kind === 'none');
-    expect(again.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(again.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
   });
 
   it('a reload at Alice\'s board after she saw the draw does not show it again', async () => {
@@ -400,7 +400,7 @@ describe('after resolution: Blake\'s turn ends in a one-off, so Alice\'s first o
     it(`${real ? 'real window' : 'synthetic ack'}: the reveal is up at the ack, and nothing moves until it is dismissed`, async () => {
       const { store, engine } = await toAliceAck(real);
       expect(store.curtain).toEqual({ kind: 'ack', to: 0, synthetic: !real });
-      expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+      expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
       const applies = (engine.apply as ReturnType<typeof vi.fn>).mock.calls.length;
       await expect(store.apply(0)).rejects.toThrow(/reveal/i);
       await expect(store.advanceCurtain()).rejects.toThrow(/reveal/i);
@@ -458,7 +458,7 @@ describe('after resolution, real counter window: Blake declines, the draw is Ali
     expect(store.drawReveal).toBeNull();
     engine.view = vi.fn(() => aliceView(history, [KING, D1, D2]));
     await walk(store, () => store.curtain.kind === 'none');
-    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2] });
+    expect(store.drawReveal).toEqual({ to: 0, indices: [1, 2], beforePass: false });
   });
 
   it('a cancelled 5 (Blake countered, Alice held no 2) reveals nothing, on any of Alice\'s screens', async () => {

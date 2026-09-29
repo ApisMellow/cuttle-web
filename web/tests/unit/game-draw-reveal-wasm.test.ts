@@ -87,8 +87,12 @@ async function playSeed(seed: number, tally: Tally, reloadEvery: number | null):
       const shown = cardsAt(store.envelope!.state.you.hand, store.drawReveal.indices);
       expect(shown, `seed ${seed} ply ${ply}: wrong cards revealed`).toEqual(exp!.cards);
       tally.reveals++;
-      if (store.legalMoves.length === 0) tally.beforePass++;
-      else tally.atNextBoard++;
+      if (store.drawReveal.beforePass) {
+        // Before the pass: the mover's own apply, the turn already gone.
+        expect(curtain.kind).toBe('none');
+        expect(store.legalMoves.length).toBe(0);
+        tally.beforePass++;
+      } else if (curtain.kind === 'none') tally.atNextBoard++;
       if (shown.length === 1) tally.oneCard++;
       const frozen = store.envelope!.state.you.frozenHandIndices;
       if (frozen.includes(store.envelope!.state.you.hand.length - 1) && store.envelope!.state.phase === 0) tally.frozenTailSkipped++;
@@ -148,7 +152,9 @@ describe('SPEC §4.7 draw reveal against the real engine', () => {
     report('seeds 1-60', tally);
     // The property must actually have been exercised, on each path.
     expect(tally.reveals).toBeGreaterThan(40);
+    expect(tally.beforePass).toBeGreaterThan(0);
     expect(tally.atNextBoard).toBeGreaterThan(0);
+    expect(tally.resolvedByCounter).toBeGreaterThan(0);
     expect(tally.resolvedByDecline).toBeGreaterThan(0);
     expect(tally.atAck).toBeGreaterThan(0);
     expect(tally.frozenTailSkipped).toBeGreaterThan(0);

@@ -11,15 +11,25 @@
   // that envelope's own `you.hand`; `drawn` holds indices into it. Nothing
   // here keeps a copy past its own unmount.
   //
-  // Keyboard (same rule as the deck's issue #24 guard): an auto-repeat
-  // keydown never presses Continue, and a click that a held key produces on
-  // its keyup (Space) is ignored until a fresh keydown. Focus moves to
-  // Continue on mount so a keyboard user lands on it.
+  // Pointer (iOS finger lift): a click continues only if its press
+  // (pointerdown) landed inside the panel after it mounted. The panel can
+  // mount under a finger still down from the screen before (the 600 ms ring
+  // hold), and that finger's lift must not dismiss it.
+  //
+  // Keyboard (lib/keyGuard.ts, the curtain screens' guard): a click that a
+  // key produced counts only if that key went down after mount and is not an
+  // auto-repeat. The guard keeps no state past the key's own task, so a held
+  // key that is let go never swallows the next tap. Focus moves to Continue
+  // on mount so a keyboard user lands on it.
+  //
+  // Game menu (`paused`): while it is open the 3 s wait stops and clicks are
+  // ignored; when it closes the wait resumes with the time it had left.
   //
   // Reduced motion (settings or the OS): no travel and no flip; the faces
   // are simply there. The 3 s wait is unchanged.
   import type { Card } from '../bridge/schema';
   import { DRAW_REVEAL_MS } from '../drawReveal';
+  import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
   import '../styles/card-geometry.css';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -30,11 +40,20 @@
     /** Indices into `hand` of the drawn cards. */
     drawn: number[];
     reducedMotion?: boolean;
+    /** True while the game menu is open over the panel: the wait stops and clicks are ignored. */
+    paused?: boolean;
     oncontinue: () => void;
     theme?: CardTheme;
   }
 
-  let { hand, drawn, reducedMotion = false, oncontinue, theme = getTheme(DEFAULT_THEME_ID) }: DrawRevealPanelProps = $props();
+  let {
+    hand,
+    drawn,
+    reducedMotion = false,
+    paused = false,
+    oncontinue,
+    theme = getTheme(DEFAULT_THEME_ID),
+  }: DrawRevealPanelProps = $props();
 
   function reducedMotionQuery(): MediaQueryList | null {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
@@ -69,39 +88,60 @@
     oncontinue();
   }
 
+  // The wait runs only while not paused; each pause banks the time already
+  // shown, so a menu opened and closed any number of times still adds up to
+  // DRAW_REVEAL_MS of showing.
+  let remaining = DRAW_REVEAL_MS;
   $effect(() => {
-    const timer = setTimeout(continueOnce, DRAW_REVEAL_MS);
-    return () => clearTimeout(timer);
+    if (paused) return;
+    const started = Date.now();
+    const timer = setTimeout(continueOnce, remaining);
+    return () => {
+      clearTimeout(timer);
+      remaining = Math.max(0, remaining - (Date.now() - started));
+    };
   });
 
-  // ---- Keyboard guard -----------------------------------------------------
-  let heldKey = false;
+  // ---- Input guards -------------------------------------------------------
+  let guard: KeyActivationGuard | null = null;
+  $effect(() => {
+    const g = keyActivationGuard();
+    guard = g;
+    return () => {
+      g.dispose();
+      if (guard === g) guard = null;
+    };
+  });
+
+  /** A pointerdown has landed inside the panel since it mounted. */
+  let pressedInside = false;
   let button: HTMLButtonElement | undefined = $state();
 
   $effect(() => {
     button?.focus();
   });
 
-  function onKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    if (event.repeat) {
-      heldKey = true;
-      event.preventDefault();
-      return;
-    }
-    heldKey = false;
+  function onPointerdown(): void {
+    pressedInside = true;
   }
 
+  function keyAllows(): boolean {
+    return guard === null || guard.allows();
+  }
+
+  // Continue: a key press (a click with `detail` 0, gated by the key guard)
+  // or a pointer whose press started inside the panel.
   function onButtonClick(event: MouseEvent): void {
     event.stopPropagation();
-    if (heldKey) {
-      heldKey = false;
-      return;
-    }
+    if (paused || !keyAllows()) return;
+    if (event.detail !== 0 && !pressedInside) return;
     continueOnce();
   }
 
+  // Anywhere else on the panel: pointer only (nothing else there is
+  // focusable, so no key can click it), and only a press that started inside.
   function onPanelClick(): void {
+    if (paused || !pressedInside || !keyAllows()) return;
     continueOnce();
   }
 
@@ -117,7 +157,9 @@
   class={['draw-reveal', { 'draw-reveal--still': still }]}
   data-testid="draw-reveal"
   data-motion={still ? 'reduced' : 'full'}
+  data-paused={paused ? 'true' : 'false'}
   style={`--draw-reveal-ms: ${DRAW_REVEAL_MS}ms`}
+  onpointerdown={onPointerdown}
   onclick={onPanelClick}
 >
   <p class="draw-reveal__title" id={titleId}>{title}</p>
@@ -152,7 +194,6 @@
     class="draw-reveal__continue"
     data-testid="draw-reveal-continue"
     bind:this={button}
-    onkeydown={onKeydown}
     onclick={onButtonClick}
   >
     Continue
@@ -333,6 +374,11 @@
     to {
       transform: scaleX(0);
     }
+  }
+
+  /* The countdown bar holds still while the menu pauses the wait. */
+  .draw-reveal[data-paused='true'] .draw-reveal__timer {
+    animation-play-state: paused;
   }
 
   .draw-reveal--still .draw-reveal__timer {

@@ -63,6 +63,9 @@ async function toBlakesRecap(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByTestId('name-input-0').fill('Alice');
   await page.getByTestId('name-input-1').fill('Blake');
+  // Classic (vector) faces print their rank and suit as text, so the drawn
+  // cards can be named and searched for; Mythic (the default) is art only.
+  await page.getByTestId('theme-option-vector').click();
   await page.getByTestId('new-game').click();
   await hook(page, (h) => h.newGame('42', 1));
   await gate(page);
@@ -117,6 +120,8 @@ for (const viewport of [
     expect(await hook(page, (h) => h.viewer())).toBe(1);
     const labels = await drawnLabels(page);
     expect(labels.length).toBe(2);
+    // A blank label would make every "not in the body" check below vacuous.
+    for (const l of labels) expect(l).toMatch(/^(A|[2-9]|10|J|Q|K)\S$/);
 
     const cont = page.getByTestId('draw-reveal-continue');
     const box = await cont.boundingBox();

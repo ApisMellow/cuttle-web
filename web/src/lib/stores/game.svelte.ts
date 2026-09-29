@@ -34,8 +34,11 @@
 // raised only while the exposed envelope is the drawer's own: right after
 // the drawer's own apply resolved the 5 with no ack to stage (the handoff
 // that follows is already saved and is raised on dismissal), or at the
-// drawer's next own view (`none`, or an `ack` of either kind). While it is
-// up, nothing else moves the store.
+// drawer's next own view (`none`, or an `ack` of either kind). Before the
+// pass (`beforePass`) the screen shows only the drawn cards, because the
+// phone is about to change hands; at the drawer's next view it shows the
+// whole hand with the drawn cards marked. While it is up, nothing else
+// moves the store.
 
 import type { NewGameOpts } from '../bridge/engine';
 import type { AppliedMove, BridgeResult, Envelope, EngineError, PlayerId } from '../bridge/schema';
@@ -359,7 +362,7 @@ export class GameStore {
     if (fiveDrawer(history, history.length - 1) !== mv.by || result.state.viewer !== mv.by) return null;
     const indices = drawnHandIndices(result.state.you, mv.drawn, false);
     if (indices.length === 0) return null;
-    return { reveal: { to: mv.by, indices }, after: curtainState };
+    return { reveal: { to: mv.by, indices, beforePass: true }, after: curtainState };
   }
 
   /**
@@ -379,7 +382,7 @@ export class GameStore {
     const ownTurn = view.phase === Phase.Normal && view.active === p;
     const indices = drawnHandIndices(view.you, unseen.count, ownTurn);
     if (indices.length === 0) return;
-    this.drawReveal = { to: p, indices };
+    this.drawReveal = { to: p, indices, beforePass: false };
   }
 
   #refuseDuringDrawReveal(call: string): void {

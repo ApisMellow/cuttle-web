@@ -138,6 +138,15 @@ async function click(el: HTMLElement, id: string): Promise<void> {
   await settle();
 }
 
+/** A pointer tap: the press lands on `id` first, then the click (SPEC §4.7: a lift alone never continues). */
+async function tap(el: HTMLElement, id: string): Promise<void> {
+  const target = q(el, id);
+  if (!target) throw new Error(`no [data-testid="${id}"] rendered`);
+  target.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+  await settle();
+}
+
 /** Text with whitespace removed, so a face's "9" + "♠" spans read as "9♠". */
 function squashed(el: HTMLElement): string {
   return (el.textContent ?? '').replace(/\s+/g, '').toLowerCase();
@@ -174,7 +183,7 @@ async function passThePhone(el: HTMLElement): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe('before the pass: the drawer\'s screen, then the handoff', () => {
-  it('the drawn cards show face up in the drawer\'s hand; the board and the curtain are not in the DOM', async () => {
+  it('the drawn cards show face up; the board and the curtain are not in the DOM', async () => {
     const el = await alicePlaysFive(0);
     const panel = q(el, 'draw-reveal');
     expect(panel).not.toBeNull();
@@ -184,6 +193,26 @@ describe('before the pass: the drawer\'s screen, then the handoff', () => {
     expect(q(el, 'board')).toBeNull();
     expect(q(el, 'curtain')).toBeNull();
     expect(panel!.textContent).toContain('You drew 2 cards');
+  });
+
+  it('privacy: ONLY the drawn cards, never the rest of the hand, while the phone is about to change hands', async () => {
+    const el = await alicePlaysFive(0);
+    const panel = q(el, 'draw-reveal')!;
+    const slots = [...panel.querySelectorAll<HTMLElement>('[data-draw-slot]')];
+    expect(slots.length).toBe(2);
+    expect(slots.map((s) => s.dataset.drawn)).toEqual(['true', 'true']);
+    // Alice's kept King is nowhere on the screen, in any form.
+    expectNoLeak(el, [KING], 'before-the-pass reveal');
+  });
+
+  it('privacy: the gate itself, even if the store paired a before-the-pass reveal with more indices', async () => {
+    const el = await alicePlaysFive(0);
+    game.drawReveal = { to: 0, indices: [2], beforePass: true };
+    await settle();
+    const slots = [...q(el, 'draw-reveal')!.querySelectorAll<HTMLElement>('[data-draw-slot]')];
+    expect(slots.length).toBe(1);
+    expect(squashed(slots[0])).toContain(label(D2).toLowerCase());
+    expectNoLeak(el, [KING, D1], 'before-the-pass reveal, one index');
   });
 
   it('Continue brings the pass screen, and it holds no form of the drawn cards', async () => {
@@ -211,8 +240,40 @@ describe('before the pass: the drawer\'s screen, then the handoff', () => {
 
   it('a tap anywhere on the reveal continues too', async () => {
     const el = await alicePlaysFive(0);
-    await click(el, 'draw-reveal');
+    await tap(el, 'draw-reveal');
     expect(q(el, 'curtain-gate')).not.toBeNull();
+  });
+
+  it('a finger still down from Confirm (its lift, with no press on the reveal) does not skip it', async () => {
+    const el = await alicePlaysFive(0);
+    const panel = q(el, 'draw-reveal')!;
+    panel.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    q(el, 'draw-reveal-continue')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    await settle();
+    expect(q(el, 'draw-reveal')).not.toBeNull();
+    expect(q(el, 'curtain-gate')).toBeNull();
+  });
+
+  it('the game menu pauses the 3 s wait; closing it resumes with the time left', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const el = await alicePlaysFive(0);
+    vi.advanceTimersByTime(1000);
+    await click(el, 'menu-button');
+    expect(q(el, 'game-menu')).not.toBeNull();
+    vi.advanceTimersByTime(DRAW_REVEAL_MS * 5);
+    await settle();
+    expect(q(el, 'draw-reveal')).not.toBeNull();
+    expect(q(el, 'curtain-gate')).toBeNull();
+    await click(el, 'menu-close');
+    expect(q(el, 'game-menu')).toBeNull();
+    vi.advanceTimersByTime(DRAW_REVEAL_MS - 1000 - 1);
+    await settle();
+    expect(q(el, 'draw-reveal')).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    await settle();
+    expect(q(el, 'draw-reveal')).toBeNull();
+    expect(q(el, 'curtain-gate')).not.toBeNull();
+    expectNoDrawnCards(el, 'handoff after a paused reveal');
   });
 
   it('Blake\'s screens after the pass (gate, board) never carry the drawn cards or a reveal', async () => {
@@ -276,6 +337,10 @@ describe('when the 5 could still be answered: no reveal before the pass (R14)', 
     await passThePhone(el);
     expect(q(el, 'draw-reveal')).not.toBeNull();
     expect(q(el, 'board')).toBeNull();
+    // Her own screen, after the pass: the whole hand, the drawn cards marked.
+    const slots = [...q(el, 'draw-reveal')!.querySelectorAll<HTMLElement>('[data-draw-slot]')];
+    expect(slots.map((s) => s.dataset.drawn)).toEqual(['false', 'true', 'true']);
+    expect(squashed(slots[0])).toContain(label(KING).toLowerCase());
     await click(el, 'draw-reveal-continue');
     expect(q(el, 'draw-reveal')).toBeNull();
     expect(q(el, 'board')).not.toBeNull();
@@ -359,7 +424,7 @@ describe('R14: at Alice\'s ack the reveal is identical on the real window and th
 describe('GameScreen renders a reveal only on its drawer\'s own view', () => {
   it('not behind a withheld curtain, even if the store held one', async () => {
     const el = await alicePlaysFive(3); // ack handoff to Blake is up
-    game.drawReveal = { to: 0, indices: [0] };
+    game.drawReveal = { to: 0, indices: [0], beforePass: false };
     await settle();
     expect(q(el, 'draw-reveal')).toBeNull();
     expect(q(el, 'curtain-gate')).not.toBeNull();
@@ -371,9 +436,58 @@ describe('GameScreen renders a reveal only on its drawer\'s own view', () => {
     bridge.view.mockImplementation((): BridgeResult => blakeBoard([fiveEntry(2, false)]));
     await passThePhone(el);
     expect(game.viewer).toBe(1);
-    game.drawReveal = { to: 0, indices: [0] };
+    game.drawReveal = { to: 0, indices: [0], beforePass: false };
     await settle();
     expect(q(el, 'draw-reveal')).toBeNull();
     expect(q(el, 'board')).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Focus: the board's keyboard rescue and the reveal's Continue
+// ---------------------------------------------------------------------------
+
+describe('focus around the reveal at Alice\'s next board (keyboard)', () => {
+  /** Synthetic path: Alice's 5 resolves, Blake acks and draws, the phone comes back to Alice. */
+  async function toAliceNextBoardReveal(): Promise<HTMLDivElement> {
+    const el = await alicePlaysFive(3);
+    const five = fiveEntry(2, false);
+    bridge.view.mockImplementation((): BridgeResult => blakeBoard([five]));
+    await passThePhone(el);
+    await click(el, 'counter-resolve');
+    const blakeDraw = appliedMove({ by: 1, kind: Kind.Draw, seq: 2, index: 0, description: 'draw a card' });
+    bridge.apply.mockImplementation(
+      (): BridgeResult => envelope({ state: playerView({ viewer: 1, active: 0, you: you([B_CARD, B_CARD]), opponent: opp(3) }), lastMove: blakeDraw, history: [five, blakeDraw] }),
+    );
+    await click(el, 'deck-pile');
+    await click(el, 'staging-confirm');
+    const history = [five, appliedMove({ by: 1, kind: Kind.Draw, seq: 2, description: 'draw a card' })];
+    bridge.view.mockImplementation(
+      (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 0, you: you([KING, D1, D2]), opponent: opp(2) }), history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
+    );
+    await passThePhone(el);
+    return el;
+  }
+
+  it('Continue keeps focus while the reveal is up: the board\'s focus rescue does not take it', async () => {
+    const el = await toAliceNextBoardReveal();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    await settle();
+    await settle();
+    expect(document.activeElement).toBe(q(el, 'draw-reveal-continue'));
+  });
+
+  it('Enter on Continue brings the board with focus on it, not on the page body', async () => {
+    const el = await toAliceNextBoardReveal();
+    const cont = q(el, 'draw-reveal-continue')!;
+    const down = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    cont.dispatchEvent(down);
+    cont.click(); // the click a browser fires on a fresh Enter keydown
+    await settle();
+    await settle();
+    expect(q(el, 'draw-reveal')).toBeNull();
+    expect(q(el, 'board')).not.toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(el.contains(document.activeElement)).toBe(true);
   });
 });

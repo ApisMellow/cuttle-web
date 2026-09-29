@@ -36,6 +36,12 @@ export const DRAW_REVEAL_MS = 3000;
 export interface DrawReveal {
   to: PlayerId;
   indices: number[];
+  /**
+   * Shown before the pass, while the phone is about to change hands: the
+   * screen shows ONLY the drawn cards, never the rest of the hand. False at
+   * the drawer's own next view, where the whole hand is theirs to see.
+   */
+  beforePass: boolean;
 }
 
 export interface UnseenDraw {
