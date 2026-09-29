@@ -321,18 +321,21 @@ export class GameStore {
   }
 
   /**
-   * W25: the result screen's Home button. Allowed only at `result`: the game
-   * is over and already persisted, so Home can Resume it (to see the
-   * result) or start a new one. Drops every view-bearing field on the way
-   * out, since the home screen needs none of them.
+   * The result screen's Home button (W25) and the in-game menu's Home.
+   * Allowed at every curtain kind: the snapshot is written synchronously on
+   * every apply and curtain transition, so the save already holds exactly
+   * this position, and Resume (`restore()`) brings it back the way a reload
+   * would, curtain first. Home itself writes nothing and calls no engine
+   * function. It drops every view-bearing field (the envelope, the viewer,
+   * the history with its mover-only `index` keys) and the pending curtain
+   * context, since the home screen needs none of them.
    */
   goHome(): void {
-    if (this.curtain.kind !== 'result') {
-      throw new Error(`GameStore.goHome() is only allowed at result (curtain: ${this.curtain.kind})`);
-    }
     this.envelope = null;
     this.viewer = null;
     this.#pendingCtx = null;
+    this.history = [];
+    this.seq = 0;
     this.curtain = { kind: 'none' };
     this.screen = 'home';
   }

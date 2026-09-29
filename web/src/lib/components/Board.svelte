@@ -42,6 +42,8 @@
     handTray?: Snippet;
     /** W25: a tap on empty board space or the score bar (anything that isn't a button). */
     ontapblank?: () => void;
+    /** The in-game menu button, rendered in the score bar's reserved slot (design.md §6). */
+    menu?: Snippet;
   }
 
   let {
@@ -58,6 +60,7 @@
     theme = getTheme(DEFAULT_THEME_ID),
     handTray,
     ontapblank,
+    menu,
   }: BoardProps = $props();
 
   const opponentId = $derived((1 - view.viewer) as PlayerId);
@@ -99,6 +102,7 @@
     opponentName={names[opponentId]}
     youName={names[view.viewer]}
     active={view.active === view.viewer ? 'you' : 'opponent'}
+    {menu}
   />
   <OpponentZone
     opponent={view.opponent}

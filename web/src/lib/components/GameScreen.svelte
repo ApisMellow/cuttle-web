@@ -49,6 +49,7 @@
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
+  import GameMenu from './GameMenu.svelte';
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
   import StagingBar from './StagingBar.svelte';
@@ -238,6 +239,38 @@
     game.apply(index).catch(report);
   }
 
+  // ---- In-game menu (SPEC §5.2, §5.5 R17.2, §5.6 rule 5) ------------------
+  // One menu button, drawn in one of two places and never both: in the score
+  // bar's reserved slot on the live board (design.md §6), and pinned top
+  // right over every other game screen: handoff, reveal, recap and the
+  // counter prompt (design.md §8: rules stay reachable mid-curtain). The
+  // button and the panel hold no game state and call no store method that
+  // moves the curtain, so opening the menu at a withheld curtain can't
+  // bring the board in (it stays unmounted, gated on `board` as always).
+  // GameMenu is mounted outside every curtain branch, so a Rules sheet
+  // opened from it outlives nothing it shouldn't: it shows rules text only.
+  let menuOpen = $state(false);
+  let menuButton: HTMLButtonElement | undefined = $state();
+
+  function closeMenu(): void {
+    menuOpen = false;
+    menuButton?.focus();
+  }
+
+  // Home keeps the game: the save already holds this exact position (SPEC
+  // §5.7, written on every apply and curtain step), and goHome() writes
+  // nothing. Resume on the home screen restores it like a reload would.
+  function menuHome(): void {
+    menuOpen = false;
+    game.goHome();
+  }
+
+  // R4.3: only after GameMenu's confirm, which names the game.
+  function menuNewGame(): void {
+    menuOpen = false;
+    game.newGame().catch(report);
+  }
+
   // ---- Test hook (SPEC §6.5), compiled out of production -----------------
   $effect(() => {
     if (!import.meta.env.DEV) return;
@@ -296,6 +329,7 @@
       {lastMoveText}
       {theme}
       handTray={revealed === null ? undefined : sevenTray}
+      menu={menuButtonSnippet}
     />
 
     {#snippet sevenTray()}
@@ -355,7 +389,40 @@
       <CardDetailPopover card={inspectCard} onclose={() => (staging.inspect = null)} {theme} />
     {/if}
   {/if}
+
+  {#if board === null}
+    <div class="game-screen__menu-float">
+      {@render menuButtonSnippet()}
+    </div>
+  {/if}
+
+  <GameMenu
+    open={menuOpen}
+    anchor={board === null ? 'screen' : 'column'}
+    names={session.names}
+    onclose={closeMenu}
+    focusopener={() => menuButton?.focus()}
+    onhome={menuHome}
+    onnewgame={menuNewGame}
+  />
 </div>
+
+{#snippet menuButtonSnippet()}
+  <button
+    type="button"
+    class="game-screen__menu-button"
+    data-testid="menu-button"
+    aria-label="Menu"
+    aria-haspopup="dialog"
+    aria-expanded={menuOpen ? 'true' : 'false'}
+    bind:this={menuButton}
+    onclick={() => (menuOpen = true)}
+  >
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+    </svg>
+  </button>
+{/snippet}
 
 <style>
   /* W22 (iPhone 15 pass): exactly the visible viewport (`100dvh` tracks
@@ -417,6 +484,52 @@
     margin: 0 auto;
     border-top: 1px solid var(--cu-ink-line, #4a3d57);
     background: var(--cu-ink-raised, #30263a);
+  }
+
+  /* The menu button (design.md §6: 44x44, far right of the score bar). Off
+     the board it floats top right of the SCREEN, matching the full-width
+     curtain and prompt screens it sits on: in a box the score bar's height,
+     centred like the bar's slot, the board gutter from the right edge. On
+     a phone the column is the screen, so this is the board's spot exactly. */
+  .game-screen__menu-float {
+    position: fixed;
+    z-index: 10;
+    top: var(--cu-safe-top, 0px);
+    right: 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: var(--cu-zone-score, 44px);
+    padding-right: var(--cu-gutter-board, 10px);
+    pointer-events: none;
+  }
+
+  .game-screen__menu-float > .game-screen__menu-button {
+    pointer-events: auto;
+  }
+
+  .game-screen__menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--cu-tap-min, 44px);
+    height: var(--cu-tap-min, 44px);
+    padding: 0;
+    border: none;
+    border-radius: var(--cu-radius-control, 999px);
+    background: transparent;
+    color: var(--cu-muted, #b4a8be);
+    cursor: pointer;
+  }
+
+  .game-screen__menu-button:hover {
+    color: var(--cu-pearl, #eee8f1);
+  }
+
+  .game-screen__menu-button:focus-visible {
+    outline: 2px solid var(--cu-iris, #5ccfc4);
+    outline-offset: -2px;
   }
 
   .game-screen__pass {
