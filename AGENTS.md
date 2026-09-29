@@ -259,12 +259,12 @@ Hard rejects. Each came up in rounds 1–2.
 - **Nothing of the previous holder survives a curtain:** not the envelope,
   not the view, not mover-only `index` in history or recap entries, not a
   closure or component-local copy.
-- **The board renders only at curtain `none`, never at `ack`** (real or
-  synthetic), and never merely because `view` is non-null. Behind the
-  curtain it is unmounted, not hidden. *(Amended 2026-09-28, W13 GameScreen
-  review: at a synthetic ack the one-off has already resolved and at a real
-  window it hasn't, so a board or `ScoreBar` at either would leak which case
-  it was, under R14.)*
+- **The board renders only at curtain `none`, never at `ack`** (the counter
+  window, where the responder is deciding whether to play a 2), and never
+  merely because `view` is non-null. Behind the curtain it is unmounted, not
+  hidden. *(Amended 2026-09-29, product-owner ruling, SPEC §4.3: the
+  synthetic ack is gone, so the board is hidden at an ack only because the
+  one-off is still pending while the responder decides.)*
 - **The idle last-move line reads the last `isRecapVisible` entry in
   `history`**, never raw `lastMove`, which can be a filtered-out `Decline`
   *(amended 2026-09-28, W13 GameScreen review)*. The counter prompt's
@@ -281,8 +281,11 @@ Hard rejects. Each came up in rounds 1–2.
   layout before the reveal gate. Assert it in a DOM test.
 - **No auto-advance anywhere in the curtain.** The ack can't be skipped,
   fast-forwarded or auto-dismissed.
-- **Real and synthetic ack are identical** to the acting player: screen
-  count, DOM, testids, control position, dwell (§4.3).
+- **No counter prompt without a legal 2** *(2026-09-29, SPEC §4.3)*. A
+  one-off resolves at once and ends the turn; the `ack` curtain appears only
+  when the engine opened a counter window. No "Let it resolve" prompt is ever
+  staged for a responder who holds no 2. The acting player can infer that
+  from whether the phone passes; the product owner accepts this leak.
 - **Recap:** never name the 7's unchosen card; never show a Decline (filter
   with `isRecapVisible` before the "skip when empty" check); `DiscardPair`
   names no indices and no identities.

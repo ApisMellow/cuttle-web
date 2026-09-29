@@ -9,10 +9,9 @@
   //   handoff / reveal / recap -> Curtain only. The board is NOT in the DOM.
   //     One `{#if}` branch spans all three, so Curtain stays mounted across
   //     handoff -> reveal (ruling A1: the press carries into the hold).
-  //   ack (real or synthetic)  -> CounterPrompt only. The board is not
-  //     mounted on EITHER path: at a synthetic ack the one-off has already
-  //     resolved, so a board (or a score) would show post-resolution state
-  //     on one path and pre-resolution state on the other (R14).
+  //   ack (the counter window) -> CounterPrompt only. The board is not
+  //     mounted: the one-off has not resolved yet, and the prompt is a
+  //     full-screen decision.
   //   none                     -> Board + the action bar (+ AmbiguityChooser).
   //   result                   -> never reached here; App routes to ResultScreen.
   //
@@ -172,9 +171,8 @@
   // amended 2026-09-28): the last `isRecapVisible` history entry as a
   // sentence for this viewer — "You played 7♥ for points." for the viewer's
   // own move, never the raw engine description — plus a resolved 5's draw
-  // count. Never from `lastMove` (R14): after a real counter window
-  // `lastMove` is the Decline, after a synthetic ack it is the move itself,
-  // so reading it would tell the acting player whether the opponent held a 2.
+  // count. Never from `lastMove`: after a counter window `lastMove` is the
+  // Decline, which the recap never shows.
   // Playtest 2026-09-29: while the viewer picks discards for a 4, the line
   // says so ("Alice's 4♠: choose 2 to discard.").
   const lastMoveText = $derived.by(() => {
@@ -404,14 +402,14 @@
   }
 
   // ---- CounterPrompt (SPEC §4.3) -----------------------------------------
-  // Both paths get the same entries (history), viewer (the ack's `to`) and
-  // names. Only `options` differs: the Counter moves of a real window.
+  // The counter window only (ruling 2026-09-29): the entries come from
+  // history, the options are the window's Counter moves.
   const ackTo = $derived<PlayerId | null>(game.curtain.kind === 'ack' ? game.curtain.to : null);
   const ackEntries = $derived(ackTo === null ? [] : counterPromptEntries(game.history));
   const counterOptions = $derived.by(() => {
     const curtain = game.curtain;
     const env = game.envelope;
-    if (curtain.kind !== 'ack' || curtain.synthetic || env === null) return [];
+    if (curtain.kind !== 'ack' || env === null) return [];
     const out: { index: number; description: string }[] = [];
     env.legalMoves.forEach((m, index) => {
       if (m.Kind === MoveKind.Counter) out.push({ index, description: env.descriptions[index] });
@@ -422,11 +420,6 @@
   function resolveAck(): void {
     const curtain = game.curtain;
     if (curtain.kind !== 'ack') return;
-    if (curtain.synthetic) {
-      // No bridge call: advance the local curtain machine (SPEC §4.3).
-      advanceCurtain();
-      return;
-    }
     const env = game.envelope;
     const decline = env?.legalMoves.findIndex((m) => m.Kind === MoveKind.Decline) ?? -1;
     if (decline >= 0) game.apply(decline).catch(report);

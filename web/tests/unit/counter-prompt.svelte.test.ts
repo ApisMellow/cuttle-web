@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 // P2 W13 — CounterPrompt (SPEC §4.3 Presentation table, §6.3 Counter/Decline
-// rows, R14). One component serves the real counter window and the
-// synthetic ack; the ONLY difference is the counter buttons, which the
-// acting player never sees. Everything else — heading, the one-off and
-// chain lines, the "Let it resolve" control and its position — must be
-// byte-identical, and nothing may auto-advance.
+// rows, R14). The counter window only: since the 2026-09-29 ruling
+// (SPEC §4.3) there is no synthetic acknowledgment, so the prompt always
+// carries at least one counter option in the app. Nothing may auto-advance.
+// "Let it resolve" keeps its slot whatever the options region holds.
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -58,13 +57,6 @@ function render(opts: Opts = {}): HTMLDivElement {
   return host;
 }
 
-/** The DOM with the counter buttons (the one allowed difference) removed. */
-function withoutCounterOptions(host: HTMLElement): string {
-  const clone = host.cloneNode(true) as HTMLElement;
-  for (const el of clone.querySelectorAll('[data-testid^="counter-option-"]')) el.remove();
-  return clone.innerHTML;
-}
-
 describe('CounterPrompt (SPEC §4.3)', () => {
   it('renders the one-off and every 2 in the chain as lines with mini faces', () => {
     const el = render();
@@ -78,9 +70,9 @@ describe('CounterPrompt (SPEC §4.3)', () => {
   });
 
   it('always offers "Let it resolve"; one button per legal 2 only when given', () => {
-    const synthetic = render();
-    expect(synthetic.querySelector('[data-testid="counter-resolve"]')?.textContent?.trim()).toBe('Let it resolve');
-    expect(synthetic.querySelectorAll('[data-testid^="counter-option-"]')).toHaveLength(0);
+    const none = render();
+    expect(none.querySelector('[data-testid="counter-resolve"]')?.textContent?.trim()).toBe('Let it resolve');
+    expect(none.querySelectorAll('[data-testid^="counter-option-"]')).toHaveLength(0);
 
     const real = render({
       options: [
@@ -93,12 +85,6 @@ describe('CounterPrompt (SPEC §4.3)', () => {
       'counter-option-1',
       'counter-option-3',
     ]);
-  });
-
-  it('PRIVACY: real window and synthetic ack are byte-identical apart from the counter buttons', () => {
-    const synthetic = render();
-    const real = render({ options: [{ index: 2, description: 'counter with 2x' }] });
-    expect(withoutCounterOptions(real)).toBe(withoutCounterOptions(synthetic));
   });
 
   it('"Let it resolve" is one tap (it IS the confirm, SPEC §6.3) and fires once', () => {
@@ -177,10 +163,8 @@ describe('W25: a staged counter locks "Let it resolve"', () => {
     expect(el.querySelector('[data-testid="staging-bar"]')?.textContent).toContain('Counter with 2♣');
   });
 
-  it('PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)', () => {
+  it('unstaged, "Let it resolve" carries no disabled attribute', () => {
     const real = render({ options: OPTS });
-    const synthetic = render({ options: [] });
-    expect(withoutCounterOptions(real)).toBe(withoutCounterOptions(synthetic));
     expect(real.querySelector('[data-testid="counter-resolve"]')?.hasAttribute('disabled')).toBe(false);
   });
 });
@@ -192,11 +176,9 @@ describe('CounterPrompt focus (r16, desktop keyboard)', () => {
     flushSync();
   };
 
-  it('review B1: starts on the heading (not a control), on both paths', () => {
+  it('review B1: starts on the heading (not a control)', () => {
     const real = render({ options: [{ index: 7, description: 'counter with 2♥' }] });
     expect(document.activeElement).toBe(real.querySelector('.counter-prompt__heading'));
-    const synthetic = render({ options: [] });
-    expect(document.activeElement).toBe(synthetic.querySelector('.counter-prompt__heading'));
   });
 
   it('re-review B2 (R12): a fresh press stages the counter, but a repeated Enter on the staged Confirm (or Cancel) does nothing', async () => {

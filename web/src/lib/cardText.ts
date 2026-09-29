@@ -97,6 +97,12 @@ export const HAND_LIMIT = 8;
 /** What a 2 does when played out of turn, as a lower-case clause. */
 export const COUNTER_EFFECT = 'stop a one-off as it’s played';
 
+/**
+ * The Rules sheet's line on when a one-off takes effect (ruling 2026-09-29,
+ * SPEC §4.3): at once, unless the opponent answers with a 2.
+ */
+export const ONE_OFF_TIMING = 'A one-off happens right away and ends your turn. Your opponent can answer with a 2 if they have one.';
+
 /** The Rules sheet's extra detail after each one-off's effect. */
 const ONE_OFF_DETAIL: Readonly<Partial<Record<Rank, string>>> = {
   1: 'Both sides of the table.',

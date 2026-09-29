@@ -57,13 +57,13 @@ beforeAll(async () => {
   session.setNames(...NAMES);
 });
 
-/** Runs the curtain to a resting state, declining at every real counter window. */
+/** Runs the curtain to a resting state, declining at every counter window. */
 async function settle(): Promise<'board' | 'result'> {
   for (let i = 0; i < 24; i++) {
     const c = game.curtain;
     if (c.kind === 'none') return 'board';
     if (c.kind === 'result') return 'result';
-    if (c.kind === 'ack' && !c.synthetic) {
+    if (c.kind === 'ack') {
       const decline = game.envelope!.legalMoves.findIndex((m) => m.Kind === Kind.Decline);
       await game.apply(decline >= 0 ? decline : 0);
       continue;

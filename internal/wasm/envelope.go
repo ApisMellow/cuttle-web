@@ -36,8 +36,9 @@ type MoveView struct {
 // ScrapIndex; the size of the option list, which depends on the hidden
 // hand). See redactHistory.
 //
-// SubKind is the SubMove's kind (MoveSevenPick only), or null (§4.3's
-// needsSyntheticAck reads it).
+// SubKind is the SubMove's kind (MoveSevenPick only), or null (the recap
+// formatter and the curtain machine read it to spot a one-off played
+// through a 7).
 //
 // TargetCard is the card the move targeted, read from the PRE-state
 // (§2.7, amended 2026-09-27): Scuttle's Target, a Jack's JackTarget, a

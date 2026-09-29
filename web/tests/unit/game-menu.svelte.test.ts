@@ -313,7 +313,7 @@ describe('Rules from the menu (R17.2)', () => {
     await startGameMocked(game, bridge, opening(), { seed: '1' });
     const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
     game.history = [oneOff];
-    game.curtain = { kind: 'ack', to: 0, synthetic: true };
+    game.curtain = { kind: 'ack', to: 0 };
     const el = render();
     expect(q(el, 'counter-prompt')).not.toBeNull();
     const before = held();
@@ -497,7 +497,7 @@ describe('menu invariance behind the curtain', () => {
 
   it('the float and the open menu are byte-identical for every HandoffReason', async () => {
     await loadMythicCatalog();
-    const reasons = ['turn', 'counter', 'acknowledge', 'discard', 'seven-return'] as const;
+    const reasons = ['turn', 'counter', 'discard', 'seven-return'] as const;
     const seen: { float: string; menu: string }[] = [];
     for (const reason of reasons) {
       game.envelope = null;
@@ -509,22 +509,5 @@ describe('menu invariance behind the curtain', () => {
       seen.push(dom);
     }
     for (const dom of seen) expect(dom).toEqual(seen[0]);
-  });
-
-  it('the float and the open menu are byte-identical at a real counter window and a synthetic ack', async () => {
-    await startGameMocked(game, bridge, opening(), { seed: '1' });
-    const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
-    game.history = [oneOff];
-    const counter = mv({ Kind: Kind.Counter, HandIndex: 0, Card: { Rank: 2, Suit: 2 } });
-    game.envelope = envelope({
-      state: aliceView({ phase: Phase.AwaitingCounter }),
-      legalMoves: [counter, mv({ Kind: Kind.Decline })],
-      descriptions: ['counter with 2♥', 'decline'],
-    });
-    game.curtain = { kind: 'ack', to: 0, synthetic: false };
-    const real = await menuDom();
-    game.curtain = { kind: 'ack', to: 0, synthetic: true };
-    const synthetic = await menuDom();
-    expect(synthetic).toEqual(real);
   });
 });

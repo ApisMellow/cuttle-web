@@ -171,6 +171,73 @@ async function alicePlaysFive(blakeCards: number): Promise<HTMLDivElement> {
   return el;
 }
 
+const TWO_C: Card = { Rank: 2, Suit: 0 };
+
+/** Alice plays the 5 through the UI; Blake holds a 2, so the engine opens his counter window. */
+async function alicePlaysFiveIntoWindow(): Promise<HTMLDivElement> {
+  await startGameMocked(game, bridge, aliceOpening(), { seed: '1' });
+  const el = render();
+  const played = fiveEntry(null, true);
+  bridge.apply.mockImplementation(
+    (): BridgeResult =>
+      envelope({ state: playerView({ viewer: 0, active: 1, phase: Phase.AwaitingCounter, you: you([KING]), opponent: opp(2) }), lastMove: played, history: [played] }),
+  );
+  await click(el, 'hand-card-0');
+  await click(el, 'zone-oneoff');
+  await click(el, 'staging-confirm');
+  return el;
+}
+
+/**
+ * From `alicePlaysFiveIntoWindow`: the phone goes to Blake, whose counter
+ * prompt comes straight after the gate; he lets it resolve, so the 5 draws
+ * on HIS apply and his own turn follows with no curtain. Returns the
+ * history as Blake's board holds it.
+ */
+async function blakeLetsItResolve(el: HTMLElement): Promise<AppliedMove[]> {
+  const five = fiveEntry(null, false);
+  bridge.view.mockImplementation(
+    (): BridgeResult =>
+      envelope({
+        state: playerView({ viewer: 1, active: 1, phase: Phase.AwaitingCounter, you: you([B_CARD, TWO_C]), opponent: opp(1), pending: { playedBy: 0, card: FIVE, target: null, counterChain: [] } }),
+        history: [five],
+        legalMoves: [mv({ Kind: Kind.Decline }), mv({ Kind: Kind.Counter, Card: TWO_C, HandIndex: 1 })],
+        descriptions: ['decline', 'counter with 2♣'],
+      }),
+  );
+  await passThePhone(el);
+  expect(q(el, 'counter-prompt')).not.toBeNull();
+  const decline = appliedMove({ by: 1, kind: Kind.Decline, seq: 2, description: 'decline', drawn: 2 });
+  bridge.apply.mockImplementation(
+    (): BridgeResult =>
+      envelope({
+        state: playerView({ viewer: 1, active: 1, you: you([B_CARD, TWO_C]), opponent: opp(3) }),
+        lastMove: { ...decline, index: 0 },
+        history: [five, { ...decline, index: 0 }],
+        legalMoves: [mv({ Kind: Kind.Draw })],
+        descriptions: ['draw a card'],
+      }),
+  );
+  await click(el, 'counter-resolve');
+  return [five, decline];
+}
+
+/** From Blake's board: he draws, and the phone comes back to Alice's next board. */
+async function blakeDrawsBackToAlice(el: HTMLElement, before: AppliedMove[]): Promise<void> {
+  const blakeDraw = appliedMove({ by: 1, kind: Kind.Draw, seq: 3, description: 'draw a card' });
+  bridge.apply.mockImplementation(
+    (): BridgeResult => envelope({ state: playerView({ viewer: 1, active: 0, you: you([B_CARD, B_CARD]), opponent: opp(3) }), lastMove: { ...blakeDraw, index: 0 }, history: [...before, { ...blakeDraw, index: 0 }] }),
+  );
+  await click(el, 'deck-pile');
+  await click(el, 'staging-confirm');
+  expectNoDrawnCards(el, 'handoff to Alice');
+  const history = [...before, blakeDraw];
+  bridge.view.mockImplementation(
+    (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 0, you: you([KING, D1, D2]), opponent: opp(2) }), history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
+  );
+  await passThePhone(el);
+}
+
 /** handoff -> reveal -> recap -> next, through the two-step pill and the recap button. */
 async function passThePhone(el: HTMLElement): Promise<void> {
   await click(el, 'reveal-two-step');
@@ -179,10 +246,20 @@ async function passThePhone(el: HTMLElement): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Before the pass (Blake holds no cards: no ack to disguise, §4.3)
+// Before the pass (Blake holds no 2: no counter window, §4.3 ruling 2026-09-29)
 // ---------------------------------------------------------------------------
 
 describe('before the pass: the drawer\'s screen, then the handoff', () => {
+  it('ruling 2026-09-29: Blake holding cards but no 2 changes nothing: the reveal comes first, then the pass', async () => {
+    const el = await alicePlaysFive(3);
+    expect(q(el, 'draw-reveal')).not.toBeNull();
+    expect(q(el, 'counter-prompt')).toBeNull();
+    await click(el, 'draw-reveal-continue');
+    expect(q(el, 'curtain-gate')).not.toBeNull();
+    expect(game.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
+    expectNoDrawnCards(el, 'turn handoff');
+  });
+
   it('the drawn cards show face up; the board and the curtain are not in the DOM', async () => {
     const el = await alicePlaysFive(0);
     const panel = q(el, 'draw-reveal');
@@ -299,42 +376,26 @@ describe('before the pass: the drawer\'s screen, then the handoff', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Synthetic ack: nothing before the pass; the draw waits for Alice's next view
+// Counter window: Blake holds a 2 and lets it resolve; the draw waits for
+// Alice's next own view
 // ---------------------------------------------------------------------------
 
-describe('when the 5 could still be answered: no reveal before the pass (R14)', () => {
-  it('Alice\'s screen goes straight to the ack handoff: no reveal, no drawn card anywhere', async () => {
-    const el = await alicePlaysFive(3);
+describe('when Blake can answer (he holds a 2): no reveal before the pass', () => {
+  it('Alice\'s screen goes straight to the counter handoff: no reveal, no drawn card anywhere', async () => {
+    const el = await alicePlaysFiveIntoWindow();
     expect(q(el, 'draw-reveal')).toBeNull();
     expect(q(el, 'curtain-gate')).not.toBeNull();
-    expectNoDrawnCards(el, 'ack handoff');
+    expect(game.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'counter' });
+    expectNoDrawnCards(el, 'counter handoff');
   });
 
-  it('Blake\'s ack and board carry no reveal and no drawn card; Alice\'s next board shows them', async () => {
-    const el = await alicePlaysFive(3);
-    const five = fiveEntry(2, false);
-    bridge.view.mockImplementation((): BridgeResult => blakeBoard([five]));
-    await passThePhone(el);
-    expect(q(el, 'counter-prompt')).not.toBeNull();
-    expect(q(el, 'draw-reveal')).toBeNull();
-    expectNoDrawnCards(el, 'Blake\'s ack');
-    await click(el, 'counter-resolve');
+  it('Blake\'s prompt and board carry no reveal and no drawn card; Alice\'s next board shows them', async () => {
+    const el = await alicePlaysFiveIntoWindow();
+    const before = await blakeLetsItResolve(el);
     expect(q(el, 'board')).not.toBeNull();
     expect(q(el, 'draw-reveal')).toBeNull();
     expectNoDrawnCards(el, 'Blake\'s board');
-
-    const blakeDraw = appliedMove({ by: 1, kind: Kind.Draw, seq: 2, index: 0, description: 'draw a card' });
-    bridge.apply.mockImplementation(
-      (): BridgeResult => envelope({ state: playerView({ viewer: 1, active: 0, you: you([B_CARD, B_CARD]), opponent: opp(3) }), lastMove: blakeDraw, history: [five, blakeDraw] }),
-    );
-    await click(el, 'deck-pile');
-    await click(el, 'staging-confirm');
-    expectNoDrawnCards(el, 'handoff to Alice');
-    const history = [five, appliedMove({ by: 1, kind: Kind.Draw, seq: 2, description: 'draw a card' })];
-    bridge.view.mockImplementation(
-      (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 0, you: you([KING, D1, D2]), opponent: opp(2) }), history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
-    );
-    await passThePhone(el);
+    await blakeDrawsBackToAlice(el, before);
     expect(q(el, 'draw-reveal')).not.toBeNull();
     expect(q(el, 'board')).toBeNull();
     // Her own screen, after the pass: the whole hand, the drawn cards marked.
@@ -348,11 +409,11 @@ describe('when the 5 could still be answered: no reveal before the pass (R14)', 
 });
 
 // ---------------------------------------------------------------------------
-// The ack as Alice's first own view: the same reveal on both R14 paths
+// The counter window as Alice's first own view
 // ---------------------------------------------------------------------------
 
-describe('R14: at Alice\'s ack the reveal is identical on the real window and the synthetic ack', () => {
-  async function toAliceAck(real: boolean): Promise<{ el: HTMLDivElement; html: string }> {
+describe('at Alice\'s counter window the reveal comes before the prompt', () => {
+  async function toAliceAck(): Promise<HTMLDivElement> {
     const five = fiveEntry(2, false);
     const opening = envelope({
       state: playerView({ viewer: 1, active: 1, you: you([SIX]), opponent: opp(3) }),
@@ -366,7 +427,7 @@ describe('R14: at Alice\'s ack the reveal is identical on the real window and th
     bridge.apply.mockImplementation(
       (): BridgeResult =>
         envelope({
-          state: playerView({ viewer: 1, active: 0, phase: real ? Phase.AwaitingCounter : Phase.Normal, you: you([]), opponent: opp(3) }),
+          state: playerView({ viewer: 1, active: 0, phase: Phase.AwaitingCounter, you: you([]), opponent: opp(3) }),
           lastMove: six,
           history: [five, six],
         }),
@@ -382,35 +443,28 @@ describe('R14: at Alice\'s ack the reveal is identical on the real window and th
           state: playerView({
             viewer: 0,
             active: 0,
-            phase: real ? Phase.AwaitingCounter : Phase.Normal,
+            phase: Phase.AwaitingCounter,
             you: you([KING, D1, D2]),
             opponent: opp(0),
-            pending: real ? { playedBy: 1, card: SIX, target: null, counterChain: [] } : null,
+            pending: { playedBy: 1, card: SIX, target: null, counterChain: [] },
           }),
           history,
-          legalMoves: real ? [mv({ Kind: Kind.Counter, Card: { Rank: 2, Suit: 3 }, HandIndex: 1 }), mv({ Kind: Kind.Decline })] : [],
-          descriptions: real ? ['counter with 2♠', 'decline'] : [],
+          legalMoves: [mv({ Kind: Kind.Counter, Card: { Rank: 2, Suit: 3 }, HandIndex: 1 }), mv({ Kind: Kind.Decline })],
+          descriptions: ['counter with 2♠', 'decline'],
         }),
     );
     await passThePhone(el);
-    const panel = q(el, 'draw-reveal');
-    expect(panel, `${real ? 'real' : 'synthetic'}: reveal at the ack`).not.toBeNull();
-    expect(q(el, 'counter-prompt')).toBeNull();
-    // `$props.id()` differs per mount; everything else must match.
-    const html = panel!.outerHTML.replace(/(id|aria-labelledby)="[^"]*"/g, '$1=""');
-    return { el, html };
+    return el;
   }
 
-  it('the reveal comes before the counter prompt, with the same markup on both paths', async () => {
-    const real = await toAliceAck(true);
-    cleanup();
-    game.goHome();
-    const synthetic = await toAliceAck(false);
-    expect(synthetic.html).toBe(real.html);
+  it('the reveal is up first, and the prompt is not', async () => {
+    const el = await toAliceAck();
+    expect(q(el, 'draw-reveal')).not.toBeNull();
+    expect(q(el, 'counter-prompt')).toBeNull();
   });
 
   it('continuing shows the counter prompt', async () => {
-    const { el } = await toAliceAck(true);
+    const el = await toAliceAck();
     await click(el, 'draw-reveal-continue');
     expect(q(el, 'draw-reveal')).toBeNull();
     expect(q(el, 'counter-prompt')).not.toBeNull();
@@ -423,7 +477,7 @@ describe('R14: at Alice\'s ack the reveal is identical on the real window and th
 
 describe('GameScreen renders a reveal only on its drawer\'s own view', () => {
   it('not behind a withheld curtain, even if the store held one', async () => {
-    const el = await alicePlaysFive(3); // ack handoff to Blake is up
+    const el = await alicePlaysFiveIntoWindow(); // the counter handoff to Blake is up
     game.drawReveal = { to: 0, indices: [0], beforePass: false };
     await settle();
     expect(q(el, 'draw-reveal')).toBeNull();
@@ -448,24 +502,11 @@ describe('GameScreen renders a reveal only on its drawer\'s own view', () => {
 // ---------------------------------------------------------------------------
 
 describe('focus around the reveal at Alice\'s next board (keyboard)', () => {
-  /** Synthetic path: Alice's 5 resolves, Blake acks and draws, the phone comes back to Alice. */
+  /** Alice's 5 into Blake's window; he lets it resolve and draws; the phone comes back to Alice. */
   async function toAliceNextBoardReveal(): Promise<HTMLDivElement> {
-    const el = await alicePlaysFive(3);
-    const five = fiveEntry(2, false);
-    bridge.view.mockImplementation((): BridgeResult => blakeBoard([five]));
-    await passThePhone(el);
-    await click(el, 'counter-resolve');
-    const blakeDraw = appliedMove({ by: 1, kind: Kind.Draw, seq: 2, index: 0, description: 'draw a card' });
-    bridge.apply.mockImplementation(
-      (): BridgeResult => envelope({ state: playerView({ viewer: 1, active: 0, you: you([B_CARD, B_CARD]), opponent: opp(3) }), lastMove: blakeDraw, history: [five, blakeDraw] }),
-    );
-    await click(el, 'deck-pile');
-    await click(el, 'staging-confirm');
-    const history = [five, appliedMove({ by: 1, kind: Kind.Draw, seq: 2, description: 'draw a card' })];
-    bridge.view.mockImplementation(
-      (): BridgeResult => envelope({ state: playerView({ viewer: 0, active: 0, you: you([KING, D1, D2]), opponent: opp(2) }), history, legalMoves: [mv({ Kind: Kind.Draw })], descriptions: ['draw a card'] }),
-    );
-    await passThePhone(el);
+    const el = await alicePlaysFiveIntoWindow();
+    const before = await blakeLetsItResolve(el);
+    await blakeDrawsBackToAlice(el, before);
     return el;
   }
 

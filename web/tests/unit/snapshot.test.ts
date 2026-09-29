@@ -130,11 +130,22 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
     ['handoff/seven-return', { kind: 'handoff', to: 1, reason: 'seven-return' }, 1],
     ['reveal', { kind: 'reveal', to: 1 }, 1],
     ['recap', { kind: 'recap', to: 1, entries: [entry] }, 1],
-    ['ack real', { kind: 'ack', to: 1, synthetic: false }, 1],
-    ['ack synthetic', { kind: 'ack', to: 1, synthetic: true }, 1],
+    ['ack', { kind: 'ack', to: 1 }, 1],
     ['result', { kind: 'result' }, 0],
   ] as const)('accepts a well-formed %s curtain', (_label, curtain, viewer) => {
     expect(decodeSnapshot(withHistory(curtain, viewer as PlayerId)).ok).toBe(true);
+  });
+
+  // Ruling 2026-09-29 (SPEC §4.3, §5.7): no v bump; a save written before the
+  // ruling reads without its retired acknowledgment.
+  it.each([
+    ['a real-window ack (synthetic: false) drops the flag', { kind: 'ack', to: 1, synthetic: false }, { kind: 'ack', to: 1 }],
+    ['a synthetic ack becomes the reveal before it', { kind: 'ack', to: 1, synthetic: true }, { kind: 'reveal', to: 1 }],
+    ['an "acknowledge" handoff becomes a turn handoff', { kind: 'handoff', to: 1, reason: 'acknowledge' }, { kind: 'handoff', to: 1, reason: 'turn' }],
+  ] as const)('a pre-ruling save: %s', (_label, curtain, expected) => {
+    const result = decodeSnapshot(withHistory(curtain, 1));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.snapshot.curtain).toEqual(expected);
   });
 
   it.each([
@@ -147,7 +158,7 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
     ['reveal without to', { kind: 'reveal' }],
     ['recap without entries', { kind: 'recap', to: 1 }],
     ['recap with non-array entries', { kind: 'recap', to: 1, entries: 'x' }],
-    ['ack without synthetic', { kind: 'ack', to: 1 }],
+    ['ack without to', { kind: 'ack' }],
     ['ack with non-boolean synthetic', { kind: 'ack', to: 1, synthetic: 'yes' }],
     ['curtain not an object', 'none'],
   ])('rejects %s as malformed', (_label, curtain) => {
@@ -167,9 +178,9 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
 
   it.each([
     ['handoff counter', { kind: 'handoff', to: 1, reason: 'counter' }],
-    ['handoff acknowledge', { kind: 'handoff', to: 1, reason: 'acknowledge' }],
+    ['handoff discard', { kind: 'handoff', to: 1, reason: 'discard' }],
     ['recap', { kind: 'recap', to: 1, entries: [] }],
-    ['ack', { kind: 'ack', to: 1, synthetic: false }],
+    ['ack', { kind: 'ack', to: 1 }],
     ['result', { kind: 'result' }],
   ])('rejects a non-"none", non-opening curtain (%s) with an empty history', (_label, curtain) => {
     const raw = JSON.stringify({ ...validSnapshot({ viewer: 1 }), curtain });

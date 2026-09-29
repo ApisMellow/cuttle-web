@@ -9,9 +9,10 @@ import { plainMoveText } from '../../src/lib/recap';
 //   1. Alice plays 2♥ for points (hand -> Points zone -> Confirm),
 //   2. the curtain hands the phone to Blake (board unmounted throughout),
 //   3. Blake plays 5♥ as a one-off; Alice holds no 2, so the engine resolves
-//      it and the client stages the synthetic ack (SPEC §4.3),
-//   4. Alice walks handoff -> reveal -> recap -> CounterPrompt with only
-//      "Let it resolve", then her board,
+//      it at once (SPEC §4.3, ruling 2026-09-29): Blake sees his two drawn
+//      cards, then passes the phone,
+//   4. Alice walks handoff -> reveal -> recap -> her board for her normal
+//      turn, with no counter prompt,
 //   5. Alice draws, and the phone goes back to Blake.
 // The reveal gate is driven through the two-step path (SPEC §4.5). The hook
 // is used only to seed the deal and to find a move's hand index; every move
@@ -72,7 +73,7 @@ async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your r
   await expect(page.getByTestId('board')).toHaveCount(0);
 }
 
-test('happy path: points play, one-off with synthetic ack, curtain handoffs both ways', async ({ page }) => {
+test('happy path: points play, a one-off that resolves at once, curtain handoffs both ways', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('name-input-0').fill('Alice');
   await page.getByTestId('name-input-1').fill('Blake');
@@ -126,21 +127,17 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(fiveOneOff.description));
   await page.getByTestId('staging-confirm').click();
 
-  // 4. Alice acknowledges. The handoff label is the neutral "Your response".
-  await passThePhone(page, 'Alice', 'Your response');
+  // Issue #27 (SPEC §4.7): the 5 resolved on Blake's own move, so he sees
+  // the two cards it drew before the pass; Continue brings the handoff.
+  await expect(page.getByTestId('draw-reveal')).toContainText('You drew 2 cards');
+  await page.getByTestId('draw-reveal-continue').click();
+
+  // 4. Alice's normal turn: no counter prompt, no "Let it resolve".
+  await passThePhone(page, 'Alice', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Blake played');
   await page.getByTestId('recap-dismiss').click();
-
-  await expect(page.getByTestId('counter-prompt')).toBeVisible();
-  await expect(page.getByTestId('board')).toHaveCount(0);
-  await expect(page.locator('[data-testid^="counter-option-"]')).toHaveCount(0);
-  const resolve = page.getByTestId('counter-resolve');
-  await expect(resolve).toHaveText('Let it resolve');
-  const box = await resolve.boundingBox();
-  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-  expect((box?.y ?? 0) + (box?.height ?? 0) / 2).toBeGreaterThan(844 / 3); // lower two-thirds
-  expect(await hook(page, (h) => h.seq())).toBe(2); // the ack wrote no history
-  await resolve.click();
+  await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
+  expect(await hook(page, (h) => h.seq())).toBe(2);
 
   await expect(page.getByTestId('board')).toBeVisible();
   expect(await hook(page, (h) => h.viewer())).toBe(0);
@@ -156,11 +153,9 @@ test('happy path: points play, one-off with synthetic ack, curtain handoffs both
   await passThePhone(page, 'Blake', 'Your turn');
   await expect(page.getByTestId('recap')).toContainText('Alice drew a card');
   await page.getByTestId('recap-dismiss').click();
-  // Issue #27 (SPEC §4.7): Blake's first own view since his 5 resolved shows
-  // the two cards it drew; Continue brings his board.
-  await expect(page.getByTestId('draw-reveal')).toContainText('You drew 2 cards');
-  await page.getByTestId('draw-reveal-continue').click();
+  // He already saw his draw before the pass: no second reveal.
   await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('draw-reveal')).toHaveCount(0);
   expect(await hook(page, (h) => h.viewer())).toBe(1);
   expect(await hook(page, (h) => h.seq())).toBe(3);
   await expectNoHorizontalScroll(page);

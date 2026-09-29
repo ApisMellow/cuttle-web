@@ -69,6 +69,15 @@ async function reveal(page: Page): Promise<void> {
   await expect(page.getByTestId('recap')).toBeVisible();
 }
 
+/** A counter handoff: the gate, then the prompt at once (ruling 2026-09-29: no recap repeating the one-off). */
+async function revealToPrompt(page: Page): Promise<void> {
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('reveal-two-step').click();
+  await expect(page.getByTestId('recap')).toHaveCount(0);
+  await expect(page.getByTestId('counter-prompt')).toBeVisible();
+}
+
 async function play(page: Page, pattern: RegExp, kind: number, zone: string | null): Promise<void> {
   const moves = await hook(page, (h) => h.moves());
   const move = moves.find((m) => m.kind === kind && pattern.test(m.description));
@@ -139,12 +148,9 @@ test('the menu button sits in the score bar; opening and closing it moves nothin
 test('R17.2: Rules from the menu at a recap and at a real counter window leave the curtain, the save and lastSeenSeq alone', async ({ page }) => {
   await startGoldenGame(page);
   await play(page, /^draw/, 0, 'deck');
-  await reveal(page); // Blake
-  await page.getByTestId('recap-dismiss').click();
-  await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
 
-  // Alice's response: the recap first. Rules must not dismiss it.
-  await reveal(page);
+  // Blake's recap of Alice's draw. Rules must not dismiss it.
+  await reveal(page); // Blake
   const atRecap = await save(page);
   expect(await hook(page, (h) => h.curtain())).toBe('recap');
   await openMenu(page);
@@ -156,9 +162,12 @@ test('R17.2: Rules from the menu at a recap and at a real counter window leave t
   await expect(page.getByTestId('recap')).toBeVisible();
   expect(await hook(page, (h) => h.curtain())).toBe('recap');
   expect(await save(page)).toBe(atRecap);
-
-  // The real counter window: Alice holds 2♥.
   await page.getByTestId('recap-dismiss').click();
+  await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
+
+  // The real counter window: Alice holds 2♥. Ruling 2026-09-29: no recap
+  // first, since the prompt already shows the 5.
+  await revealToPrompt(page);
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
   const counters = await page.locator('[data-testid^="counter-option-"]').count();
   expect(counters).toBeGreaterThanOrEqual(1); // 2♥, and the 2♣ she drew
@@ -305,8 +314,7 @@ test('R4 privacy: after a reload, Resume at the board and at a real counter wind
   await reveal(page); // Blake
   await page.getByTestId('recap-dismiss').click();
   await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
-  await reveal(page); // Alice
-  await page.getByTestId('recap-dismiss').click();
+  await revealToPrompt(page); // Alice
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
   const atAck = await save(page);
 

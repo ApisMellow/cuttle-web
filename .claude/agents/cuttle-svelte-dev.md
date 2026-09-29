@@ -100,15 +100,15 @@ forms in the playbook's "Paths and Bash hygiene" table.
 - The idle last-move line is the last `isRecapVisible` history entry, never
   raw `lastMove`. The 7's revealed cards render only for the actor. The
   R9.3 popover shows only the tapped card from the viewer's own hand.
-- Gate the board on `curtain.kind === 'none'` only — never at `ack`, real
-  or synthetic *(amended 2026-09-28, W13 GameScreen review)* — and never on
+- Gate the board on `curtain.kind === 'none'` only — never at `ack` (the
+  counter window; no synthetic ack exists since 2026-09-29, SPEC §4.3) — and never on
   `view !== null`. Test "not in the DOM", not visibility.
 - Handoff: a component test asserts, for every `HandoffReason`, that the raw
   reason appears nowhere in `innerHTML`, attributes, classes or testids, and
   that no count, score or scrap renders.
-- Real counter window and synthetic ack: same component, same layout, same
-  "Let it resolve" position; only the 2-buttons differ. Nothing
-  auto-advances, skips or auto-dismisses.
+- The counter prompt appears only for a responder holding a legal 2 (SPEC
+  §4.3); never stage one otherwise. Nothing auto-advances, skips or
+  auto-dismisses.
 - No component keeps a previous viewer's view, hand or history.
 
 ## Stores

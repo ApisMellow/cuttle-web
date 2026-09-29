@@ -16,7 +16,7 @@ import Curtain from '../../src/lib/components/Curtain.svelte';
 import { appliedMove, Kind } from './game-test-support';
 
 const NAMES: [string, string] = ['Alice', 'Blake'];
-const REASONS: HandoffReason[] = ['turn', 'counter', 'discard', 'seven-return', 'acknowledge'];
+const REASONS: HandoffReason[] = ['turn', 'counter', 'discard', 'seven-return'];
 
 function pass(seq: number): AppliedMove {
   return appliedMove({ by: 1, kind: Kind.Pass, description: 'pass', seq });
@@ -91,7 +91,7 @@ describe('Curtain renders exactly one child per curtain.kind (Contract)', () => 
   });
 
   it('kind "ack" and "result": render nothing', () => {
-    expect(render(baseProps({ kind: 'ack', to: 0, synthetic: true })).querySelector('[data-testid="curtain"]')).toBeNull();
+    expect(render(baseProps({ kind: 'ack', to: 0 })).querySelector('[data-testid="curtain"]')).toBeNull();
     expect(render(baseProps({ kind: 'result' })).querySelector('[data-testid="curtain"]')).toBeNull();
   });
 
@@ -125,16 +125,15 @@ describe('B2: the handoff DOM is invariant across HandoffReason at the Curtain l
     return render(baseProps({ kind: 'handoff', to: 1, reason })).innerHTML;
   }
 
-  it('with the label replaced by a placeholder, innerHTML is byte-identical for all 5 reasons', () => {
+  it('with the label replaced by a placeholder, innerHTML is byte-identical for all 4 reasons', () => {
     const normalized = REASONS.map((reason) =>
       handoffHtml(reason).replace('Your turn', '<<LABEL>>').replace('Your response', '<<LABEL>>'),
     );
     for (const html of normalized) expect(html).toBe(normalized[0]);
   });
 
-  it('turn ≡ seven-return, and counter ≡ acknowledge ≡ discard, byte for byte', () => {
+  it('turn ≡ seven-return, and counter ≡ discard, byte for byte', () => {
     expect(handoffHtml('seven-return')).toBe(handoffHtml('turn'));
-    expect(handoffHtml('acknowledge')).toBe(handoffHtml('counter'));
     expect(handoffHtml('discard')).toBe(handoffHtml('counter'));
     expect(handoffHtml('turn')).not.toBe(handoffHtml('counter'));
   });
@@ -185,7 +184,7 @@ describe('M7e: the reveal stage is invariant across the HandoffReason that prece
     return el;
   }
 
-  it('with the label replaced by a placeholder, the reveal innerHTML is byte-identical for all 5 reasons', () => {
+  it('with the label replaced by a placeholder, the reveal innerHTML is byte-identical for all 4 reasons', () => {
     const normalized = REASONS.map((reason) =>
       revealAfter(reason).innerHTML.replace('Your turn', '<<LABEL>>').replace('Your response', '<<LABEL>>'),
     );
