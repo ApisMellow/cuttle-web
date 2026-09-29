@@ -396,7 +396,7 @@ Logged by the orchestrator from developer reports and review rulings. Full verdi
   - A raised curtain needs a non-empty history.
   - `lastSeenSeq` entries must be numbers.
   - Anything malformed is discarded, with a notice, just like a version mismatch.
-- **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at a real or synthetic ack, and at `result`.
+- **Restore by curtain kind.** Restore withholds the view at `handoff`, `reveal` and `recap`, and exposes the persisted viewer's envelope at `none`, at a real or synthetic ack, and at `result`. *Superseded 2026-09-29 (SPEC §5.7 "Resume always raises a curtain"): `none` and either ack now come back behind a resume gate for the saved viewer, and only `result` is exposed at once.*
 - **`lastSeenSeq` stamping (SPEC §4.6, amended twice 2026-09-27; ApisMellow delegated the call).** A stamp happens on the mover's successful `apply`, on recap dismissal, and at the transition into `none`. Each stamp is written in that transition's synchronous snapshot write. The stamp is symmetric across the real and synthetic counter paths, so it adds no R14 signal.
 - **`AppliedMove.targetCard` (W6).** It is always present on the wire, and it is read from the pre-state.
   - For a rank-2 one-off aimed at a Jack-stacked point, it names the **top Jack**, because that is the card the engine scraps (engine `apply.go:700-718`).

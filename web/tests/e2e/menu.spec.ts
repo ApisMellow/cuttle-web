@@ -81,6 +81,24 @@ async function play(page: Page, pattern: RegExp, kind: number, zone: string | nu
   await page.getByTestId('staging-confirm').click();
 }
 
+/**
+ * SPEC §5.7 (ruling 2026-09-29): Resume at a board or a counter window comes
+ * back behind a gate for the saved player. Asserts the gate hides everything,
+ * then passes it through the two-step pill.
+ */
+async function passResumeGate(page: Page, name: string): Promise<void> {
+  const gate = page.getByTestId('curtain-gate');
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText(name);
+  await expect(gate).toContainText('Resume game');
+  await expect(page.getByTestId('board')).toHaveCount(0);
+  await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(0);
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('reveal-two-step').click();
+  await expect(gate).toHaveCount(0);
+}
+
 async function openMenu(page: Page): Promise<void> {
   await page.getByTestId('menu-button').click();
   await expect(page.getByTestId('game-menu')).toBeVisible();
@@ -186,6 +204,7 @@ test('R23.2: the menu swaps Classic for Mythic mid-game, nothing moves, and the 
   await page.reload();
   await expect(page.getByTestId('theme-option-mythic').locator('input')).toBeChecked();
   await page.getByTestId('resume').click();
+  await passResumeGate(page, 'Alice');
   await expect(page.locator('.bitmap-card-face').first()).toBeVisible();
 });
 
@@ -199,6 +218,7 @@ test('R4: Home keeps the game; Resume brings back the same board and the same sa
   await expect(page.getByTestId('home-screen')).toBeVisible();
   expect(await save(page)).toBe(saved);
   await page.getByTestId('resume').click();
+  await passResumeGate(page, 'Alice');
   await expect(page.getByTestId('board')).toBeVisible();
   expect(await save(page)).toBe(saved);
   expect(await boxes(page)).toEqual(board);
@@ -259,3 +279,34 @@ for (const size of [
     expect(await noHorizontalScroll(page)).toBe(true);
   });
 }
+
+test('R4 privacy: after a reload, Resume at the board and at a real counter window shows the gate first, and the gate is the same', async ({ page }) => {
+  await startGoldenGame(page);
+  await page.reload();
+  await page.getByTestId('resume').click();
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  const atBoard = await page.getByTestId('curtain-gate').innerHTML();
+  await passResumeGate(page, 'Alice');
+  await expect(page.getByTestId('board')).toBeVisible();
+  expect(await hook(page, (h) => h.viewer())).toBe(0);
+
+  // Reach Alice's real counter window (she holds 2♥), then reload there.
+  await play(page, /^draw/, 0, 'deck');
+  await reveal(page); // Blake
+  await page.getByTestId('recap-dismiss').click();
+  await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
+  await reveal(page); // Alice
+  await page.getByTestId('recap-dismiss').click();
+  await expect(page.getByTestId('counter-prompt')).toBeVisible();
+  const atAck = await save(page);
+
+  await page.reload();
+  await page.getByTestId('resume').click();
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  expect(await page.getByTestId('curtain-gate').innerHTML()).toBe(atBoard);
+  expect(await hook(page, (h) => h.curtain())).toBe('handoff');
+  await passResumeGate(page, 'Alice');
+  await expect(page.getByTestId('counter-prompt')).toBeVisible();
+  expect(await page.locator('[data-testid^="counter-option-"]').count()).toBeGreaterThanOrEqual(1);
+  expect(await save(page)).toBe(atAck);
+});

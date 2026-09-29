@@ -131,6 +131,10 @@ test('swapping Classic for Mythic never moves or resizes anything on the board',
   });
   await page.reload();
   await page.getByTestId('resume').click();
+  // SPEC §5.7 (ruling 2026-09-29): the saved board comes back behind the resume gate.
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.locator('.bitmap-card-face').first()).toBeVisible();
   const mythic = await boardBoxes(page);

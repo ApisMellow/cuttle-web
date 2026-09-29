@@ -9,7 +9,7 @@ import { GameStore } from '../../src/lib/stores/game.svelte';
 import { SessionStore } from '../../src/lib/stores/session.svelte';
 import { SNAPSHOT_KEY, type Snapshot, encodeSnapshot } from '../../src/lib/stores/snapshot';
 import { createWasmEngine } from '../scenario/wasm-engine';
-import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, playerView, startGame } from './game-test-support';
+import { Kind, Phase, appliedMove, createFakeEngine, envelope, fakeStorage, passResumeGate, playerView, startGame } from './game-test-support';
 
 function baseSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
@@ -134,17 +134,21 @@ describe('carry-over 7: a persisted curtain is re-raised before the store expose
     expect(store.screen).toBe('game');
   });
 
-  it('restoring while curtain is already "none" exposes the board immediately', async () => {
+  it('restoring while curtain is already "none" raises the resume gate, then shows the board (ruling 2026-09-29)', async () => {
     storage.setItem(
       SNAPSHOT_KEY,
       encodeSnapshot(baseSnapshot({ curtain: { kind: 'none' }, viewer: 0 })),
     );
     const engine = createFakeEngine({
       restore: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
+      view: () => envelope({ state: playerView({ active: 0, viewer: 0 }) }),
     });
     const store = new GameStore({ engine, storage, session });
 
     await store.restore();
+    expect(store.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'resume' });
+    expect(store.envelope).toBeNull();
+    await passResumeGate(store);
 
     expect(store.curtain).toEqual({ kind: 'none' });
     expect(store.envelope).not.toBeNull();
@@ -215,10 +219,13 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     });
   }
 
-  it('none: the persisted viewer\'s board is exposed', async () => {
-    const { store, engine } = restoreWith(baseSnapshot({ viewer: 1, history: [oneOff] }), viewerEnvelope(1, 1, Phase.Normal));
+  it('none: behind the resume gate, then the persisted viewer\'s board is exposed', async () => {
+    const env = viewerEnvelope(1, 1, Phase.Normal);
+    const { store, engine } = restoreWith(baseSnapshot({ viewer: 1, history: [oneOff] }), env, { view: () => env });
     await store.restore();
     expect(engine.restore).toHaveBeenCalledWith('"opaque-blob"', 1);
+    expect(store.view).toBeNull();
+    await passResumeGate(store);
     expect(store.viewer).toBe(1);
     expect(store.view?.you.hand).toEqual([SECRET]);
   });
@@ -240,7 +247,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     });
   }
 
-  it('real counter window (ack, synthetic:false): the decider\'s envelope is exposed and apply() works', async () => {
+  it('real counter window (ack, synthetic:false): behind the resume gate, then the decider\'s envelope is exposed and apply() works', async () => {
     const decline = appliedMove({ by: 1, kind: Kind.Decline, seq: 2 });
     const restored = envelope({
       ...viewerEnvelope(1, 1, Phase.AwaitingCounter),
@@ -251,9 +258,11 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     const { store } = restoreWith(
       baseSnapshot({ viewer: 1, curtain: { kind: 'ack', to: 1, synthetic: false }, history: [oneOff] }),
       restored,
-      { apply },
+      { apply, view: () => restored },
     );
     await store.restore();
+    expect(store.view).toBeNull();
+    await passResumeGate(store);
 
     expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: false });
     expect(store.viewer).toBe(1);
@@ -266,7 +275,7 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
     expect(store.error).toBeNull();
   });
 
-  it('synthetic ack: the acknowledger\'s envelope is exposed and the sequence can continue', async () => {
+  it('synthetic ack: behind the resume gate, then the acknowledger\'s envelope is exposed and the sequence can continue', async () => {
     const view = vi.fn((p: 0 | 1) => viewerEnvelope(p, 1, Phase.Normal));
     const { store } = restoreWith(
       baseSnapshot({ viewer: 1, curtain: { kind: 'ack', to: 1, synthetic: true }, history: [oneOff], lastSeenSeq: { 0: 1, 1: 0 } }),
@@ -274,6 +283,9 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
       { view },
     );
     await store.restore();
+    expect(store.viewer).toBeNull();
+    await passResumeGate(store);
+    expect(store.curtain).toEqual({ kind: 'ack', to: 1, synthetic: true });
     expect(store.viewer).toBe(1);
     expect(store.envelope).not.toBeNull();
 
@@ -354,6 +366,7 @@ describe('N4: R7.4 null-vs-[] through a real snapshot() -> restore() round trip'
       // A fresh engine instance that knows nothing but what the snapshot carries.
       const reader = new GameStore({ engine: roundTrippingEngine(envelope({ state: playerView({ opponent: { handCount: 9, hand: [{ Rank: 1, Suit: 0 }], points: [], permanents: [] } }) })), storage, session: new SessionStore() });
       await reader.restore();
+      await passResumeGate(reader);
       expect(reader.view?.opponent.hand).toEqual(hand);
       if (hand === null) expect(reader.view?.opponent.hand).toBeNull();
       else expect(reader.view?.opponent.hand).not.toBeNull();

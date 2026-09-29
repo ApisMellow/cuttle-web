@@ -30,7 +30,13 @@ const MovePass = MK.Pass;
 /** A history entry the incoming player has not yet seen (§4.6). Formatting is the recap formatter's job. */
 export type RecapEntry = AppliedMove;
 
-export type HandoffReason = 'turn' | 'counter' | 'discard' | 'seven-return' | 'acknowledge';
+/**
+ * `resume` (ruling 2026-09-29, SPEC §5.7) is the gate a restore raises in
+ * front of a resting position (`none` or an `ack`). It is held in memory
+ * only and is never written to the save: the save keeps the resting
+ * position itself, so a reload during the gate comes back to the gate.
+ */
+export type HandoffReason = 'turn' | 'counter' | 'discard' | 'seven-return' | 'acknowledge' | 'resume';
 
 export type CurtainState =
   | { kind: 'none' }
@@ -59,6 +65,12 @@ export interface CurtainContext {
   /** The applied move this sequence follows, or `null` for the opening deal (W25: see `opening`). */
   move: AppliedMove | null;
   post: CurtainView;
+  /**
+   * SPEC §4.3 (ruling 2026-09-29): the would-be responder (`other(pre.active)`)
+   * holds no cards after the move. Hand counts are public, so there is no 2
+   * to disguise and no synthetic ack is staged. Absent means false.
+   */
+  responderHandEmpty?: boolean;
   /** Unseen history for a player, evaluated when that player passes the reveal gate. */
   recapFor(viewer: PlayerId): RecapEntry[];
 }
@@ -116,6 +128,10 @@ export function handoffLabel(reason: HandoffReason): string {
     case 'acknowledge':
     case 'discard':
       return 'Your response';
+    // One label for every resume gate, whatever it resumes into (a board, a
+    // real counter window, a synthetic ack): SPEC §5.7, R14.
+    case 'resume':
+      return 'Resume game';
   }
 }
 
@@ -142,9 +158,14 @@ function assertReachable(pre: CurtainView, mv: AppliedMove): void {
   }
 }
 
-/** True when the §4.3 synthetic ack is part of this move's sequence (game over pre-empts it, §4.4). The opening deal has no move, so no ack. */
-function syntheticAckPending(pre: CurtainView, mv: AppliedMove | null, post: CurtainView): boolean {
-  return mv !== null && post.phase !== PhaseGameOver && needsSyntheticAck(pre, mv, post);
+/**
+ * True when the §4.3 synthetic ack is part of this move's sequence (game over
+ * pre-empts it, §4.4). The opening deal has no move, so no ack. A responder
+ * who holds no cards gets none either (§4.3, ruling 2026-09-29): the count is
+ * public, so the acting player already knows there was no 2 to hide.
+ */
+function syntheticAckPending(pre: CurtainView, mv: AppliedMove | null, post: CurtainView, responderHandEmpty: boolean): boolean {
+  return mv !== null && !responderHandEmpty && post.phase !== PhaseGameOver && needsSyntheticAck(pre, mv, post);
 }
 
 /**
@@ -161,13 +182,13 @@ export function opening(first: PlayerId): CurtainState {
 /**
  * §5.3: `next(pre, appliedMove, post) -> CurtainState` — the first curtain
  * state after a successful apply. Throws CurtainError for a §4.4
- * unreachable (phase, kind) pair.
+ * unreachable (phase, kind) pair. `responderHandEmpty`: see CurtainContext.
  */
-export function next(pre: CurtainView, mv: AppliedMove, post: CurtainView): CurtainState {
+export function next(pre: CurtainView, mv: AppliedMove, post: CurtainView, responderHandEmpty = false): CurtainState {
   assertReachable(pre, mv);
   if (post.phase === PhaseGameOver) return { kind: 'result' };
 
-  if (syntheticAckPending(pre, mv, post)) {
+  if (syntheticAckPending(pre, mv, post, responderHandEmpty)) {
     const to = other(pre.active);
     // The ack target is the incoming decider only when the engine left control
     // with them; then the reason names what they do next (a 4's discard).
@@ -184,7 +205,7 @@ export function next(pre: CurtainView, mv: AppliedMove, post: CurtainView): Curt
 
 /** The step after reveal/recap: the ack (synthetic or the real counter window), or the live view. */
 function afterRecap(to: PlayerId, ctx: CurtainContext): CurtainState {
-  if (syntheticAckPending(ctx.pre, ctx.move, ctx.post) && to === other(ctx.pre.active)) {
+  if (syntheticAckPending(ctx.pre, ctx.move, ctx.post, ctx.responderHandEmpty === true) && to === other(ctx.pre.active)) {
     return { kind: 'ack', to, synthetic: true };
   }
   if (ctx.post.phase === PhaseAwaitingCounter && ctx.post.active === to) {

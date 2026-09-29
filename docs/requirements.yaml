@@ -100,13 +100,15 @@ requirements:
 
   - id: R3.3
     prd: R3
-    title: "Tally does not survive reload"
+    title: "Tally survives reload for the same players, outside the game snapshot"
+    # Amended 2026-09-29 (orchestrator ruling from the playtest: a 0–2 tally read 1–0 after a reload). Was "Tally does not survive reload".
     acceptance:
-      - "unit-test: session.svelte.ts's tally fields are never written to the R4 localStorage Snapshot (SPEC §5.7 Snapshot interface has no tally field; §5.3 'never persisted')"
-      - "e2e-test: reloading after a completed game shows the tally reset to 0-0"
+      - "unit-test: session.svelte.ts's tally fields are never written to the R4 localStorage Snapshot (SPEC §5.7 Snapshot interface has no tally field)"
+      - "unit-test: the tally is kept in sessionStorage under cuttle-web:tally for the ordered name pair; a reload that puts the same names back restores it, different names start at 0-0 (SPEC §5.3, amended 2026-09-29)"
+      - "e2e-test: reloading after a completed game and resuming shows the same tally"
     verify: [unit-test, e2e-test]
     status: todo
-    evidence: "PARTIAL round-02 (W5): unit half done — web/tests/unit/game.test.ts \"the persisted snapshot JSON has no 'tally' key, even with a non-zero tally\"; Snapshot type has no tally field. Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (reload after a completed game shows 0-0; needs ResultScreen)."
+    evidence: "2026-09-29 (loop/r14-resume, pending review): acceptance amended by ruling; unit bullets done — web/tests/unit/session-tally-persist.test.ts (survives a reload for the same pair, default pair too, same names keep it, different or swapped names reset, own key only, corrupt/throwing storage reads 0-0), and at App level web/tests/unit/resume-gate-dom.svelte.test.ts 'the tally survives a reload (R3.3 amended)' (a stored 0–2 for Alice/Blake reads 'Alice 0 – Blake 2' on the result screen after Resume; another pair's tally is not shown); game.test.ts 'no tally key' still holds. Open: the e2e bullet (no e2e reaches a result screen yet). Earlier: PARTIAL round-02 (W5): unit half done — web/tests/unit/game.test.ts \"the persisted snapshot JSON has no 'tally' key, even with a non-zero tally\"; Snapshot type has no tally field. Green in round-02 post-integration gate on loop/integration @ 64cb289: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 21 files/484 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e half (reload after a completed game shows 0-0; needs ResultScreen)."
     fails: 0
 
   # ---------------------------------------------------------------------
@@ -127,9 +129,10 @@ requirements:
     title: "Mid-curtain reload restores curtain, not board"
     acceptance:
       - "e2e-test: reloading while CurtainState.kind !== 'none' returns to the same curtain kind and target player, never to the board (SPEC §5.7 'curtain is persisted', §7.4 'mid-curtain reload restores the curtain')"
+      - "e2e-test (added 2026-09-29, SPEC §5.7 'Resume always raises a curtain'): Resume at a saved board or counter window (real or synthetic) shows a gate for the saved player first, with no hand, card, board or counter option in the DOM, and the same gate markup for every resting kind"
     verify: [e2e-test]
     status: todo
-    evidence: ""
+    evidence: "2026-09-29 (loop/r14-resume, pending review): resume-gate bullet — e2e web/tests/e2e/menu.spec.ts 'R4 privacy: after a reload, Resume at the board and at a real counter window shows the gate first, and the gate is the same' (gate names Alice and reads 'Resume game', no board/counter-prompt/hand-card, gate innerHTML identical at board and real window, save byte-identical after passing it) and 'R4: Home keeps the game…' (Home at a handoff returns to the handoff); vitest web/tests/unit/game-resume-gate.test.ts (both viewers at the board, real window, synthetic ack, result ungated, reload/Home/New game during the gate, no write during the gate, failed fetch then retry, a 'resume' save is malformed) and resume-gate-dom.svelte.test.ts (DOM before the gate holds no hand/card/board/counter option; identical markup for board, real window and synthetic ack). Stays todo: the original mid-curtain reload e2e bullet has no dedicated reload test yet."
     fails: 0
 
   - id: R4.3
@@ -457,7 +460,7 @@ requirements:
       - "unit-test: needsSyntheticAck() fires for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff) whenever post.phase !== PhaseAwaitingCounter, with no per-rank exclusion (SPEC §4.3 detection code)"
     verify: [e2e-test, unit-test]
     status: implemented
-    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`. | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): 'Let it resolve' is disabled only while a counter is staged, a state the synthetic ack cannot reach; vitest web/tests/unit/counter-prompt.svelte.test.ts 'PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)'. SPEC §4.3 amended."
+    evidence: "PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`. | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): 'Let it resolve' is disabled only while a counter is staged, a state the synthetic ack cannot reach; vitest web/tests/unit/counter-prompt.svelte.test.ts 'PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)'. SPEC §4.3 amended. | 2026-09-29 (loop/r14-resume, pending review): SPEC §4.3 'An empty hand needs no disguise' — no synthetic ack when the responder holds no cards (a public count), read from the post-move count live and on restore; vitest web/tests/unit/curtain-empty-responder.test.ts (pure rows for a one-off, a 7, a SevenPick one-off and a cancelled chain; store live vs restore at handoff/reveal/recap agree for 0 and 3 cards). Resume: a real window and a synthetic ack resume behind byte-identical gates (SPEC §5.7), vitest resume-gate-dom.svelte.test.ts and e2e menu.spec.ts 'R4 privacy'."
     fails: 0
 
   - id: R14.3
@@ -478,7 +481,7 @@ requirements:
       - "e2e-test: a 7 played with no opponent counter curtains to the opponent for a synthetic ack, then curtains back to the original actor for the seven-reveal panel — two handoffs for one card (SPEC §4.3 'The 7 costs a round trip', §8 OQ-6)"
     verify: [e2e-test]
     status: implemented
-    evidence: "IMPLEMENTED round-04 (W13/W15). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts walks the 7's round trip (Alice -> Blake 'Your response' -> Let it resolve -> Alice 'Your turn' -> SevenRevealPanel) but doesn't pin that Blake's screen was the synthetic ack rather than a real window. Open: an e2e at a position where the opponent holds no 2."
+    evidence: "IMPLEMENTED round-04 (W13/W15). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts walks the 7's round trip (Alice -> Blake 'Your response' -> Let it resolve -> Alice 'Your turn' -> SevenRevealPanel) but doesn't pin that Blake's screen was the synthetic ack rather than a real window. Open: an e2e at a position where the opponent holds no 2. | 2026-09-29 (loop/r14-resume, pending review; SPEC §4.3 'An empty hand needs no disguise'): the round trip applies only when the opponent holds cards; with an empty hand (public count) the 7 goes straight to the seven panel with no handoff. vitest web/tests/unit/curtain-empty-responder.test.ts 'a 7: no round trip, the actor stays for the reveal'."
     fails: 0
 
   # ---------------------------------------------------------------------
