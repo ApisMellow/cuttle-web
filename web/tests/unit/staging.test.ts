@@ -110,6 +110,39 @@ describe('StagingStore — idle/selected/staged pipeline (SPEC §6.1)', () => {
     expect(store.highlighted).toEqual(new Set(['zone:permanents']));
   });
 
+  it('tapping the selected hand card again unselects it back to idle (issue #25)', () => {
+    const legalMoves = [
+      move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 }),
+      move({ Kind: 2, HandIndex: 1, Card: HEARTS_ACE, JackTarget: null }),
+    ];
+    const store = new StagingStore(envOf(legalMoves), neverApply);
+
+    store.tap('hand:0');
+    expect(store.state).toBe('selected');
+    store.tap('hand:0');
+    expect(store.state).toBe('idle');
+    expect(store.selectedHand).toBeNull();
+    expect(store.highlighted).toEqual(new Set());
+    expect(store.stagedIndex).toBeNull();
+    expect(store.inspect).toBeNull();
+
+    // A third tap selects it afresh.
+    store.tap('hand:0');
+    expect(store.state).toBe('selected');
+    expect(store.selectedHand).toBe(0);
+    expect(store.highlighted).toEqual(new Set(['zone:points']));
+  });
+
+  it('tapping the root hand card while staged does nothing; only Confirm/Cancel act (SPEC §6.1)', () => {
+    const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 })];
+    const store = new StagingStore(envOf(legalMoves), neverApply);
+    store.tap('hand:0');
+    store.tap('zone:points');
+    store.tap('hand:0');
+    expect(store.state).toBe('staged');
+    expect(store.stagedIndex).toBe(0);
+  });
+
   it('cancel() while merely selected (no chooser) is a no-op — Cancel is only wired to staged and the chooser (SPEC §6.1, §6.4)', () => {
     const legalMoves = [move({ Kind: 1, HandIndex: 0, Card: CLUBS_3 })];
     const store = new StagingStore(envOf(legalMoves), neverApply);

@@ -208,6 +208,18 @@ describe('StagingStore — seven reveal (R16)', () => {
     expect(store.highlighted).toEqual(new Set(['point:1:0']));
   });
 
+  it('tapping the selected revealed card again unselects it back to idle (issue #25)', () => {
+    const store = new StagingStore(fixed(sevenEnv()), neverApply);
+    store.tap('seven:0');
+    store.tap('seven:0');
+    expect(store.state).toBe('idle');
+    expect(store.selectedReveal).toBeNull();
+    expect(store.highlighted).toEqual(new Set());
+    store.tap('seven:0');
+    expect(store.state).toBe('selected');
+    expect(store.selectedReveal).toBe(0);
+  });
+
   it('the target tap stages that SevenPick index and marks the revealed card staged', () => {
     const store = new StagingStore(fixed(sevenEnv()), neverApply);
     store.tap('seven:0');

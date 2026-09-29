@@ -94,6 +94,15 @@ test('Escape clears a keyboard selection', async ({ page }) => {
   await expect(page.getByTestId('hand-card-0')).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('a second click on the selected hand card unselects it (issue #25)', async ({ page }) => {
+  await startGolden(page);
+  const card = page.getByTestId('hand-card-0');
+  await card.click();
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
+  await card.click();
+  await expect(card).toHaveAttribute('aria-pressed', 'false');
+});
+
 test('a mouse click on a hand card does not move focus to a target', async ({ page }) => {
   await startGolden(page);
   await page.getByTestId('hand-card-0').click();
