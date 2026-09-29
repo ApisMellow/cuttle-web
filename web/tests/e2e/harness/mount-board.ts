@@ -26,7 +26,7 @@ import Board from '../../../src/lib/components/Board.svelte';
 import PointRow from '../../../src/lib/components/PointRow.svelte';
 import StagingBar from '../../../src/lib/components/StagingBar.svelte';
 import { cardName } from '../../../src/lib/cardText';
-import { plainMoveText, type NineReturn } from '../../../src/lib/recap';
+import { plainMoveText, type NineReturn, type OptionContext } from '../../../src/lib/recap';
 import { DEFAULT_THEME_ID, getTheme } from '../../../src/lib/theme';
 
 const theme = getTheme(DEFAULT_THEME_ID);
@@ -295,9 +295,9 @@ export function stagingFitCases(): StagingFitCase[] {
   const S = String.fromCodePoint(0x2660);
   const H = String.fromCodePoint(0x2665);
   const D = String.fromCodePoint(0x2666);
-  const named = (rank: Card['Rank'], text: string, nine?: NineReturn): StagingFitCase => ({
+  const named = (rank: Card['Rank'], text: string, nine?: NineReturn | OptionContext, title?: string): StagingFitCase => ({
     description: plainMoveText(text, nine),
-    title: cardName(card(rank, 3)),
+    title: title ?? cardName(card(rank, 3)),
   });
   const plain = (text: string): StagingFitCase => ({ description: plainMoveText(text) });
   return [
@@ -313,6 +313,14 @@ export function stagingFitCases(): StagingFitCase[] {
     named(9, `play 9${S} as one-off`, 'theirs'),
     named(9, `play 9${S} as one-off`, 'yours'),
     named(9, `7: play 9${S} as one-off`, 'theirs'),
+    // Playtest 2026-09-29: the target named, at its longest (a 10).
+    named(9, `play 9${S} as one-off`, { nine: 'theirs', target: `10${H}` }),
+    named(9, `play 9${S} as one-off`, { nine: 'yours', target: `10${H}` }),
+    named(9, `7: play 9${S} as one-off`, { nine: 'theirs', target: `10${H}` }),
+    named(2, `play 2${S} as one-off`, { target: `10${H}`, targetMine: false }, `Scrap 10${H}`),
+    named(11, `play J${S} (steal opponent point)`, { target: `10${H}` }),
+    named(11, `play J${S} (steal opponent point)`, { target: `10${H}`, stealBack: true }),
+    named(5, `play 5${S} as one-off`, { fiveDraws: 0 }),
     named(12, `play Q${S} as permanent`),
     named(13, `play K${S} as permanent`),
     named(8, `play 8${S} as permanent`),

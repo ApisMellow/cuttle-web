@@ -34,9 +34,10 @@
   import { tick, untrack } from 'svelte';
 
   import type { Card, Envelope, PlayerId } from '../bridge/schema';
+  import { deckReason, handCardReason, targetReason } from '../blockedReason';
   import { cardEffectLine, cardName } from '../cardText';
   import { MoveKind, Phase } from '../enums';
-  import { counterPromptEntries, lastMoveLine, nineReturn, plainMoveText } from '../recap';
+  import { counterPromptEntries, discardPromptLine, lastMoveLine, optionContext, plainMoveText, stagedHeading } from '../recap';
   import { game } from '../stores/game.svelte';
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
@@ -92,6 +93,12 @@
   // SPEC §5.3: staging clears on every apply and every viewer change.
   // The browse sheet closes on the same boundaries.
   let browsingScrap = $state(false);
+  // Playtest 2026-09-29: one line in the action bar saying why a tap did
+  // nothing (the deck with a full hand, a 9 onto a card their Queen
+  // protects). Built from public board state only (lib/blockedReason.ts);
+  // cleared by the next tap and on the same boundaries as staging, so it
+  // never survives a curtain.
+  let notice = $state<string | null>(null);
   $effect(() => {
     void game.viewer;
     void game.seq;
@@ -99,6 +106,7 @@
     untrack(() => {
       staging.reset();
       browsingScrap = false;
+      notice = null;
     });
   });
 
@@ -121,6 +129,8 @@
   // hand or the deck. `staging.reset()` (viewer/curtain change, every apply)
   // already clears `inspect`, so this can't survive past its own turn.
   const inspectCard = $derived(board === null || staging.inspect === null ? null : (board.state.you.hand[staging.inspect] ?? null));
+  // Playtest 2026-09-29: the popover says why, from public state only.
+  const inspectReason = $derived(board === null || staging.inspect === null ? undefined : handCardReason(staging.inspect, board.state));
 
   // R10.1: the deck is live exactly when the engine offers Draw.
   const deckEnabled = $derived(board !== null && board.legalMoves.some((m) => m.Kind === MoveKind.Draw));
@@ -132,14 +142,26 @@
   // count. Never from `lastMove` (R14): after a real counter window
   // `lastMove` is the Decline, after a synthetic ack it is the move itself,
   // so reading it would tell the acting player whether the opponent held a 2.
-  const lastMoveText = $derived(board === null ? '' : lastMoveLine(game.history, board.state.viewer, session.names));
+  // Playtest 2026-09-29: while the viewer picks discards for a 4, the line
+  // says so ("Alice's 4♠: choose 2 to discard.").
+  const lastMoveText = $derived.by(() => {
+    if (board === null) return '';
+    if (staging.discard !== null) {
+      const prompt = discardPromptLine(game.history, session.names, staging.discard.need);
+      if (prompt !== '') return prompt;
+    }
+    return lastMoveLine(game.history, board.state.viewer, session.names);
+  });
 
   // Plain text for one of the viewer's own options (SPEC §4.6, §6.4). A 9
   // says which way its target goes — back to them, or (a card they stole)
-  // back to you — read from public board state (review B2).
+  // back to you — read from public board state (review B2). Playtest
+  // 2026-09-29: a 9, a 2 or a Jack names its target, and a 5 its real draw
+  // count, from the same board state and the viewer's own hand
+  // (`optionContext`).
   function optionText(index: number | null, description: string): string {
     const move = index === null || board === null ? undefined : board.legalMoves[index];
-    return plainMoveText(description, move === undefined || board === null ? undefined : nineReturn(move, board.state));
+    return plainMoveText(description, move === undefined || board === null ? {} : optionContext(move, board.state));
   }
 
   // ---- Card labels (ROADMAP "Card labels") --------------------------------
@@ -163,13 +185,11 @@
   // The staged card is named only when the move uses its ability: a
   // one-off, or a permanent (a Jack steal included), directly or as a 7's
   // pick. Playing it for points or scuttling with it uses no ability.
+  // A 2 aimed at a card is headed with what it does ("Scrap K♦").
   const stagedTitle = $derived.by((): string | undefined => {
     if (board === null || staging.stagedIndex === null) return undefined;
     const move = board.legalMoves[staging.stagedIndex];
-    if (move === undefined || move.Card === null) return undefined;
-    const kind = move.Kind === MoveKind.SevenPick ? move.SubMove?.Kind : move.Kind;
-    if (kind !== MoveKind.OneOff && kind !== MoveKind.PlayPermanent) return undefined;
-    return cardName(move.Card, theme);
+    return move === undefined ? undefined : stagedHeading(move, board.state, theme);
   });
 
   // ---- Desktop keyboard (W25) ---------------------------------------------
@@ -209,10 +229,19 @@
 
   function onBoardTap(key: TargetKey): void {
     const viewer = board?.state.viewer;
-    if (viewer === undefined) return;
+    if (viewer === undefined || board === null) return;
     const fromKeyboard = keyboardActivation;
     keyboardActivation = false;
+    notice = null;
+    // Captured before the tap: which card was selected, and whether this
+    // tap lands on a lit target. A refused tap (unlit) gets a reason when
+    // one is knowable from public state; the tap itself behaves as before.
+    const wasSelected = staging.state === 'selected' && staging.chooser === null ? selectedCard : null;
+    const lit = staging.highlighted.has(resolveBoardTap(key, staging.highlighted, viewer));
+    const drawLegal = deckEnabled;
     tapStaging(key, viewer);
+    if (key === 'deck' && !drawLegal) notice = deckReason(board.state);
+    else if (wasSelected !== null && !lit) notice = targetReason(wasSelected, key, board.state);
     if (fromKeyboard && staging.state === 'selected' && staging.chooser === null && staging.scrapPick === null) {
       focusFirstTarget();
     }
@@ -399,6 +428,9 @@
         <button type="button" class="game-screen__pass" data-testid="pass" onclick={() => staging.tap('pass')}>
           Pass
         </button>
+      {:else if notice !== null}
+        <!-- Playtest 2026-09-29: why the last tap did nothing. -->
+        <p class="game-screen__hint game-screen__notice" role="status" data-blocked-reason>{notice}</p>
       {/if}
     </div>
 
@@ -425,7 +457,7 @@
     {/if}
 
     {#if inspectCard !== null}
-      <CardDetailPopover card={inspectCard} onclose={() => (staging.inspect = null)} {theme} />
+      <CardDetailPopover card={inspectCard} reason={inspectReason} onclose={() => (staging.inspect = null)} {theme} />
     {/if}
   {/if}
 

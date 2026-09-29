@@ -64,8 +64,35 @@ export const ONE_OFF_EFFECT: Readonly<Partial<Record<Rank, string>>> = {
 export const NINE_EFFECT: Readonly<Record<'theirs' | 'yours', string>> = {
   // The freeze only bites the opponent: their turn is next.
   theirs: 'back to their hand; they can’t play it next turn',
-  yours: 'your stolen card comes back to you',
+  yours: 'your stolen card comes back to your hand',
 };
+
+/**
+ * The same two cases with the target named (playtest 2026-09-29: the
+ * staging line and the chooser say which card). `target` is the card as
+ * runtime text (built by lib/recap.ts from public board state), so this
+ * module stays free of glyphs.
+ */
+export function nineEffectOn(side: 'theirs' | 'yours', target: string): string {
+  return side === 'theirs'
+    ? `send ${target} back to their hand; they can’t play it next turn`
+    : `your stolen ${target} comes back to your hand`;
+}
+
+/**
+ * What a 5 will draw, when the caller knows (lib/recap.ts `optionContext`,
+ * from the viewer's own hand size and the public deck count, capped at the
+ * engine's hand limit). `n` is 0, 1 or 2.
+ */
+export function fiveEffect(n: number, full = false): string {
+  // A 9 returning a card can leave a hand at 9 (engine/apply.go v0.2.0 case
+  // Nine appends past HandLimit), so a 5 can draw nothing with cards left.
+  if (n <= 0) return full ? 'your hand is full, so you draw nothing' : 'the deck is empty, so you draw nothing';
+  return n === 1 ? 'draw 1 card' : 'draw 2 cards';
+}
+
+/** engine/apply.go (v0.2.0) `HandLimit = 8`: the most cards a hand may hold. */
+export const HAND_LIMIT = 8;
 
 /** What a 2 does when played out of turn, as a lower-case clause. */
 export const COUNTER_EFFECT = 'stop a one-off as it’s played';
@@ -80,18 +107,22 @@ const ONE_OFF_DETAIL: Readonly<Partial<Record<Rank, string>>> = {
   6: 'Both sides of the table.',
   7: 'Play it right away; any other goes back on top. If none can be played, scrap one instead.',
   // A 9's freeze only matters to the opponent, whose turn is next.
-  9: 'If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to you.',
+  9: 'If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to your hand.',
 };
 
 /** What a permanent does in play, as a lower-case clause (Queen, King, glasses 8). */
 export const PERMANENT_EFFECT: Readonly<Partial<Record<Rank, string>>> = {
   8: 'you see their hand',
-  // engine/apply.go (v0.2.0): a Queen shields its owner's cards from
-  // targeting except Queens (`perm.Rank != card.Queen`), so two Queens
-  // don't shield each other.
-  12: 'their 2s, 9s and Jacks can’t target your cards, except Queens',
+  // engine/apply.go (v0.2.0) LegalMoves: a Queen shields its owner's
+  // other cards from targeting, but not Queens (`perm.Rank != card.Queen`
+  // for a 2 or a 9 on a permanent), so a Queen itself, or a second Queen,
+  // can still be hit. `QUEEN_DETAIL` says so on the Rules sheet.
+  12: 'their 2s, 9s and Jacks can’t target your other cards',
   13: 'you need fewer points to win',
 };
+
+/** The Rules sheet's second sentence for a Queen (see PERMANENT_EFFECT[12]). */
+export const QUEEN_DETAIL = 'A Queen itself can still be hit.';
 
 /** What a Jack does, as a lower-case clause. */
 export const JACK_EFFECT = 'steal one of their point cards';
@@ -161,8 +192,40 @@ export function inPlayBadge(card: Card, slot: BadgeSlot, extra: { goal?: number;
   if (slot === 'jack') return card.Rank === 11 && extra.stolen === true ? 'Stole' : null;
   if (card.Rank === 13) return extra.goal === undefined ? null : `Goal ${extra.goal}`;
   if (card.Rank === 12) return 'Protects';
-  if (card.Rank === 8) return 'Sees hand';
+  // Playtest 2026-09-29: the glasses face lies sideways, so the badge says
+  // it's the 8. The rank as a numeral only; a suit is never written here.
+  if (card.Rank === 8) return '8 Sees hand';
   return null;
+}
+
+// ---- Why a card or a tap does nothing (playtest 2026-09-29) -------------
+// Shown only when the engine offered nothing for that card or tap; never a
+// legality decision of its own (lib/blockedReason.ts picks one, from public
+// board state and the viewer's own hand only).
+
+/** The fallback when no specific reason is known. */
+export const NO_MOVES_REASON = 'No legal moves for this card right now.';
+
+export const BLOCKED_REASON = {
+  /** A 9 froze this hand card (the viewer's own `frozenHandIndices`). */
+  frozen: 'A 9 just sent this card back: you can play it on your next turn.',
+  /** PhaseSevenChoosing, for the 7's player: the hand waits. */
+  sevenFirst: 'Play one of the revealed cards first.',
+  /** A Jack while the opponent has a Queen in play. */
+  jackQueen: 'Their Queen protects their cards from your Jack.',
+  /** A Jack while the opponent has no point cards. */
+  jackNoPoints: 'They have no point cards for your Jack to steal.',
+  /** The deck tapped while it holds no cards. */
+  deckEmpty: 'The deck is empty.',
+  /** The deck tapped with a full hand. */
+  handFull: `Your hand is full (${HAND_LIMIT} cards).`,
+  /** A 2 aimed at one of the viewer's own cards their own Queen protects. */
+  ownQueen: 'Your own Queen protects that card.',
+} as const;
+
+/** A 2, 9 or Jack aimed at a card their Queen protects. */
+export function theirQueenProtects(rank: Rank): string {
+  return `Their Queen protects that card from your ${RANK_WORDS[rank]}.`;
 }
 
 /** One Rules-sheet line: the rank in words, its Classic name, and the text. */
@@ -192,7 +255,7 @@ export function rulesPermanentLines(): RulesLine[] {
     {
       rank: RANK_WORDS[12],
       name: CLASSIC_NAMES[12],
-      text: `${sentenceCase(PERMANENT_EFFECT[12] as string)}. It doesn’t stop a scuttle, an Ace, a 4 or a 6.`,
+      text: `${sentenceCase(PERMANENT_EFFECT[12] as string)}. ${QUEEN_DETAIL} It doesn’t stop a scuttle, an Ace, a 4 or a 6.`,
     },
     {
       rank: RANK_WORDS[13],

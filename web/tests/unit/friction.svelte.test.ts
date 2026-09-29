@@ -150,7 +150,7 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     const items = [...el.querySelectorAll('[data-testid="rules-sheet"] li')].map((li) => li.textContent ?? '');
     const line = (start: string): string => items.find((t) => t.startsWith(start)) ?? '';
     expect(line('9,')).toBe(
-      '9, Send Back: Send a card back to its owner’s hand. If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to you.',
+      '9, Send Back: Send a card back to its owner’s hand. If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to your hand.',
     );
     expect(line('Jack,')).toContain('or a 9 sends that card home');
     expect(line('7,')).toContain('If none can be played, scrap one instead.');

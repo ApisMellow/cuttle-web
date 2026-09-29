@@ -212,7 +212,7 @@ describe('the tally survives a reload (R3.3 amended)', () => {
     await Promise.resolve();
     flushSync();
     expect(el.querySelector('[data-testid="result-screen"]')).not.toBeNull();
-    expect(el.querySelector('[data-testid="tally"]')?.textContent?.trim()).toBe('Alice 0 – Blake 2');
+    expect(el.querySelector('[data-testid="tally"]')?.textContent?.trim()).toBe('Match: Alice 0 – Blake 2');
   });
 
   it('a tally saved for other names is not shown: 0–0', async () => {
@@ -223,6 +223,6 @@ describe('the tally survives a reload (R3.3 amended)', () => {
     el.querySelector<HTMLElement>('[data-testid="resume"]')!.click();
     await Promise.resolve();
     flushSync();
-    expect(el.querySelector('[data-testid="tally"]')?.textContent?.trim()).toBe('Alice 0 – Blake 0');
+    expect(el.querySelector('[data-testid="tally"]')?.textContent?.trim()).toBe('Match: Alice 0 – Blake 0');
   });
 });

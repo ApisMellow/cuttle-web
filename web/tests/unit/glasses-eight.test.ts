@@ -122,7 +122,10 @@ describe('PermanentRow: a glasses 8 lies sideways', () => {
     expect(glasses.getAttribute('data-orientation')).toBe('sideways');
     expect(glasses.classList.contains('permanent-row__card--sideways')).toBe(true);
     expect(faceRoot(glasses).getAttribute('data-variant')).toBe('glasses');
-    expect(glasses.textContent ?? '').not.toMatch(/8/);
+    // The face carries no rank (design.md: suit tint and pip only); the
+    // in-play badge names the 8 (playtest 2026-09-29, "8 Sees hand").
+    expect(faceRoot(glasses).textContent ?? '').not.toMatch(/8/);
+    expect(glasses.querySelector('[data-card-label="badge"]')?.textContent).toBe('8 Sees hand');
 
     expect(queen.getAttribute('data-orientation')).toBe('upright');
     expect(queen.classList.contains('permanent-row__card--sideways')).toBe(false);

@@ -28,7 +28,7 @@
   // Amended 2026-09-28: option and staged text go through `plainMoveText`
   // ("Counter with 2♣: stop their card."), never raw engine text. Same on
   // both paths; the synthetic ack simply has no options.
-  import { formatRecapLine, plainMoveText, recapCards } from '../recap';
+  import { formatRecapLines, plainMoveText, recapCards } from '../recap';
   import type { ChooserCandidate } from '../stores/staging.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
@@ -50,9 +50,12 @@
   let { entries, viewer, names, options, onresolve, oncounter, theme = getTheme(DEFAULT_THEME_ID) }: CounterPromptProps =
     $props();
 
-  const lines = $derived(
-    entries.map((entry) => ({ seq: entry.seq, cards: recapCards(entry), text: formatRecapLine(entry, viewer, names) })),
-  );
+  // Playtest 2026-09-29: each 2 names what it stops ("to stop your 5♥"),
+  // read from the entry before it in `entries` — the same run on both paths.
+  const lines = $derived.by(() => {
+    const texts = formatRecapLines(entries, viewer, names);
+    return entries.map((entry, k) => ({ seq: entry.seq, cards: recapCards(entry), text: texts[k] }));
+  });
 
   let staged = $state<ChooserCandidate | null>(null);
   let acted = false;

@@ -458,7 +458,10 @@ export class StagingStore {
     const byKey = candidatesByTargetKey(handIndex, env.legalMoves);
     if (byKey.size === 0) {
       // SPEC §6.1 — a dimmed hand card tap does NOT enter `selected`; it
-      // opens the integrator's detail popover instead.
+      // opens the integrator's detail popover instead. Playtest 2026-09-29:
+      // a card selected before it is dropped first, so its lit targets
+      // don't stay highlighted behind the popover.
+      this.#clearToIdle();
       this.inspect = handIndex;
       return;
     }

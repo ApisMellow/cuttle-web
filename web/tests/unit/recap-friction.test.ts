@@ -115,8 +115,8 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
 
   it('a 5 whose counter was countered back: the closing counter, then who drew', () => {
     const h = [five(0, 1), counter(1, 2, 0), counter(0, 3, 2, 2)];
-    expect(lastMoveLine(h, 1, NAMES)).toBe('Alice countered with 2♥. Alice drew 2 cards.');
-    expect(lastMoveLine(h, 0, NAMES)).toBe('You countered with 2♥. You drew 2 cards.');
+    expect(lastMoveLine(h, 1, NAMES)).toBe('Alice countered with 2♥ to stop your 2♣. Alice drew 2 cards.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe("You countered with 2♥ to stop Blake's 2♣. You drew 2 cards.");
   });
 
   it('R14 (strict, review B1): a two-counter chain closed by a Decline reads like one closed by the counter, naming the 5\'s player', () => {
@@ -125,22 +125,23 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     for (const viewer of [0, 1] as const) {
       expect(lastMoveLine(byDecline, viewer, NAMES)).toBe(lastMoveLine(byCounter, viewer, NAMES));
     }
-    expect(lastMoveLine(byDecline, 1, NAMES)).toBe('Alice countered with 2♥. Alice drew 2 cards.');
-    expect(lastMoveLine(byDecline, 0, NAMES)).toBe('You countered with 2♥. You drew 2 cards.');
+    expect(lastMoveLine(byDecline, 1, NAMES)).toBe('Alice countered with 2♥ to stop your 2♣. Alice drew 2 cards.');
+    expect(lastMoveLine(byDecline, 0, NAMES)).toBe("You countered with 2♥ to stop Blake's 2♣. You drew 2 cards.");
   });
 
   it('(review B1) a four-counter chain names the 5\'s player as the drawer, whoever closed it', () => {
     const blakeFive = five(1, 1);
     const h = [blakeFive, counter(0, 2, 0), counter(1, 3, 1), counter(0, 4, 2), counter(1, 5, 3, 2)];
-    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠. Blake drew 2 cards.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠ to stop your 2♥. Blake drew 2 cards.');
     const closedByDecline = [blakeFive, counter(0, 2, 0), counter(1, 3, 1), counter(0, 4, 2), counter(1, 5, 3), decline(0, 6, 2)];
-    expect(lastMoveLine(closedByDecline, 0, NAMES)).toBe('Blake countered with 2♠. Blake drew 2 cards.');
-    expect(lastMoveLine(closedByDecline, 1, NAMES)).toBe('You countered with 2♠. You drew 2 cards.');
+    expect(lastMoveLine(closedByDecline, 0, NAMES)).toBe('Blake countered with 2♠ to stop your 2♥. Blake drew 2 cards.');
+    expect(lastMoveLine(closedByDecline, 1, NAMES)).toBe("You countered with 2♠ to stop Alice's 2♥. You drew 2 cards.");
   });
 
-  it('a cancelled 5 draws nothing and says nothing about a draw', () => {
+  it('a cancelled 5 draws nothing and says nothing about a draw (playtest 2026-09-29: it says the 5 was stopped)', () => {
     const h = [five(0, 1), counter(1, 2, 0)];
-    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♣.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♣: your 5♥ was stopped.');
+    expect(lastMoveLine(h, 0, NAMES)).not.toMatch(/drew/);
   });
 
   it('a draw count on an older entry never leaks onto a later move', () => {
@@ -156,7 +157,8 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     ];
     expect(lines[0].match(CARD_TOKEN)).toEqual(['5♥']);
     expect(lines[1].match(CARD_TOKEN)).toEqual(['5♥']);
-    expect(lines[2].match(CARD_TOKEN)).toEqual(['2♥']);
+    // The closing 2 and the 2 it stopped, both played face up; never a drawn card.
+    expect(lines[2].match(CARD_TOKEN)).toEqual(['2♥', '2♣']);
   });
 });
 
@@ -167,7 +169,7 @@ describe('plainMoveText: player-facing wording for engine descriptions (SPEC §6
     ['play 7♥ as point card', 'Play 7♥ for points.'],
     ['play 10♠ as point card', 'Play 10♠ for points.'],
     ['play J♣ (steal opponent point)', 'Play J♣ to steal that point card.'],
-    ['play Q♦ as permanent', 'Play Q♦: their 2s, 9s and Jacks can’t target your cards, except Queens.'],
+    ['play Q♦ as permanent', 'Play Q♦: their 2s, 9s and Jacks can’t target your other cards.'],
     ['play K♠ as permanent', 'Play K♠ as a permanent: you need fewer points to win.'],
     ['play 8♥ as permanent', 'Play 8♥ as glasses: you see their hand.'],
     ["scuttle opponent's 4♣ with 9♣", 'Scuttle their 4♣ with 9♣: both cards go to the scrap.'],
@@ -209,8 +211,8 @@ describe('plainMoveText: player-facing wording for engine descriptions (SPEC §6
     expect(plainMoveText('play 9♣ as one-off', 'theirs')).toBe(
       'Play 9♣ as a one-off: back to their hand; they can’t play it next turn.',
     );
-    expect(plainMoveText('play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to you.');
-    expect(plainMoveText('7: play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to you.');
+    expect(plainMoveText('play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to your hand.');
+    expect(plainMoveText('7: play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to your hand.');
     // The case never changes any other move's text.
     expect(plainMoveText("scuttle opponent's 4♣ with 9♣", 'yours')).toBe('Scuttle their 4♣ with 9♣: both cards go to the scrap.');
   });

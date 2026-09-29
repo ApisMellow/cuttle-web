@@ -282,10 +282,10 @@ describe('GameScreen at curtain none (the live board)', () => {
     await click(el, 'hand-card-1');
     await click(el, 'point-1-0');
     expect(q(el, 'ambiguity-chooser-option-5')?.textContent?.trim()).toBe(
-      'Play 9♥ as a one-off: your stolen card comes back to you.',
+      'Play 9♥: your stolen 7♦ comes back to your hand.',
     );
     await click(el, 'ambiguity-chooser-option-5');
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play 9♥ as a one-off: your stolen card comes back to you.');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play 9♥: your stolen 7♦ comes back to your hand.');
   });
 
   it('review B2: a 9 on their own point card says it goes back to them and they can’t play it next turn', async () => {
@@ -295,7 +295,7 @@ describe('GameScreen at curtain none (the live board)', () => {
     await click(el, 'hand-card-1');
     await click(el, 'point-1-0');
     expect(q(el, 'ambiguity-chooser-option-5')?.textContent?.trim()).toBe(
-      'Play 9♥ as a one-off: back to their hand; they can’t play it next turn.',
+      'Play 9♥: send 7♦ back to their hand; they can’t play it next turn.',
     );
   });
 

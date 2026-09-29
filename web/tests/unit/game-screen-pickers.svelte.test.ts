@@ -290,7 +290,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     const el = await start(sevenEnvelope());
     await click(el, 'seven-card-1');
     await click(el, 'point-1-0');
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play J♣ to steal that point card.');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Steal their 9♣ with J♣.');
   });
 
   it('a dead-end reveal is scrapped by tapping the lit scrap pile, not by opening the browser', async () => {
