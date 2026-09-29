@@ -167,18 +167,18 @@ describe('plainMoveText: player-facing wording for engine descriptions (SPEC §6
     ['play 7♥ as point card', 'Play 7♥ for points.'],
     ['play 10♠ as point card', 'Play 10♠ for points.'],
     ['play J♣ (steal opponent point)', 'Play J♣ to steal that point card.'],
-    ['play Q♦ as permanent', 'Play Q♦ as a permanent: it protects your other cards.'],
+    ['play Q♦ as permanent', 'Play Q♦: their 2s, 9s and Jacks can’t target your cards, except Queens.'],
     ['play K♠ as permanent', 'Play K♠ as a permanent: you need fewer points to win.'],
     ['play 8♥ as permanent', 'Play 8♥ as glasses: you see their hand.'],
     ["scuttle opponent's 4♣ with 9♣", 'Scuttle their 4♣ with 9♣: both cards go to the scrap.'],
     ['play A♥ as one-off', 'Play A♥ as a one-off: scrap every point card.'],
-    ['play 2♠ as one-off', 'Play 2♠ as a one-off: scrap the royal or glasses you picked.'],
+    ['play 2♠ as one-off', 'Play 2♠ as a one-off: scrap one royal or glasses 8.'],
     ['play 3♣ as one-off', 'Play 3♣ as a one-off: take a card from the scrap.'],
     ['play 4♦ as one-off', 'Play 4♦ as a one-off: they discard 2 cards.'],
     ['play 5♥ as one-off', 'Play 5♥ as a one-off: draw 2 cards.'],
-    ['play 6♣ as one-off', 'Play 6♣ as a one-off: scrap every royal and glasses.'],
-    ['play 7♦ as one-off', 'Play 7♦ as a one-off: see the top 2 cards and play one.'],
-    ['play 9♣ as one-off', 'Play 9♣ as a one-off: that card goes back to its owner’s hand (a card they stole from you comes back to you).'],
+    ['play 6♣ as one-off', 'Play 6♣ as a one-off: scrap every royal and glasses 8.'],
+    ['play 7♦ as one-off', 'Play 7♦ as a one-off: see the top 2 cards (or the last one), play one.'],
+    ['play 9♣ as one-off', 'Play 9♣ as a one-off: send a card back to its owner’s hand.'],
     ['counter with 2♦', 'Counter with 2♦: stop their card.'],
     ['decline to counter', 'Let it resolve.'],
     ['7: play 5♥ as point card', 'Play 5♥ for points.'],
@@ -207,10 +207,10 @@ describe('plainMoveText: player-facing wording for engine descriptions (SPEC §6
 
   it('review B2: a 9 names the specific case when it is known', () => {
     expect(plainMoveText('play 9♣ as one-off', 'theirs')).toBe(
-      'Play 9♣ as a one-off: that card goes back to their hand, and they can’t play it next turn.',
+      'Play 9♣ as a one-off: back to their hand; they can’t play it next turn.',
     );
-    expect(plainMoveText('play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: the card they stole comes back to your hand.');
-    expect(plainMoveText('7: play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: the card they stole comes back to your hand.');
+    expect(plainMoveText('play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to you.');
+    expect(plainMoveText('7: play 9♣ as one-off', 'yours')).toBe('Play 9♣ as a one-off: your stolen card comes back to you.');
     // The case never changes any other move's text.
     expect(plainMoveText("scuttle opponent's 4♣ with 9♣", 'yours')).toBe('Scuttle their 4♣ with 9♣: both cards go to the scrap.');
   });

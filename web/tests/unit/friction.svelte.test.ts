@@ -125,7 +125,17 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     for (const heading of ['Win', 'Points', 'Permanents', 'One-offs']) expect(text).toContain(heading);
     const oneOffs = [...sheet.querySelectorAll('section')].find((s) => s.querySelector('h3')?.textContent === 'One-offs')!;
     const ranks = [...oneOffs.querySelectorAll('li b')].map((b) => b.textContent);
-    expect(ranks).toEqual(['Ace:', '2:', '3:', '4:', '5:', '6:', '7:', '9:']);
+    // Card labels: each rank now carries its Classic name.
+    expect(ranks).toEqual([
+      'Ace, Board Wipe:',
+      '2, Counter:',
+      '3, Recycle:',
+      '4, Forced Discard:',
+      '5, Draw Two:',
+      '6, Royal Wipe:',
+      '7, Top Deck:',
+      '9, Send Back:',
+    ]);
     // Review N2: the win is checked as soon as a play resolves, not at the end of a turn.
     expect(text).toContain('You win as soon as you have 21 or more points on your side (fewer with Kings in play).');
     expect(text).not.toContain('end of your turn');
@@ -139,11 +149,11 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     flushSync();
     const items = [...el.querySelectorAll('[data-testid="rules-sheet"] li')].map((li) => li.textContent ?? '');
     const line = (start: string): string => items.find((t) => t.startsWith(start)) ?? '';
-    expect(line('9:')).toBe(
-      '9: Send one of their table cards back to its owner’s hand. If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to you.',
+    expect(line('9,')).toBe(
+      '9, Send Back: Send a card back to its owner’s hand. If it’s theirs, they can’t play it on their next turn. If it’s a card they stole from you, it comes back to you.',
     );
-    expect(line('Jack:')).toContain('or a 9 sends that card home');
-    expect(line('7:')).toContain('If neither can be played, scrap one instead.');
+    expect(line('Jack,')).toContain('or a 9 sends that card home');
+    expect(line('7,')).toContain('If none can be played, scrap one instead.');
   });
 
   it('review N3: focus moves into the sheet on open and back to the Rules button on close', () => {

@@ -14,17 +14,26 @@
   interface StagingBarProps {
     /** `StagingStore.stagedDescription`, shown verbatim (SPEC §6.1). */
     description: string;
+    /**
+     * Card labels: the staged card's short name ("Draw Two"), shown inline
+     * in bold ochre at the start of the description. GameScreen passes it
+     * only when the move uses the card's ability (a one-off or a
+     * permanent); omitted otherwise.
+     */
+    title?: string;
     /** `StagingStore.inert` — true while `applying` (SPEC §6.1). */
     disabled?: boolean;
     onconfirm?: () => void;
     oncancel?: () => void;
   }
 
-  let { description, disabled = false, onconfirm, oncancel }: StagingBarProps = $props();
+  let { description, title, disabled = false, onconfirm, oncancel }: StagingBarProps = $props();
 </script>
 
 <div class="staging-bar" data-testid="staging-bar">
-  <p class="staging-bar__description">{description}</p>
+  <!-- Card labels: the name runs inline at the start of the description,
+       so the move text gets the whole text column (up to three lines). -->
+  <p class="staging-bar__description">{#if title}<span class="staging-bar__title" data-card-label="name">{`${title} `}</span>{/if}{description}</p>
   <div class="staging-bar__actions">
     <button
       type="button"
@@ -57,21 +66,37 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--cu-space-3, 12px);
+    gap: var(--cu-space-2, 8px);
     min-height: var(--cu-zone-action, 60px);
     box-sizing: border-box;
-    padding: var(--cu-space-2, 8px) var(--cu-gutter-board, 10px) var(--cu-space-2, 8px) var(--cu-space-4, 16px);
+    padding: var(--cu-space-1, 4px) var(--cu-gutter-board, 10px) var(--cu-space-1, 4px) var(--cu-space-3, 12px);
     background: var(--cu-ink-raised, #30263a);
     color: var(--cu-pearl, #eee8f1);
   }
 
+  /* Card labels: the description gets up to three lines at the small
+     type size, which fits the reserved bar height at every target
+     (60 px phone: 3 x 16.1 px + 8 px padding; 76 px desktop), so no staged
+     move is ever cut off and staging never grows the bar. The e2e
+     staging-fit spec stages every one-off and permanent kind at 393, 430
+     and 1440 and checks nothing overflows. */
   .staging-bar__description {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     min-width: 0;
     margin: 0;
-    font-size: var(--cu-text-md, 16px);
+    font-size: var(--cu-text-sm, 14px);
+    line-height: 1.15;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Card labels: the staged card's name, bold ochre, inline. */
+  .staging-bar__title {
+    color: var(--cu-ochre, #f0b54a);
+    font-weight: var(--cu-weight-bold, 700);
   }
 
   .staging-bar__actions {
@@ -84,7 +109,7 @@
     box-sizing: border-box;
     min-width: 44px;
     min-height: 44px;
-    padding: 0 var(--cu-space-4, 16px);
+    padding: 0 var(--cu-space-3, 12px);
     font-weight: var(--cu-weight-bold, 700);
     transition: transform var(--cu-dur-fast, 120ms) var(--cu-ease-out, ease-out);
     border: none;

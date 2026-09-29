@@ -12,7 +12,7 @@
 // optional. A theme may be partial: a missing slot, or an image that fails
 // to load, renders the vector baseline for that one slot (SPEC §5.6 rule 4).
 
-import type { Card, Suit } from '../bridge/schema';
+import type { Card, Rank, Suit } from '../bridge/schema';
 import { rankLabel } from './glyphs';
 
 /** One entry of `themes/index.json`. */
@@ -73,7 +73,16 @@ export interface BitmapThemeManifest {
   back: ImageSource[] | null;
   table: ImageSource[] | null;
   index: IndexBox | null;
+  /**
+   * Optional card names, keyed in the manifest by rank label ("A", "2" …
+   * "10", "J", "Q", "K"), parsed to Rank. Any rank left out, or any bad
+   * entry, keeps its Classic name.
+   */
+  names: Partial<Record<Rank, string>>;
 }
+
+/** Longest card name a manifest may set; longer ones are dropped (they must fit the popover and staging line). */
+export const MAX_CARD_NAME_LENGTH = 14;
 
 /** Suit 0..3 = Clubs, Diamonds, Hearts, Spades (SPEC §2.5). */
 const SUIT_NAMES: Record<Suit, string> = { 0: 'clubs', 1: 'diamonds', 2: 'hearts', 3: 'spades' };
@@ -124,6 +133,19 @@ function parseIndex(value: unknown): IndexBox | null {
   return { x: x as number, y: y as number, w: w as number, h: h as number };
 }
 
+function parseNames(value: unknown): Partial<Record<Rank, string>> {
+  const out: Partial<Record<Rank, string>> = {};
+  if (!isRecord(value)) return out;
+  for (let rank = 1 as Rank; rank <= 13; rank = (rank + 1) as Rank) {
+    const raw = value[rankLabel(rank)];
+    if (typeof raw !== 'string') continue;
+    const name = raw.trim();
+    if (name === '' || name.length > MAX_CARD_NAME_LENGTH) continue;
+    out[rank] = name;
+  }
+  return out;
+}
+
 export function parseCatalog(value: unknown): ThemeCatalogEntry[] {
   if (!isRecord(value) || !Array.isArray(value.themes)) return [];
   const out: ThemeCatalogEntry[] = [];
@@ -151,6 +173,7 @@ export function parseManifest(value: unknown, entry: ThemeCatalogEntry): BitmapT
     back: parseSources(obj.back),
     table: parseSources(obj.table),
     index: parseIndex(obj.index),
+    names: parseNames(obj.names),
   };
 }
 

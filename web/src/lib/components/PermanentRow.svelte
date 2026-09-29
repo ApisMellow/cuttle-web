@@ -9,6 +9,7 @@
   // array (same reading as PointRow's key — see its comment for the
   // reported ambiguity).
   import type { Card, PlayerId } from '../bridge/schema';
+  import { inPlayBadge } from '../cardText';
   import '../styles/card-geometry.css';
   import type { CardTheme, CardVisualState } from '../theme/types';
   import DropZones from './DropZones.svelte';
@@ -25,9 +26,16 @@
     staged: ReadonlySet<string>;
     ontap: (key: string) => void;
     theme: CardTheme;
+    /**
+     * Card labels: the points this row's player now needs to win, read
+     * verbatim from the bridge's `scoreboard.*.threshold` for that side
+     * (engine/win.go `Threshold`). Each King wears it as its badge. Never
+     * recomputed here from the Kings in the row (SPEC §3.3 rule 2).
+     */
+    goal?: number;
   }
 
-  let { rowId, cards, label, dropZoneKey, dropZoneLabel, highlighted, staged, ontap, theme }: PermanentRowProps =
+  let { rowId, cards, label, dropZoneKey, dropZoneLabel, highlighted, staged, ontap, theme, goal }: PermanentRowProps =
     $props();
 
   function keyFor(index: number): string {
@@ -55,6 +63,7 @@
     {#each cards as card, index (index)}
       {@const key = keyFor(index)}
       {@const sideways = isGlasses(card)}
+      {@const badge = inPlayBadge(card, 'permanent', { goal })}
       <button
         type="button"
         class={['permanent-row__card', { 'permanent-row__card--sideways': sideways }]}
@@ -63,6 +72,13 @@
         onclick={() => ontap(key)}
       >
         <theme.Face {card} size="field" state={stateFor(key)} variant={sideways ? 'glasses' : 'standard'} />
+        {#if badge !== null}
+          <!-- Card labels: what this permanent is doing right now, at the
+               card's foot, clear of the upper-left corner index. Part of
+               the button's accessible name, after the face's own text
+               (the vector face reads "K♥", so the name is "K♥ Goal 14"). -->
+          <span class="permanent-row__badge" data-card-label="badge">{badge}</span>
+        {/if}
       </button>
     {/each}
     {#if cards.length === 0}
@@ -126,6 +142,7 @@
   }
 
   .permanent-row__card {
+    position: relative;
     display: block;
     flex: none;
     width: var(--cu-row-card-width, var(--cuttle-card-width-field));
@@ -150,6 +167,33 @@
   .permanent-row__card--sideways {
     width: calc(var(--cu-row-card-width, var(--cuttle-card-width-field)) * var(--cuttle-card-aspect-ratio, 1.3));
     aspect-ratio: var(--cuttle-card-aspect-ratio, 1.3);
+  }
+
+  /* Card labels: a small ink pill at the card's foot, centred, clear of
+     the upper-left corner index (design.md §7) and of the glasses pip.
+     Decorative for taps: the whole card stays the button. */
+  .permanent-row__badge {
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    z-index: 3;
+    transform: translateX(-50%);
+    max-width: calc(100% - 4px);
+    box-sizing: border-box;
+    padding: 1px 3px;
+    border-radius: 999px;
+    background: var(--cu-ink, #241c2b);
+    box-shadow: 0 0 0 1px rgb(250 248 244 / 0.55);
+    color: var(--cu-pearl, #eee8f1);
+    font-family: var(--cu-font-ui, sans-serif);
+    font-size: calc(var(--cu-text-badge, 10px) * var(--cu-badge-scale, 1));
+    font-weight: var(--cu-weight-bold, 700);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
 
   .permanent-row__empty {

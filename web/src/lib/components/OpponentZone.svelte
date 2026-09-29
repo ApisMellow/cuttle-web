@@ -13,18 +13,20 @@
     opponent: PlayerView['opponent'];
     opponentId: PlayerId;
     pointTotal: number;
+    /** Card labels: this side's win threshold, from the scoreboard (the Kings' badge). */
+    goal?: number;
     highlighted: ReadonlySet<string>;
     staged: ReadonlySet<string>;
     ontap: (key: string) => void;
     theme: CardTheme;
   }
 
-  let { opponent, opponentId, pointTotal, highlighted, staged, ontap, theme }: OpponentZoneProps = $props();
+  let { opponent, opponentId, pointTotal, goal, highlighted, staged, ontap, theme }: OpponentZoneProps = $props();
 </script>
 
 <div class="opponent-zone" data-testid="opponent-zone">
   <OpponentHand handCount={opponent.handCount} hand={opponent.hand} {theme} />
-  <PermanentRow rowId={opponentId} cards={opponent.permanents} label="Permanents" {highlighted} {staged} {ontap} {theme} />
+  <PermanentRow rowId={opponentId} cards={opponent.permanents} label="Permanents" {goal} {highlighted} {staged} {ontap} {theme} />
   <PointRow
     rowId={opponentId}
     entries={opponent.points}
@@ -45,6 +47,9 @@
   .opponent-zone {
     --cu-row-card-width: var(--cuttle-card-width-field-far);
     --cu-row-well: var(--cu-ink-far, #2c2334);
+    /* Card labels: the far side's badges step down with its cards, so
+       "Protects" keeps clear room on the narrower far-row Queen. */
+    --cu-badge-scale: 0.95;
     display: flex;
     flex-direction: column;
     gap: var(--cu-gap-zone, 4px);

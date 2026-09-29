@@ -40,5 +40,6 @@ export function bitmapTheme(manifest: BitmapThemeManifest, assets: BitmapAssets)
     Table: withAssets<TableProps>(BitmapTable, assets),
     assetBytes: manifest.assetBytes,
     available: () => true,
+    names: manifest.names,
   };
 }

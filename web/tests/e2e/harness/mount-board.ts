@@ -25,6 +25,8 @@ import type { Card, PlayerId, PlayerView, PointEntry } from '../../../src/lib/br
 import Board from '../../../src/lib/components/Board.svelte';
 import PointRow from '../../../src/lib/components/PointRow.svelte';
 import StagingBar from '../../../src/lib/components/StagingBar.svelte';
+import { cardName } from '../../../src/lib/cardText';
+import { plainMoveText, type NineReturn } from '../../../src/lib/recap';
 import { DEFAULT_THEME_ID, getTheme } from '../../../src/lib/theme';
 
 const theme = getTheme(DEFAULT_THEME_ID);
@@ -272,4 +274,111 @@ export function mountGameColumn({
   mounted.push({ instance: boardInstance, host: root });
   if (barInstance) mounted.push({ instance: barInstance, host: actionBar });
   return { root, board: boardHost.querySelector('[data-testid="board"]') as HTMLElement, actionBar };
+}
+
+// ---------------------------------------------------------------------------
+// Card labels: the staging line's fit (staging-fit.spec.ts)
+// ---------------------------------------------------------------------------
+
+export interface StagingFitCase {
+  description: string;
+  title?: string;
+}
+
+/**
+ * Every staged text shape the staging line can show, built by the real
+ * `plainMoveText` from engine Describe strings, with the name GameScreen
+ * adds when the move uses the card's ability. The widest tokens are used
+ * ("10", the widest suit) so the check is the worst case.
+ */
+export function stagingFitCases(): StagingFitCase[] {
+  const S = String.fromCodePoint(0x2660);
+  const H = String.fromCodePoint(0x2665);
+  const D = String.fromCodePoint(0x2666);
+  const named = (rank: Card['Rank'], text: string, nine?: NineReturn): StagingFitCase => ({
+    description: plainMoveText(text, nine),
+    title: cardName(card(rank, 3)),
+  });
+  const plain = (text: string): StagingFitCase => ({ description: plainMoveText(text) });
+  return [
+    named(1, `play A${S} as one-off`),
+    named(2, `play 2${S} as one-off`),
+    named(3, `play 3${S} as one-off — take 10${H} from the scrap`),
+    named(3, `7: play 3${S} as one-off — take 10${H} from the scrap`),
+    named(4, `play 4${S} as one-off`),
+    named(5, `play 5${S} as one-off`),
+    named(6, `play 6${S} as one-off`),
+    named(7, `play 7${S} as one-off`),
+    named(9, `play 9${S} as one-off`),
+    named(9, `play 9${S} as one-off`, 'theirs'),
+    named(9, `play 9${S} as one-off`, 'yours'),
+    named(9, `7: play 9${S} as one-off`, 'theirs'),
+    named(12, `play Q${S} as permanent`),
+    named(13, `play K${S} as permanent`),
+    named(8, `play 8${S} as permanent`),
+    named(11, `play J${S} (steal opponent point)`),
+    plain(`scuttle opponent's 10${D} with 10${S}`),
+    plain(`play 10${S} as point card`),
+    plain(`7: no legal play — scrap 10${S}`),
+    plain('draw a card'),
+    plain(`Discard 10${S} and 10${H}`),
+  ];
+}
+
+export interface StagingFit {
+  description: string;
+  overflows: boolean;
+  barHeight: number;
+  reserved: number;
+}
+
+/**
+ * Mounts the real StagingBar in an action-bar box that mirrors
+ * GameScreen's (scoped styles, so mirrored inline here, like
+ * mountGameColumn), including GameScreen's desktop type step at >= 1024 x
+ * 700, and measures each case: the description must not overflow its
+ * clamp and the bar must not grow past its reserved height.
+ */
+export function measureStagingFit(cases: StagingFitCase[]): StagingFit[] {
+  const out: StagingFit[] = [];
+  const desktop = window.matchMedia('(min-width: 1024px) and (min-height: 700px)').matches;
+  for (const c of cases) {
+    const root = freshHost();
+    root.style.width = '100%';
+    if (desktop) {
+      for (const [k, v] of Object.entries({
+        '--cu-text-xs': '15px',
+        '--cu-text-sm': '17px',
+        '--cu-text-md': '19px',
+        '--cu-text-lg': '28px',
+        '--cu-zone-action': '76px',
+      })) {
+        root.style.setProperty(k, v);
+      }
+    }
+    const bar = document.createElement('div');
+    Object.assign(bar.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      width: '100%',
+      maxWidth: 'var(--cu-board-max, 560px)',
+      minHeight: 'var(--cu-zone-action, 60px)',
+      margin: '0 auto',
+      fontFamily: 'var(--cu-font-ui)',
+    });
+    root.appendChild(bar);
+    const instance = mount(StagingBar, { target: bar, props: { description: c.description, title: c.title } });
+    flushSync();
+    const p = bar.querySelector('.staging-bar__description') as HTMLElement;
+    out.push({
+      description: `${c.title ?? ''} ${c.description}`.trim(),
+      overflows: p.scrollHeight > p.clientHeight + 1 || p.scrollWidth > p.clientWidth + 1,
+      barHeight: bar.getBoundingClientRect().height,
+      reserved: parseFloat(getComputedStyle(bar).minHeight),
+    });
+    unmount(instance);
+    root.remove();
+  }
+  return out;
 }

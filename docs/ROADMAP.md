@@ -4,8 +4,8 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 
 ## Next
 
-- **Card labels.** Each card carries a short name and a label for its effect, so you can read the table at a glance. For example, a King in play shows the new points needed to win (21, 14, 10, 7, 5), a Queen shows that it protects, a Jack shows that it steals, and a one-off says what it does. Names may come from the theme (a Mythic King could have its own name), and the labels stay readable at phone size.
 - **In-game menu (done 2026-09-29).** A menu button on every game screen opens Rules, Card style, Home (the game stays saved; Resume picks it up) and New game (asks first).
+- **Card labels (shipped).** Cards on the table say what they're doing: a King shows the points its owner now needs to win (21, 14, 10, 7 or 5), a Queen shows it protects, a Jack on a stolen card shows it stole, and a glasses 8 shows it sees the hand. Tap a card in your hand and the action bar gives its name and what it does; the staging line and the card popover name it too. Every rank has a short name (the Ace is "Board Wipe", the 5 "Draw Two"), the Rules sheet uses the same names and wording, and a theme can rename any card. Labels stay readable at phone size and in both Classic and Mythic.
 - **Learn-as-you-play help.** A short rules screen, plus one line under each one-off that says what it does ("5: draw two", "9: send a card back to its owner's hand"). Aimed at a first-time player.
 - **Clearer recaps.** Every recap says what actually happened: which cards were drawn, and what a one-off did.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.

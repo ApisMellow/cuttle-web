@@ -230,7 +230,7 @@ for (const { width, height } of [
     const take = threes[threes.length - 1];
     await page.getByTestId(`scrap-pick-${take.scrapIndex}`).click();
     await expect(page.getByTestId('scrap-browser')).toHaveCount(0);
-    await expect(page.getByTestId('staging-bar')).toContainText(/^Play 3. as a one-off: take .+ from the scrap\./);
+    await expect(page.getByTestId('staging-bar')).toContainText(/^Recycle Play 3. as a one-off: take .+ from the scrap\./); // card labels: the staged 3's name, then the move
     const seqBeforeThree = await hook(page, (h) => h.seq());
     await page.getByTestId('staging-confirm').click();
     await passThePhone(page, 'Alice', 'Your response');
