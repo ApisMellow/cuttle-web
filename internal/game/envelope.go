@@ -140,14 +140,15 @@ type Envelope struct {
 	Seq          int           `json:"seq"`
 }
 
-// Error codes, §2.9.
+// Error codes, §2.9, as the bridge's plain strings (the typed Code values
+// live in errors.go).
 const (
-	codeIllegalMove     = "ILLEGAL_MOVE"
-	codeIndexOutOfRange = "INDEX_OUT_OF_RANGE"
-	codeBadRequest      = "BAD_REQUEST"
-	codeNoGame          = "NO_GAME"
-	codeNoLegalMoves    = "NO_LEGAL_MOVES"
-	codeInternal        = "INTERNAL"
+	codeIllegalMove     = string(CodeIllegalMove)
+	codeIndexOutOfRange = string(CodeIndexOutOfRange)
+	codeBadRequest      = string(CodeBadRequest)
+	codeNoGame          = "NO_GAME" // bridge-only: a Session always holds a game
+	codeNoLegalMoves    = string(CodeNoLegalMoves)
+	codeInternal        = string(CodeInternal)
 )
 
 // EngineError is the ok:false result (§2.7, §2.9).

@@ -178,6 +178,16 @@ that makes your list complete.
   `internal/wasm` is only the `syscall/js` shim (`main.go`, `js && wasm`)
   plus the empty host stub `main_host.go`. Change behaviour in
   `internal/game`; the shim holds no contract logic.
+- **Typed API (two-phone W2, SPEC §2.11).** `Session` (`session.go`) is
+  the server's handle on one game; `Bridge` is the JSON wrapper over the
+  same core (`applyMove`, `decodeSnapshot`, `buildEnvelope`). Put a new
+  rule or check in the core so both get it. `Session.Apply(seat, seq,
+  index)` refuses any seat but engine `Active` (`ErrNotYourTurn`) and any
+  seq but the current one (`ErrStale`). `ServerSnapshot` holds the full
+  game: it refuses JSON/text encoding and prints redacted; its bytes leave
+  only through `PersistBytes`, for the store. Only `Envelope` is
+  `ClientSafe`. The envelope renderer is a per-instance field (`render`),
+  never a package variable: sessions run in parallel under `-race`.
 - **Golden transcript.** `internal/game/golden_test.go` hashes every
   bridge call's JSON output over 64 seeded games against
   `testdata/golden/bridge-transcript.json`. A refactor that claims no
