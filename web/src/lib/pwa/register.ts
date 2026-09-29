@@ -6,6 +6,14 @@
 // that runs against it are unaffected.
 import { createUpdatePolicy, type UpdatePolicy, type UpdateScreen } from './update';
 
+/** sessionStorage key carrying a Rematch across the update reload. */
+export const REMATCH_KEY = 'cuttle-web:rematch-after-update';
+
+export interface PendingRematch {
+  names: [string, string];
+  dealer: 0 | 1 | undefined;
+}
+
 let policy: UpdatePolicy | null = null;
 let lastScreen: UpdateScreen = 'loading';
 
@@ -13,6 +21,52 @@ let lastScreen: UpdateScreen = 'loading';
 export function reportScreen(screen: UpdateScreen): void {
   lastScreen = screen;
   policy?.setScreen(screen);
+}
+
+/**
+ * Rematch is a safe point (the finished game is saved, none is in progress).
+ * If an update is waiting, saves the rematch details, starts the takeover
+ * and returns true: the caller must not start the game, because the page is
+ * about to reload and `takePendingRematch()` starts it there.
+ */
+export function applyUpdateAtRematch(rematch: PendingRematch): boolean {
+  if (!policy) return false;
+  try {
+    sessionStorage.setItem(REMATCH_KEY, JSON.stringify(rematch));
+  } catch {
+    return false;
+  }
+  if (policy.rematch()) return true;
+  clearPendingRematch();
+  return false;
+}
+
+function clearPendingRematch(): void {
+  try {
+    sessionStorage.removeItem(REMATCH_KEY);
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** On boot: the rematch a pre-update tap left behind, once; else null. */
+export function takePendingRematch(): PendingRematch | null {
+  let raw: string | null;
+  try {
+    raw = sessionStorage.getItem(REMATCH_KEY);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  clearPendingRematch();
+  try {
+    const v = JSON.parse(raw) as { names?: unknown; dealer?: unknown };
+    if (!Array.isArray(v.names) || v.names.length !== 2 || v.names.some((n) => typeof n !== 'string')) return null;
+    const dealer = v.dealer === 0 || v.dealer === 1 ? v.dealer : undefined;
+    return { names: [v.names[0], v.names[1]], dealer };
+  } catch {
+    return null;
+  }
 }
 
 function isTyping(): boolean {
@@ -34,6 +88,7 @@ export async function registerServiceWorker(): Promise<void> {
       // Offline, or the server is down: just try again later.
       registration?.update().catch(() => undefined);
     },
+    hasWaiting: () => registration?.waiting != null,
     isTyping,
     now: () => Date.now(),
   });
@@ -51,7 +106,20 @@ export async function registerServiceWorker(): Promise<void> {
       registration = r;
     },
   });
-  activateWaiting = () => void updateSW(false);
+  activateWaiting = () => {
+    // Straight to the waiting worker; workbox-window may not know about one
+    // it stopped watching for. Falls back to the plugin's own path.
+    const waiting = registration?.waiting;
+    if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
+    else void updateSW(false);
+  };
+
+  // workbox-window only wires its "controlling" handler when it saw the
+  // waiting worker itself, so listen directly. Only pages that already had a
+  // worker: a first install never reloads.
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => p.controllerChanged());
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') p.visible();

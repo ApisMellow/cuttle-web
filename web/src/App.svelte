@@ -28,7 +28,7 @@
   import HomeScreen from './lib/components/HomeScreen.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
-  import { reportScreen } from './lib/pwa/register';
+  import { applyUpdateAtRematch, reportScreen, takePendingRematch } from './lib/pwa/register';
   import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
   import { session } from './lib/stores/session.svelte';
@@ -59,6 +59,12 @@
     ensureEngine()
       .then(() => {
         engineStatus = 'ready';
+        // A Rematch tapped just before an update reload: play it now.
+        const pending = takePendingRematch();
+        if (pending !== null) {
+          session.setNames(pending.names[0], pending.names[1]);
+          void game.newGame(pending.dealer === undefined ? {} : { dealer: pending.dealer });
+        }
       })
       .catch((err: unknown) => {
         engineStatus = 'failed';
@@ -167,7 +173,12 @@
   // itself (game.svelte.ts `newGame()`), so a rematch needs no dealer
   // argument here — the alternation is entirely the store's existing
   // responsibility.
+  //
+  // R18: Rematch is the one safe point a player passes without visiting Home.
+  // If an update is waiting it is applied here (the page reloads), and the
+  // rematch starts on the reloaded page with the same names and dealer.
   function handleRematch(): void {
+    if (applyUpdateAtRematch({ names: [...session.names], dealer: session.nextDealer })) return;
     void game.newGame();
   }
 
