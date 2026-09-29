@@ -152,4 +152,46 @@ describe('settings store (SPEC §5.6 rule 5, §5.7)', () => {
       }
     });
   });
+
+  describe('issue #37: table mode', () => {
+    it('is off by default: normal pass-and-play', () => {
+      expect(new SettingsStore().tableMode).toBe(false);
+    });
+
+    it('persists under the settings key (never the game snapshot) and survives a simulated reload', () => {
+      const store = new SettingsStore();
+      store.setTableMode(true);
+      expect(store.tableMode).toBe(true);
+      expect(JSON.parse(localStorage.getItem(SETTINGS_KEY) as string).tableMode).toBe(true);
+      expect(localStorage.getItem('cuttle-web:game')).toBeNull();
+      expect(new SettingsStore().tableMode).toBe(true);
+      store.setTableMode(false);
+      expect(new SettingsStore().tableMode).toBe(false);
+    });
+
+    it('keeps the other settings, and is kept when they are saved', () => {
+      const store = new SettingsStore();
+      store.setThemeId('art-v1');
+      store.setTableMode(true);
+      store.setLastNames('Alice', 'Blake');
+      store.setRevealPreference('two-step');
+      const reloaded = new SettingsStore();
+      expect(reloaded.tableMode).toBe(true);
+      expect(reloaded.themeId).toBe('art-v1');
+      expect(reloaded.lastNames).toEqual(['Alice', 'Blake']);
+      expect(reloaded.revealPreference).toBe('two-step');
+    });
+
+    it('ignores a stored value that is not a boolean', () => {
+      for (const bad of ['true', 1, null, {}]) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify({ tableMode: bad }));
+        expect(new SettingsStore().tableMode).toBe(false);
+      }
+    });
+
+    it('saving table mode alone never pins the default card style', () => {
+      new SettingsStore().setTableMode(true);
+      expect(JSON.parse(localStorage.getItem(SETTINGS_KEY) as string).themeId).toBeUndefined();
+    });
+  });
 });

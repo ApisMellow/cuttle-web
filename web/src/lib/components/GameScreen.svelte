@@ -52,6 +52,7 @@
   import { resolveBoardTap, type TargetKey } from '../targetKey';
   import { DragGesture, dropKeyAt, dropTarget, targetKeyFromTestId, testIdForKey, type HandDrag } from '../dragDrop';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
+  import { screenRotated, toViewDelta } from '../tableMode';
   import { installTestHook } from '../testHook';
   import { clearImageFailures, getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
@@ -67,6 +68,26 @@
   import StagingBar from './StagingBar.svelte';
 
   const theme = $derived(getTheme(settings.themeId));
+
+  // ---- Table mode (issue #37, SPEC §5.10) ---------------------------------
+  // With the phone lying flat between the players, every screen addressed to
+  // player 2 (seat 1) is turned 180° here, at the game-screen root: the
+  // curtain screens, the counter prompt, the draw reveal, the board and every
+  // picker on it. Player 1's side is then always at the phone's bottom edge
+  // and player 2's at its top. Orientation only: what mounts behind which
+  // curtain is exactly as in normal pass-and-play.
+  //
+  // The setting is latched: this re-reads it only when the curtain, the
+  // viewer or the move count changes, so a change never turns the screen in
+  // the middle of a turn or a staged move. The turn itself is instant, so
+  // reduced motion needs nothing extra.
+  const tableLatched = $derived.by(() => {
+    void game.seq;
+    void game.curtain;
+    void game.viewer;
+    return untrack(() => settings.tableMode);
+  });
+  const rotated = $derived(screenRotated(tableLatched, game.curtain, game.viewer));
 
   /** The board's envelope: only at curtain `none` (never merely because one is held). */
   function boardEnvelope(): Envelope | null {
@@ -374,7 +395,10 @@
     if (step === null) return;
     const handIndex = gesture.handIndex as number;
     if (step === 'start' && !beginDrag(handIndex)) return;
-    drag = { handIndex, x: gesture.dx, y: gesture.dy };
+    // Issue #37: the gesture measures on the screen; the card moves in the
+    // (possibly turned) view's own frame. `elementFromPoint` on drop needs
+    // no such care: it takes screen coordinates and sees through transforms.
+    drag = { handIndex, ...toViewDelta(gesture.dx, gesture.dy, rotated) };
   }
 
   /** Selects the card as a tap would (unless it already is). False, and the gesture is dropped, if it can't be dragged. */
@@ -619,7 +643,12 @@
   onpointercancel={onDragPointercancel}
 />
 
-<div data-testid="game-screen" class="game-screen" bind:this={screenEl}>
+<div
+  data-testid="game-screen"
+  class={['game-screen', rotated && 'game-screen--rotated']}
+  data-table-rotated={rotated ? 'true' : 'false'}
+  bind:this={screenEl}
+>
   <h1 class="game-screen__sr-only">{session.names[0]} vs {session.names[1]}</h1>
 
   {#if withheld}
@@ -629,6 +658,7 @@
       revealPreference={settings.revealPreference}
       recapEntries={game.curtain.kind === 'recap' ? game.curtain.entries : []}
       viewer={game.curtain.kind === 'recap' ? game.curtain.to : null}
+      tableMode={tableLatched}
       onadvance={advanceCurtain}
       {theme}
     />
@@ -801,6 +831,18 @@
     background: var(--cu-ink);
     color: var(--cu-pearl);
     font-family: var(--cu-font-ui);
+  }
+
+  /* Issue #37 (SPEC §5.10): table mode turns player 2's screens. The screen
+     is exactly the viewport, so the turn about its centre maps it onto
+     itself. Its fixed-position overlays (curtain, prompt, menu, sheets) now
+     sit in this box instead of the viewport, which is the same rectangle,
+     and turn with it. The safe-area insets swap so the Dynamic Island and
+     the home indicator stay clear on the physical top and bottom edges. */
+  .game-screen--rotated {
+    --cu-safe-top: env(safe-area-inset-bottom, 0px);
+    --cu-safe-bottom: env(safe-area-inset-top, 0px);
+    transform: rotate(180deg);
   }
 
   /* Amended 2026-09-28 (playtest friction, design.md §4): on a desktop

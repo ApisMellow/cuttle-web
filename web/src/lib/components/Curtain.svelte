@@ -37,6 +37,8 @@
     /** Already filtered by the store (SPEC §4.6); Curtain never filters. */
     recapEntries: AppliedMove[];
     viewer: PlayerId | null;
+    /** Table mode (SPEC §5.10): "NAME's turn" heading, no pass prompt. */
+    tableMode?: boolean;
     onadvance: () => void;
     theme?: CardTheme;
   }
@@ -47,6 +49,7 @@
     revealPreference,
     recapEntries,
     viewer,
+    tableMode = false,
     onadvance,
     theme = getTheme(DEFAULT_THEME_ID),
   }: CurtainProps = $props();
@@ -68,7 +71,7 @@
     epochCounter += 1;
     switch (curtain.kind) {
       case 'handoff':
-        remembered = { to: curtain.to, label: handoffLabel(curtain.reason) };
+        remembered = { to: curtain.to, label: handoffLabel(curtain.reason, tableMode) };
         return { stage: 'handoff', to: curtain.to, label: remembered.label, epoch: epochCounter };
       case 'reveal': {
         const label = remembered !== null && remembered.to === curtain.to ? remembered.label : '';
@@ -90,6 +93,7 @@
         label={screen.label}
         stage={screen.stage}
         epoch={screen.epoch}
+        {tableMode}
         {revealPreference}
         {onadvance}
       />
