@@ -3,7 +3,7 @@
 A view of `docs/requirements.yaml`, which remains the single source of truth.
 Regenerate this file when the ledger changes; do not edit statuses here.
 
-Layers: `go unit` = `go test ./internal/wasm`; `bridge-smoke` =
+Layers: `go unit` = `go test ./internal/game`; `bridge-smoke` =
 `npm --prefix web run test:smoke`. The `verify` column is the ledger's
 required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 

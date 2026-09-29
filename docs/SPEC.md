@@ -36,10 +36,13 @@ P1a writes **no application code, no test code, no scaffolding.**
 cuttle-web/
   go.mod                        # module github.com/ApisMellow/cuttle-web
   main.go                       # A5: single binary, embed.FS serving web/dist
-  internal/wasm/                # NOT built into the server binary
-    main.go                     # //go:build js && wasm — the bridge (§2)
+  internal/game/                # importable bridge logic (two-phone W1, 2026-09-29)
+    bridge.go                   # held session, the seven calls (§2.4)
+    envelope.go                 # wire types, §2.8 normalization, §2.9 errors
     deal.go                     # bridge-side dealing (§2.6)
     view.go                     # bridge-side redaction (§3)
+  internal/wasm/                # NOT built into the server binary
+    main.go                     # //go:build js && wasm — the syscall/js shim over internal/game (§2)
   web/
     src/
       lib/bridge/               # TS side of the bridge boundary (§5.4)
@@ -244,7 +247,7 @@ interface NewGameOpts {
 Required algorithm — binding, because scenario reproducibility (§7.3) depends on every byte of it:
 
 ```go
-// internal/wasm/deal.go
+// internal/game/deal.go
 const dealStream = 0x9E3779B97F4A7C15 // fixed second PCG word; never vary it
 
 func dealNewGame(seed uint64, dealer engine.PlayerID) engine.GameState {
@@ -531,7 +534,7 @@ Two smaller contract notes for the same reason:
 
 ### 3.1 Where redaction happens, and why it matters
 
-**Redaction is performed in Go, inside the bridge, in `internal/wasm/view.go`.** The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
+**Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
 
 This is not defense-in-depth for its own sake. PRD §7 makes it a v1 obligation to v2: *"the UI consumes only the envelope + redacted views (never reaches into full state for opponent info)."* If redaction lives in TypeScript, v2 has to write it a second time in Go and the two will drift. Writing it once, Go-side, means the v2 server calls the identical `viewFor(state, viewerId)` and ships its output over the WebSocket. The transport becomes a swap, exactly as G4 requires.
 
@@ -1052,7 +1055,7 @@ interface Snapshot {
 - **The opening curtain is persisted too** *(amended 2026-09-28, W25 playtest fixes, merged `b8238db`; no `v` bump, the shape is unchanged)*. `newGame()` writes the snapshot with `viewer` = the first actor and `curtain` = the opening `handoff`. The decoder normally rejects a curtain other than `none` over an empty `history`; it now allows `handoff` with reason `turn` and `reveal` there, since those are the opening deal's. On restore, a curtain with no move behind it is treated as the opening deal's (§4.2).
 - **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, then to the last-used names in settings *(R10, 2026-09-28)*, so a reload with no saved game still shows the last names used. Those live under the settings key, never in this snapshot; the snapshot shape is unchanged.
 - **Version mismatch discards the snapshot** and returns to the home screen with a brief notice. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
-- **v1 → v2 migration** *(orchestrator ruling, 2026-09-28; supersedes "no migration code")*. v2 differs from v1 only in `AppliedMove.drawn` (§2.7); the engine's state layout is unchanged, so a v1 save is upgraded rather than discarded, and family-beta games survive the upgrade. `decodeSnapshot` accepts `v` ∈ {1, 2}: for v1 it adds `drawn: null` to every `history` entry and every recap-curtain entry (an entry that already carries `drawn` is not a real v1 save: malformed). The opaque `engineState` keeps its own v1 tag; the bridge's `restore` accepts engine-snapshot `v` ∈ {1, 2} and, for v1, injects `"drawn": null` into each raw history entry before the strict decode, then validates as usual. The next write is v2 inside and out. A migrated save shows no draw count for 5s resolved before the upgrade. Any other `v` is still a version mismatch. Evidence: a genuine base-commit v1 engine snapshot (`internal/wasm/testdata/snapshot-v1-bce9fb2.json`) and live saves at every curtain kind rewritten as v1 (`web/tests/unit/snapshot-migration.test.ts`).
+- **v1 → v2 migration** *(orchestrator ruling, 2026-09-28; supersedes "no migration code")*. v2 differs from v1 only in `AppliedMove.drawn` (§2.7); the engine's state layout is unchanged, so a v1 save is upgraded rather than discarded, and family-beta games survive the upgrade. `decodeSnapshot` accepts `v` ∈ {1, 2}: for v1 it adds `drawn: null` to every `history` entry and every recap-curtain entry (an entry that already carries `drawn` is not a real v1 save: malformed). The opaque `engineState` keeps its own v1 tag; the bridge's `restore` accepts engine-snapshot `v` ∈ {1, 2} and, for v1, injects `"drawn": null` into each raw history entry before the strict decode, then validates as usual. The next write is v2 inside and out. A migrated save shows no draw count for 5s resolved before the upgrade. Any other `v` is still a version mismatch. Evidence: a genuine base-commit v1 engine snapshot (`internal/game/testdata/snapshot-v1-bce9fb2.json`) and live saves at every curtain kind rewritten as v1 (`web/tests/unit/snapshot-migration.test.ts`).
 - **The session tally is not in the snapshot** (R3, PRD §4). *Amended 2026-09-29:* it survives a reload in `sessionStorage` under its own key (§5.3), keyed to the name pair, and dies with the tab. The snapshot shape is unchanged; a restored game restores the game, and the tally comes back through the names.
 - **The card style is not part of the snapshot** *(2026-09-28, round 8 themes)*. It lives in settings (§5.6 rule 5), so the same game saved under Classic and under Mythic is identical apart from `savedAt`, and a save made under either style resumes the same under the other.
 - "New game" from the menu requires a confirm before clearing (R4), and the confirm names the in-progress game. *(Built 2026-09-29: "Abandon `NAME` vs `NAME`?" with Cancel / Abandon, `cancel-abandon` / `confirm-abandon`, the same testids as the home and error screens; Abandon deals a new game behind the opening curtain, which overwrites the save.)*

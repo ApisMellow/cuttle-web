@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"encoding/json"
@@ -59,7 +59,7 @@ func snapshotOf(t *testing.T, st engine.GameState) string {
 
 func newGame42(t *testing.T) *Bridge {
 	t.Helper()
-	b := newBridge()
+	b := NewBridge()
 	okEnvelope(t, b.NewGame(`{"seed":"42","dealer":1}`))
 	return b
 }
@@ -127,7 +127,7 @@ func mustJSONNoT(v any) string {
 // ---------------------------------------------------------------------------
 
 func TestR1_1c_GoldenDealThroughBridge(t *testing.T) {
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.NewGame(`{"seed":"42","dealer":1,"names":["Alice","Blake"]}`))
 	want := []string{
 		"draw a card",
@@ -178,7 +178,7 @@ func TestSPEC2_4_ReadCallsDoNotMutate(t *testing.T) {
 func TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames(t *testing.T) {
 	wins, stalemates := 0, 0
 	for seed := uint64(1); seed <= 60; seed++ {
-		b := newBridge()
+		b := NewBridge()
 		var prevHistory []AppliedMove // unredacted, from the snapshot
 		final := playRandom(t, b, seed, func(env Envelope, _ string) {
 			if env.State.Viewer != env.State.Active {
@@ -262,7 +262,7 @@ func TestSPEC2_7_AppliedMoveRecordsPreState(t *testing.T) {
 		Active: engine.P1,
 		Phase:  engine.PhaseNormal,
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	idx := -1
 	for i, d := range env.Descriptions {
@@ -344,7 +344,7 @@ func TestSPEC2_4_SnapshotRestoreRoundTrip(t *testing.T) {
 		}
 	}
 
-	restored := newBridge()
+	restored := NewBridge()
 	got := okEnvelope(t, restored.Restore(snap, float64(b.game.state.Active)))
 	want := okEnvelope(t, b.LegalMoves())
 	if !reflect.DeepEqual(got, want) {
@@ -361,7 +361,7 @@ func TestSPEC2_4_SnapshotRestoreRoundTrip(t *testing.T) {
 }
 
 func TestSPEC2_6_SeedIsDecimalStringUint64(t *testing.T) {
-	b := newBridge()
+	b := NewBridge()
 	okEnvelope(t, b.NewGame(`{"seed":"18446744073709551615","dealer":0}`))
 	if got := decodeGeneric(t, b.Snapshot())["seed"]; got != "18446744073709551615" {
 		t.Fatalf("seed = %v", got)
@@ -372,7 +372,7 @@ func TestSPEC2_6_SeedIsDecimalStringUint64(t *testing.T) {
 
 func TestSPEC2_6_OmittedSeedAndDealerAreRandom(t *testing.T) {
 	values := []uint64{123456789, 3}
-	b := newBridge()
+	b := NewBridge()
 	b.random = func() (uint64, error) {
 		v := values[0]
 		values = values[1:]
@@ -388,13 +388,13 @@ func TestSPEC2_6_OmittedSeedAndDealerAreRandom(t *testing.T) {
 		t.Fatalf("random dealer deal wrong: %+v", env.State)
 	}
 	// The same seed/dealer given explicitly reproduces the same game.
-	again := newBridge()
+	again := NewBridge()
 	okEnvelope(t, again.NewGame(`{"seed":"123456789","dealer":1}`))
 	if again.LegalMoves() != b.LegalMoves() {
 		t.Fatal("explicit seed did not reproduce the random-seed game")
 	}
 
-	failing := newBridge()
+	failing := NewBridge()
 	failing.random = func() (uint64, error) { return 0, errors.New("no entropy") }
 	errCode(t, failing.NewGame(`{}`), "INTERNAL")
 }
@@ -404,7 +404,7 @@ func TestSPEC2_6_OmittedSeedAndDealerAreRandom(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSPEC2_9_NoGame(t *testing.T) {
-	b := newBridge()
+	b := NewBridge()
 	errCode(t, b.LegalMoves(), "NO_GAME")
 	errCode(t, b.Describe(), "NO_GAME")
 	errCode(t, b.Apply(0.0), "NO_GAME")
@@ -416,39 +416,39 @@ func TestSPEC2_9_BadRequest(t *testing.T) {
 	b := newGame42(t)
 	before := b.Snapshot()
 	for name, wire := range map[string]string{
-		"newGame non-string":       b.NewGame(42.0),
-		"newGame undefined":        b.NewGame(nil),
-		"newGame malformed":        b.NewGame(`{"seed":`),
-		"newGame not object":       b.NewGame(`[1]`),
-		"newGame trailing":         b.NewGame(`{"seed":"1"} {}`),
-		"newGame seed alpha":       b.NewGame(`{"seed":"abc"}`),
-		"newGame seed negative":    b.NewGame(`{"seed":"-1"}`),
-		"newGame seed empty":       b.NewGame(`{"seed":""}`),
-		"newGame dealer 2":         b.NewGame(`{"seed":"1","dealer":2}`),
-		"newGame dealer string":    b.NewGame(`{"seed":"1","dealer":"1"}`),
-		"newGame unknown field":    b.NewGame(`{"seed":"1","deck":[]}`),
-		"newGame names 3":          b.NewGame(`{"names":["a","b","c"]}`),
-		"apply string":             b.Apply("0"),
-		"apply fraction":           b.Apply(1.5),
-		"apply undefined":          b.Apply(nil),
-		"apply object":             b.Apply(unsupportedArg{Kind: "object"}),
-		"view 2":                   b.View(2.0),
-		"view string":              b.View("0"),
-		"view fraction":            b.View(0.5),
-		"restore viewer 2":         b.Restore(snapshotOf(t, engine.GameState{}), 2.0),
-		"restore viewer fraction":  b.Restore(snapshotOf(t, engine.GameState{}), 0.5),
-		"restore viewer string":    b.Restore(snapshotOf(t, engine.GameState{}), "0"),
-		"restore viewer missing":   b.Restore(snapshotOf(t, engine.GameState{}), nil),
-		"restore non-string":       b.Restore(1.0, 0.0),
-		"restore malformed":        b.Restore(`{`, 0.0),
-		"restore wrong version":    b.Restore(`{"v":3,"state":{},"history":[],"seed":"1","dealer":0}`, 0.0),
-		"restore missing state":    b.Restore(`{"v":2,"history":[],"seed":"1","dealer":0}`, 0.0),
-		"restore bad active":       b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1), 0.0),
-		"restore bad phase":        b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1), 0.0),
-		"restore rank 0 in hand":   b.Restore(snapshotOf(t, engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{{}}}}}), 0.0),
-		"restore history no index": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"by":0,"kind":0,"card":null,"targetCard":null,"drawn":null,"subKind":null,"description":"draw a card","seq":1}]`, 1), 0.0),
-		"restore subKind on draw":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":4,"card":null,"targetCard":null,"drawn":null,"description":"draw a card","seq":1}]`, 1), 0.0),
-		"restore bad history":      b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"targetCard":null,"drawn":null,"description":"draw a card","seq":2}]`, 1), 0.0),
+		"newGame non-string":             b.NewGame(42.0),
+		"newGame undefined":              b.NewGame(nil),
+		"newGame malformed":              b.NewGame(`{"seed":`),
+		"newGame not object":             b.NewGame(`[1]`),
+		"newGame trailing":               b.NewGame(`{"seed":"1"} {}`),
+		"newGame seed alpha":             b.NewGame(`{"seed":"abc"}`),
+		"newGame seed negative":          b.NewGame(`{"seed":"-1"}`),
+		"newGame seed empty":             b.NewGame(`{"seed":""}`),
+		"newGame dealer 2":               b.NewGame(`{"seed":"1","dealer":2}`),
+		"newGame dealer string":          b.NewGame(`{"seed":"1","dealer":"1"}`),
+		"newGame unknown field":          b.NewGame(`{"seed":"1","deck":[]}`),
+		"newGame names 3":                b.NewGame(`{"names":["a","b","c"]}`),
+		"apply string":                   b.Apply("0"),
+		"apply fraction":                 b.Apply(1.5),
+		"apply undefined":                b.Apply(nil),
+		"apply object":                   b.Apply(UnsupportedArg{Kind: "object"}),
+		"view 2":                         b.View(2.0),
+		"view string":                    b.View("0"),
+		"view fraction":                  b.View(0.5),
+		"restore viewer 2":               b.Restore(snapshotOf(t, engine.GameState{}), 2.0),
+		"restore viewer fraction":        b.Restore(snapshotOf(t, engine.GameState{}), 0.5),
+		"restore viewer string":          b.Restore(snapshotOf(t, engine.GameState{}), "0"),
+		"restore viewer missing":         b.Restore(snapshotOf(t, engine.GameState{}), nil),
+		"restore non-string":             b.Restore(1.0, 0.0),
+		"restore malformed":              b.Restore(`{`, 0.0),
+		"restore wrong version":          b.Restore(`{"v":3,"state":{},"history":[],"seed":"1","dealer":0}`, 0.0),
+		"restore missing state":          b.Restore(`{"v":2,"history":[],"seed":"1","dealer":0}`, 0.0),
+		"restore bad active":             b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1), 0.0),
+		"restore bad phase":              b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1), 0.0),
+		"restore rank 0 in hand":         b.Restore(snapshotOf(t, engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{{}}}}}), 0.0),
+		"restore history no index":       b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"by":0,"kind":0,"card":null,"targetCard":null,"drawn":null,"subKind":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore subKind on draw":        b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":4,"card":null,"targetCard":null,"drawn":null,"description":"draw a card","seq":1}]`, 1), 0.0),
+		"restore bad history":            b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"card":null,"targetCard":null,"drawn":null,"description":"draw a card","seq":2}]`, 1), 0.0),
 		"restore targetCard missing key": b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"description":"draw a card","seq":1}]`, 1), 0.0),
 		"restore targetCard wrong type":  b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"history":[]`, `"history":[{"index":0,"by":0,"kind":0,"subKind":null,"card":null,"targetCard":"9C","drawn":null,"description":"draw a card","seq":1}]`, 1), 0.0),
 		// S2 (review, round 2 cycle 1): AppliedMove.UnmarshalJSON's own
@@ -492,7 +492,7 @@ func TestSPEC2_9_IllegalMove(t *testing.T) {
 		Phase:   engine.PhaseSevenChoosing,
 		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Five, card.Hearts)}},
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	want := []string{"7: play 5♥ as one-off", "7: play 5♥ as point card"}
 	if !reflect.DeepEqual(env.Descriptions, want) {
@@ -527,7 +527,7 @@ func TestSPEC2_9_NoLegalMoves(t *testing.T) {
 	if len(engine.LegalMoves(st)) != 0 {
 		t.Fatal("precondition: engine must offer no moves here")
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 1.0))
 	if len(env.LegalMoves) != 0 || env.State.Phase != engine.PhaseAwaitingDiscard {
 		t.Fatalf("restore envelope = %+v", env)
@@ -548,7 +548,7 @@ func TestSPEC2_9_NoLegalMoves(t *testing.T) {
 
 func TestR2_2b_ThreePassesReachStalemateThroughBridge(t *testing.T) {
 	st := engine.GameState{Players: [2]engine.PlayerState{{}, {}}, Phase: engine.PhaseNormal}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	for i := 0; i < 3; i++ {
 		if !reflect.DeepEqual(env.Descriptions, []string{"pass"}) || env.State.Stalemate {
@@ -570,7 +570,7 @@ func TestR2_2b_ThreePassesReachStalemateThroughBridge(t *testing.T) {
 // redacted state never contains the opponent's hand without glasses.
 func TestR7_3b_SampledGamesLeakNoDeckOrHiddenHand(t *testing.T) {
 	for seed := uint64(100); seed < 130; seed++ {
-		b := newBridge()
+		b := NewBridge()
 		playRandom(t, b, seed, func(Envelope, string) {
 			held := b.game.state
 			for _, viewer := range []engine.PlayerID{engine.P1, engine.P2} {
@@ -614,9 +614,9 @@ func TestR7_4b_NullVersusEmptySurvivesSnapshotRoundTrip(t *testing.T) {
 		{visible, `"handCount":0,"hand":[]`},
 		{engine.GameState{Players: [2]engine.PlayerState{{}, {}}, Deck: []card.Card{c(card.Two, card.Spades)}}, `"handCount":0,"hand":null`},
 	} {
-		first := newBridge()
+		first := NewBridge()
 		okEnvelope(t, first.Restore(snapshotOf(t, tc.state), 0.0))
-		second := newBridge()
+		second := NewBridge()
 		okEnvelope(t, second.Restore(first.Snapshot(), 0.0))
 		if wire := second.View(0.0); !strings.Contains(wire, tc.want) {
 			t.Fatalf("after snapshot round trip want %s in %s", tc.want, wire)
@@ -647,7 +647,7 @@ func TestSPEC3_2_IndexRedactedForNonMover(t *testing.T) {
 			Active: engine.P1,
 			Phase:  engine.PhaseNormal,
 		}
-		b := newBridge()
+		b := NewBridge()
 		env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 		want := []string{"draw a card", "play 3♣ as one-off", "play 3♣ as one-off", "play 3♣ as one-off", "play 3♣ as point card"}
 		if !reflect.DeepEqual(env.Descriptions, want) {
@@ -698,7 +698,7 @@ func TestSPEC2_7_SubKindOnAppliedMove(t *testing.T) {
 		Phase:   engine.PhaseSevenChoosing,
 		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Five, card.Hearts)}},
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	if env.Descriptions[0] != "7: play 5♥ as one-off" {
 		t.Fatalf("precondition: %q", env.Descriptions)
@@ -749,7 +749,7 @@ func TestSPEC2_9_RestorePendingMatchesPhase(t *testing.T) {
 		if needs {
 			good.Pending = pending
 		}
-		if m := decodeGeneric(t, newBridge().Restore(snapshotOf(t, good), 0.0)); m["ok"] != true {
+		if m := decodeGeneric(t, NewBridge().Restore(snapshotOf(t, good), 0.0)); m["ok"] != true {
 			t.Fatalf("phase %d: consistent pending rejected: %v", phase, m)
 		}
 	}
@@ -766,7 +766,7 @@ func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
 	moverHand := b.game.state.Players[engine.P1].Hand
 
 	// Mid-curtain reload: the mover still holds the phone.
-	moverWire := newBridge().Restore(snap, 0.0)
+	moverWire := NewBridge().Restore(snap, 0.0)
 	mover := okEnvelope(t, moverWire)
 	if mover.State.Viewer != engine.P1 || len(mover.LegalMoves) != 0 {
 		t.Fatalf("mover restore: viewer %d moves %d", mover.State.Viewer, len(mover.LegalMoves))
@@ -778,7 +778,7 @@ func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
 	}
 
 	// Post-reveal reload: the actor holds the phone and sees their own hand.
-	actorWire := newBridge().Restore(snap, 1.0)
+	actorWire := NewBridge().Restore(snap, 1.0)
 	actor := okEnvelope(t, actorWire)
 	if actor.State.Viewer != engine.P2 || !reflect.DeepEqual(actor.State.You.Hand, incoming) || len(actor.LegalMoves) == 0 {
 		t.Fatalf("actor restore: %+v", actor.State)
@@ -803,7 +803,7 @@ func TestSPEC2_4_RestoreReturnsNamedViewer(t *testing.T) {
 // whoever starts the game is the first player, no opening curtain.
 func TestSPEC2_4_NewGameReturnsFirstActorView(t *testing.T) {
 	for _, dealer := range []int{0, 1} {
-		b := newBridge()
+		b := NewBridge()
 		env := okEnvelope(t, b.NewGame(mustJSON(t, map[string]any{"seed": "42", "dealer": dealer})))
 		first := engine.PlayerID(dealer).Other()
 		if env.State.Viewer != first || env.State.Active != first || len(env.LegalMoves) == 0 || len(env.State.You.Hand) != 5 {
@@ -818,7 +818,7 @@ func TestSPEC2_9_CommitRequiresActorEnvelope(t *testing.T) {
 	b := newGame42(t)
 	before := b.Snapshot()
 	snap := func() string {
-		s := newBridge()
+		s := NewBridge()
 		okEnvelope(t, s.NewGame(`{"seed":"7","dealer":0}`))
 		return s.Snapshot()
 	}()
@@ -853,7 +853,7 @@ func TestSPEC2_7_SubKindNullForDeadEndSevenPick(t *testing.T) {
 		Phase:   engine.PhaseSevenChoosing,
 		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Seven, card.Hearts), Revealed: []card.Card{c(card.Jack, card.Diamonds), c(card.Jack, card.Spades)}},
 	}
-	b := newBridge()
+	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	if env.Descriptions[0] != "7: no legal play — scrap J♦" {
 		t.Fatalf("precondition: %q", env.Descriptions)
@@ -862,5 +862,5 @@ func TestSPEC2_7_SubKindNullForDeadEndSevenPick(t *testing.T) {
 	if after.LastMove.Kind != engine.MoveSevenPick || after.LastMove.SubKind != nil {
 		t.Fatalf("dead-end SevenPick: %+v", after.LastMove)
 	}
-	okEnvelope(t, newBridge().Restore(b.Snapshot(), 0.0))
+	okEnvelope(t, NewBridge().Restore(b.Snapshot(), 0.0))
 }

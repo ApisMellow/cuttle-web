@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"bytes"
@@ -233,6 +233,13 @@ func errorJSON(code, message string, detail map[string]any) string {
 		out, _ = json.Marshal(EngineError{OK: false, Code: codeInternal, Message: "error encoding failed: " + err.Error()})
 	}
 	return string(out)
+}
+
+// InternalErrorJSON renders an INTERNAL EngineError (§2.9). A front end
+// uses it for failures outside a Bridge method, such as a panic while
+// converting arguments at the WASM boundary.
+func InternalErrorJSON(message string) string {
+	return errorJSON(codeInternal, message, nil)
 }
 
 // encode marshals a success value, converting a marshal failure to INTERNAL.

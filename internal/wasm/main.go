@@ -1,23 +1,26 @@
 //go:build js && wasm
 
 // Package main is the WASM bridge (SPEC §2). This file is only the
-// syscall/js shim: it converts JS arguments, calls the host-testable Bridge
-// in bridge.go, and returns the JSON string it produces. All contract logic
-// (envelope, normalization, redaction, errors) lives in untagged files.
+// syscall/js shim: it converts JS arguments, calls the host-testable
+// game.Bridge in internal/game, and returns the JSON string it produces.
+// All contract logic (envelope, normalization, redaction, errors) lives in
+// internal/game.
 package main
 
 import (
 	"fmt"
 	"syscall/js"
+
+	"github.com/ApisMellow/cuttle-web/internal/game"
 )
 
 func main() {
-	registerBridgeFunctions(newBridge())
+	registerBridgeFunctions(game.NewBridge())
 	js.Global().Set("__cuttleReady", js.ValueOf(true))
 	select {} // block forever — MUST be last (§2.3); returning kills every registered function
 }
 
-func registerBridgeFunctions(b *Bridge) {
+func registerBridgeFunctions(b *game.Bridge) {
 	register("__cuttleNewGame", func(args []js.Value) string { return b.NewGame(argAt(args, 0)) })
 	register("__cuttleLegalMoves", func([]js.Value) string { return b.LegalMoves() })
 	register("__cuttleApply", func(args []js.Value) string { return b.Apply(argAt(args, 0)) })
@@ -34,7 +37,7 @@ func register(name string, fn func(args []js.Value) string) {
 	js.Global().Set(name, js.FuncOf(func(_ js.Value, args []js.Value) (result any) {
 		defer func() {
 			if r := recover(); r != nil {
-				result = errorJSON(codeInternal, fmt.Sprintf("recovered panic in %s: %v", name, r), nil)
+				result = game.InternalErrorJSON(fmt.Sprintf("recovered panic in %s: %v", name, r))
 			}
 		}()
 		return fn(args)
@@ -42,7 +45,7 @@ func register(name string, fn func(args []js.Value) string) {
 }
 
 // argAt converts the i-th JS argument to the Bridge argument convention
-// documented on Bridge.
+// documented on game.Bridge.
 func argAt(args []js.Value, i int) any {
 	if i >= len(args) {
 		return nil
@@ -58,6 +61,6 @@ func argAt(args []js.Value, i int) any {
 	case js.TypeUndefined, js.TypeNull:
 		return nil
 	default:
-		return unsupportedArg{Kind: v.Type().String()}
+		return game.UnsupportedArg{Kind: v.Type().String()}
 	}
 }

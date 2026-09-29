@@ -89,6 +89,10 @@ per section so a later batch can see the reasoning without re-deriving it.
   three §1.3 files. `main.go` is only the `syscall/js` shim. It converts JS
   arguments (string → string, number → float64, undefined/null/missing → nil,
   anything else → an "unsupported" marker) and returns the Bridge's string.
+  *(Superseded in layout by two-phone W1, 2026-09-29: every untagged file
+  above, with its tests and `testdata/`, now lives in `internal/game`
+  (package `game`). `internal/wasm` keeps only `main.go` and the host stub.
+  Behaviour is unchanged, pinned by `internal/game/golden_test.go`.)*
 
 - **Which viewer each call returns (§2.4, §2.7; ApisMellow-approved change,
   Batch 1 follow-up).**
