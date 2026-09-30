@@ -23,7 +23,6 @@
   import type { AppliedMove, PlayerId } from '../bridge/schema';
   import { formatRecapLines, recapCards } from '../recap';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
-  import { game } from '../stores/game.svelte';
   import { DEFAULT_THEME_ID, getTheme } from '../theme';
   import type { CardTheme } from '../theme/types';
 
@@ -38,14 +37,15 @@
      * stops even when the one-off is older than this recap, and a Jack
      * steal can say it took back the actor's own card. Public (every `index`
      * is stripped behind a curtain).
-     * Defaults to the game store's.
+     * GameScreen passes its table source's history through Curtain (W10);
+     * omitted, the recap has only its own entries.
      */
     history?: readonly AppliedMove[];
   }
 
   let { entries, viewer, names, onadvance, theme = getTheme(DEFAULT_THEME_ID), history }: RecapPanelProps = $props();
 
-  const fullHistory = $derived(history ?? game.history);
+  const fullHistory = $derived(history ?? []);
 
   /** SPEC §4.6: "At most the last 6 entries, oldest first." */
   const MAX_VISIBLE = 6;

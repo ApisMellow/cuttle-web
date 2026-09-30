@@ -2,8 +2,15 @@
   // SPEC §5.2 GameScreen — the board host; owns the curtain overlay (P2 W13).
   //
   // Composes Board, Curtain, StagingBar, AmbiguityChooser and CounterPrompt
-  // against the game store and one StagingStore. Implements no rule: every
+  // against a `TableSource` and one StagingStore. Implements no rule: every
   // legality question is answered by the envelope's `legalMoves`.
+  //
+  // Two-phone W10 (docs/two-phone-plan.md §7): the source arrives as the
+  // `source` prop, never from the `game` singleton, so the online store can
+  // drive this same screen. Pass-and-play passes `game` (App.svelte). While
+  // `source.pending` is true (a move sent, its result not yet in; the local
+  // store is never pending) the board is inert, Confirm is disabled, and no
+  // path here calls `source.apply` (`applyMove`).
   //
   // What mounts, by curtain kind (SPEC §4.2, §4.5; AGENTS.md "Redaction"):
   //   handoff / reveal / recap -> Curtain only. The board is NOT in the DOM.
@@ -15,11 +22,11 @@
   //   none                     -> Board + the action bar (+ AmbiguityChooser).
   //   result                   -> never reached here; App routes to ResultScreen.
   //
-  // Issue #27 draw reveal (SPEC §4.7): while `game.drawReveal` is up and the
+  // Issue #27 draw reveal (SPEC §4.7): while `source.drawReveal` is up and the
   // exposed envelope is its drawer's own, at `none` or an `ack` (never a
   // withheld curtain), DrawRevealPanel takes the place of the board or the
   // counter prompt. Continuing (tap, key, or 3 s) calls
-  // `game.dismissDrawReveal()`, which brings the board, the counter prompt,
+  // `source.dismissDrawReveal()`, which brings the board, the counter prompt,
   // or (before the pass) the saved handoff. Before the pass it gets only the
   // drawn cards; the menu (`menuOpen`) pauses its 3 s wait.
   //
@@ -45,10 +52,10 @@
   import { cardEffectLine, cardName } from '../cardText';
   import { MoveKind, Phase } from '../enums';
   import { counterPromptEntries, discardPromptLine, lastMoveLine, optionContext, plainMoveText, stagedHeading } from '../recap';
-  import { game } from '../stores/game.svelte';
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
   import { StagingStore, type StagingEnv } from '../stores/staging.svelte';
+  import type { TableSource } from '../stores/tableSource';
   import { resolveBoardTap, type TargetKey } from '../targetKey';
   import { DragGesture, dropKeyAt, dropTarget, targetKeyFromTestId, testIdForKey, type HandDrag } from '../dragDrop';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
@@ -67,7 +74,25 @@
   import SevenRevealPanel from './SevenRevealPanel.svelte';
   import StagingBar from './StagingBar.svelte';
 
+  interface GameScreenProps {
+    /** The game this screen shows and moves (W10). Fixed for the component's life. */
+    source: TableSource;
+  }
+
+  let { source }: GameScreenProps = $props();
+
   const theme = $derived(getTheme(settings.themeId));
+
+  /**
+   * W10: the single path from this screen to `source.apply`. Refuses while a
+   * move is already in flight, so no second move is ever sent before the
+   * first one's result is in (the local store is never pending, so for
+   * pass-and-play this is `source.apply` exactly).
+   */
+  function applyMove(index: number): Promise<void> {
+    if (source.pending) return Promise.resolve();
+    return source.apply(index);
+  }
 
   // ---- Table mode (issue #37, SPEC §5.10) ---------------------------------
   // With the phone lying flat between the players, every screen addressed to
@@ -82,16 +107,16 @@
   // the middle of a turn or a staged move. The turn itself is instant, so
   // reduced motion needs nothing extra.
   const tableLatched = $derived.by(() => {
-    void game.seq;
-    void game.curtain;
-    void game.viewer;
+    void source.seq;
+    void source.curtain;
+    void source.viewer;
     return untrack(() => settings.tableMode);
   });
-  const rotated = $derived(screenRotated(tableLatched, game.curtain, game.viewer));
+  const rotated = $derived(screenRotated(tableLatched, source.curtain, source.viewer));
 
   /** The board's envelope: only at curtain `none` (never merely because one is held). */
   function boardEnvelope(): Envelope | null {
-    return game.curtain.kind === 'none' ? game.envelope : null;
+    return source.curtain.kind === 'none' ? source.envelope : null;
   }
 
   function stagingEnv(): StagingEnv | null {
@@ -119,7 +144,9 @@
     return view.sevenRevealed;
   }
 
-  const staging = new StagingStore(stagingEnv, (index) => game.apply(index));
+  const staging = new StagingStore(stagingEnv, applyMove);
+  // W10: nothing on the board takes a tap while a move is in flight.
+  const boardInert = $derived(staging.inert || source.pending);
 
   // SPEC §5.3: staging clears on every apply and every viewer change.
   // The browse sheet closes on the same boundaries.
@@ -131,9 +158,9 @@
   // never survives a curtain.
   let notice = $state<string | null>(null);
   $effect(() => {
-    void game.viewer;
-    void game.seq;
-    void game.curtain.kind;
+    void source.viewer;
+    void source.seq;
+    void source.curtain.kind;
     untrack(() => {
       endDrag();
       staging.reset();
@@ -146,7 +173,7 @@
   // failure gets retried and the next player never inherits the previous
   // player's fallbacks.
   $effect(() => {
-    if (game.curtain.kind === 'handoff') untrack(clearImageFailures);
+    if (source.curtain.kind === 'handoff') untrack(clearImageFailures);
   });
 
   const board = $derived(boardEnvelope());
@@ -163,11 +190,11 @@
    * drawn indices marked.
    */
   const drawReveal = $derived.by((): { hand: Card[]; indices: number[] } | null => {
-    const reveal = game.drawReveal;
-    const env = game.envelope;
-    const kind = game.curtain.kind;
+    const reveal = source.drawReveal;
+    const env = source.envelope;
+    const kind = source.curtain.kind;
     if (reveal === null || env === null || (kind !== 'none' && kind !== 'ack')) return null;
-    if (env.state.viewer !== reveal.to || game.viewer !== reveal.to) return null;
+    if (env.state.viewer !== reveal.to || source.viewer !== reveal.to) return null;
     const hand = env.state.you.hand;
     if (!reveal.beforePass) return { hand, indices: reveal.indices };
     const drawnCards = reveal.indices.flatMap((i) => (hand[i] === undefined ? [] : [hand[i]]));
@@ -175,7 +202,7 @@
   });
   const revealed = $derived(board === null ? null : sevenCards(board));
   const withheld = $derived(
-    game.curtain.kind === 'handoff' || game.curtain.kind === 'reveal' || game.curtain.kind === 'recap',
+    source.curtain.kind === 'handoff' || source.curtain.kind === 'reveal' || source.curtain.kind === 'recap',
   );
 
   // R9.3 (W21): the dimmed-card detail popover. `staging.inspect` is a hand
@@ -201,10 +228,10 @@
   const lastMoveText = $derived.by(() => {
     if (board === null) return '';
     if (staging.discard !== null) {
-      const prompt = discardPromptLine(game.history, session.names, staging.discard.need);
+      const prompt = discardPromptLine(source.history, session.names, staging.discard.need);
       if (prompt !== '') return prompt;
     }
-    return lastMoveLine(game.history, board.state.viewer, session.names);
+    return lastMoveLine(source.history, board.state.viewer, session.names);
   });
 
   // Plain text for one of the viewer's own options (SPEC §4.6, §6.4). A 9
@@ -308,6 +335,9 @@
   function onBoardTap(key: TargetKey): void {
     const viewer = board?.state.viewer;
     if (viewer === undefined || board === null) return;
+    // W10: the 7's reveal tray and a drag reach here without Board's inert
+    // check; a move in flight takes no tap from anywhere.
+    if (source.pending) return;
     if (!freshKey()) {
       keyboardActivation = false;
       return;
@@ -369,7 +399,7 @@
     return (
       board !== null &&
       handIndex < board.state.you.hand.length &&
-      !staging.inert &&
+      !boardInert &&
       staging.state !== 'staged' &&
       staging.chooser === null &&
       staging.scrapPick === null &&
@@ -528,7 +558,7 @@
     void staging.chooser;
     void staging.scrapPick;
     void browsingScrap;
-    void game.seq;
+    void source.seq;
     void tick().then(() => {
       // Keyboard players only: a touch or mouse player has no focus to
       // lose, and moving it would scroll the board under their finger.
@@ -542,7 +572,7 @@
     // R6: with nothing selected, the scrap pile opens the browser. When the
     // scrap is a lit target (a dead-end 7) or a card is selected, the tap
     // belongs to staging (SPEC §6.1: an unlit tap clears the selection).
-    if (key === 'scrap' && staging.state === 'idle' && !staging.highlighted.has('scrap') && !staging.inert) {
+    if (key === 'scrap' && staging.state === 'idle' && !staging.highlighted.has('scrap') && !boardInert) {
       browsingScrap = true;
       return;
     }
@@ -555,17 +585,17 @@
   }
 
   function advanceCurtain(): void {
-    game.advanceCurtain().catch(report);
+    source.advanceCurtain().catch(report);
   }
 
   // ---- CounterPrompt (SPEC §4.3) -----------------------------------------
   // The counter window only (ruling 2026-09-29): the entries come from
   // history, the options are the window's Counter moves.
-  const ackTo = $derived<PlayerId | null>(game.curtain.kind === 'ack' ? game.curtain.to : null);
-  const ackEntries = $derived(ackTo === null ? [] : counterPromptEntries(game.history));
+  const ackTo = $derived<PlayerId | null>(source.curtain.kind === 'ack' ? source.curtain.to : null);
+  const ackEntries = $derived(ackTo === null ? [] : counterPromptEntries(source.history));
   const counterOptions = $derived.by(() => {
-    const curtain = game.curtain;
-    const env = game.envelope;
+    const curtain = source.curtain;
+    const env = source.envelope;
     if (curtain.kind !== 'ack' || env === null) return [];
     const out: { index: number; description: string }[] = [];
     env.legalMoves.forEach((m, index) => {
@@ -575,15 +605,15 @@
   });
 
   function resolveAck(): void {
-    const curtain = game.curtain;
+    const curtain = source.curtain;
     if (curtain.kind !== 'ack') return;
-    const env = game.envelope;
+    const env = source.envelope;
     const decline = env?.legalMoves.findIndex((m) => m.Kind === MoveKind.Decline) ?? -1;
-    if (decline >= 0) game.apply(decline).catch(report);
+    if (decline >= 0) applyMove(decline).catch(report);
   }
 
   function applyCounter(index: number): void {
-    game.apply(index).catch(report);
+    applyMove(index).catch(report);
   }
 
   // ---- In-game menu (SPEC §5.2, §5.5 R17.2, §5.6 rule 5) ------------------
@@ -609,24 +639,26 @@
   // nothing. Resume on the home screen restores it like a reload would.
   function menuHome(): void {
     menuOpen = false;
-    game.goHome();
+    source.goHome();
   }
 
   // R4.3: only after GameMenu's confirm, which names the game.
+  // TODO(W12): online, New game means leave/rematch; gate it while
+  // `source.pending`. Ungated for now (the local store is never pending).
   function menuNewGame(): void {
     menuOpen = false;
-    game.newGame().catch(report);
+    source.newGame().catch(report);
   }
 
   // ---- Test hook (SPEC §6.5), compiled out of production -----------------
   $effect(() => {
     if (!import.meta.env.DEV) return;
     return installTestHook({
-      curtain: () => game.curtain,
-      envelope: () => game.envelope,
-      viewer: () => game.viewer,
-      seq: () => game.seq,
-      newGame: (seed, dealer) => game.newGame({ seed, dealer }),
+      curtain: () => source.curtain,
+      envelope: () => source.envelope,
+      viewer: () => source.viewer,
+      seq: () => source.seq,
+      newGame: (seed, dealer) => source.newGame({ seed, dealer }),
     });
   });
 </script>
@@ -653,11 +685,12 @@
 
   {#if withheld}
     <Curtain
-      curtain={game.curtain}
+      history={source.history}
+      curtain={source.curtain}
       names={session.names}
       revealPreference={settings.revealPreference}
-      recapEntries={game.curtain.kind === 'recap' ? game.curtain.entries : []}
-      viewer={game.curtain.kind === 'recap' ? game.curtain.to : null}
+      recapEntries={source.curtain.kind === 'recap' ? source.curtain.entries : []}
+      viewer={source.curtain.kind === 'recap' ? source.curtain.to : null}
       tableMode={tableLatched}
       onadvance={advanceCurtain}
       {theme}
@@ -668,7 +701,7 @@
       drawn={drawReveal.indices}
       reducedMotion={settings.reducedMotion}
       paused={menuOpen}
-      oncontinue={() => game.dismissDrawReveal()}
+      oncontinue={() => source.dismissDrawReveal()}
       {theme}
     />
   {:else if ackTo !== null}
@@ -679,6 +712,7 @@
       options={counterOptions}
       onresolve={resolveAck}
       oncounter={applyCounter}
+      disabled={source.pending}
       {theme}
     />
   {:else if board !== null}
@@ -694,7 +728,7 @@
       staged={staging.staged}
       dimmedHand={staging.dimmedHand}
       selectedHand={staging.selectedHand}
-      inert={staging.inert}
+      inert={boardInert}
       {deckEnabled}
       ontap={onBoardTap}
       ontapblank={() => staging.clearSelection()}
@@ -736,7 +770,7 @@
         <StagingBar
           description={optionText(staging.stagedIndex, staging.stagedDescription)}
           title={stagedTitle}
-          disabled={staging.inert}
+          disabled={boardInert}
           onconfirm={fresh(() => {
             staging.confirm().catch(report);
           })}
@@ -752,7 +786,13 @@
           <span class="game-screen__hint-effect" data-card-label="effect">{hint.effect}</span>
         </p>
       {:else if staging.passAvailable}
-        <button type="button" class="game-screen__pass" data-testid="pass" onclick={fresh(() => staging.tap('pass'))}>
+        <button type="button" class="game-screen__pass" data-testid="pass"
+          disabled={boardInert}
+          onclick={fresh(() => {
+            if (boardInert) return;
+            staging.tap('pass');
+          })}
+        >
           Pass
         </button>
       {:else if notice !== null}
@@ -971,5 +1011,10 @@
     color: var(--cu-on-accent, #241c2b);
     font-size: var(--cu-text-md, 16px);
     cursor: pointer;
+  }
+
+  .game-screen__pass:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 </style>
