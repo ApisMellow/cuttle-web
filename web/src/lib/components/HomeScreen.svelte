@@ -21,12 +21,26 @@
   // explicit tap on Resume, per this round's brief).
   import { untrack } from 'svelte';
 
+  import type { OnlineActions } from '../online/actions';
+  import { getOnlineActions, onlineAvailable } from '../online/provider';
   import { game } from '../stores/game.svelte';
+  import { online } from '../stores/online.svelte';
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
   import { listThemeChoices, vectorTheme } from '../theme';
   import RulesButton from './RulesButton.svelte';
+
+  interface Props {
+    /** Two-phone play. Defaults to the app's actions; tests pass a fake. */
+    actions?: OnlineActions;
+    /** Whether Play on two phones is offered at all (no server configured: hidden). */
+    onlineEnabled?: boolean;
+  }
+  let { actions = getOnlineActions(), onlineEnabled = onlineAvailable() }: Props = $props();
+
+  // One online game per phone: a stored seat replaces Create and Join with Resume.
+  const savedSeat = untrack(() => actions.savedSeat());
 
   let name0 = $state('');
   let name1 = $state('');
@@ -141,16 +155,69 @@
     <p class="home-screen__notice" role="status">{game.notice}</p>
   {/if}
 
-  <div class="home-screen__names">
-    <label class="home-screen__field">
-      <span>Player 1 name</span>
-      <input data-testid="name-input-0" type="text" placeholder="Player 1" bind:value={name0} />
+  <!-- Mode 1 and 2: one phone. Table mode stays a switch under Pass and play,
+       because it only changes how that one phone is held. -->
+  <section class="home-screen__mode" aria-labelledby="mode-pass-play" data-testid="mode-pass-play">
+    <h2 id="mode-pass-play" class="home-screen__mode-title">Pass and play</h2>
+    <p class="home-screen__mode-note">Two players, one phone.</p>
+
+    <div class="home-screen__names">
+      <label class="home-screen__field">
+        <span>Player 1 name</span>
+        <input data-testid="name-input-0" type="text" placeholder="Player 1" bind:value={name0} />
+      </label>
+      <label class="home-screen__field">
+        <span>Player 2 name</span>
+        <input data-testid="name-input-1" type="text" placeholder="Player 2" bind:value={name1} />
+      </label>
+    </div>
+
+    <!-- Issue #37, SPEC §5.10: a settings-store preference, never saved in the
+         game snapshot. A game in progress picks it up at its next curtain. -->
+    <label class="home-screen__toggle" data-testid="table-mode-toggle">
+      <input
+        type="checkbox"
+        checked={settings.tableMode}
+        onchange={(event) => settings.setTableMode(event.currentTarget.checked)}
+      />
+      <span>Table mode: phone lies flat between you</span>
     </label>
-    <label class="home-screen__field">
-      <span>Player 2 name</span>
-      <input data-testid="name-input-1" type="text" placeholder="Player 2" bind:value={name1} />
-    </label>
-  </div>
+
+    <div class="home-screen__actions">
+      {#if hasSnapshot}
+        <button type="button" data-testid="resume" class="home-screen__button" onclick={handleResume}>
+          Resume
+        </button>
+      {/if}
+      <button type="button" data-testid="new-game" class="home-screen__button home-screen__button--primary" onclick={handleNewGameClick}>
+        New game
+      </button>
+    </div>
+  </section>
+
+  {#if onlineEnabled}
+    <section class="home-screen__mode" aria-labelledby="mode-online" data-testid="mode-online">
+      <h2 id="mode-online" class="home-screen__mode-title">Play on two phones</h2>
+      {#if savedSeat}
+        <p class="home-screen__mode-note">You have a game in progress.</p>
+        <div class="home-screen__actions">
+          <button type="button" data-testid="resume-online" class="home-screen__button home-screen__button--primary" onclick={() => actions.resume()}>
+            {savedSeat.opponentName ? `Resume online game with ${savedSeat.opponentName}` : 'Resume online game'}
+          </button>
+        </div>
+      {:else}
+        <p class="home-screen__mode-note">Each player uses their own phone.</p>
+        <div class="home-screen__actions home-screen__actions--row">
+          <button type="button" data-testid="online-create" class="home-screen__button" onclick={() => online.openCreate()}>
+            Start a room
+          </button>
+          <button type="button" data-testid="online-join" class="home-screen__button" onclick={() => online.openJoin()}>
+            Join with a code
+          </button>
+        </div>
+      {/if}
+    </section>
+  {/if}
 
   {#if themeChoices.length > 1}
     <fieldset class="home-screen__themes">
@@ -172,26 +239,7 @@
     </fieldset>
   {/if}
 
-  <!-- Issue #37, SPEC §5.10: a settings-store preference, never saved in the
-       game snapshot. A game in progress picks it up at its next curtain. -->
-  <label class="home-screen__toggle" data-testid="table-mode-toggle">
-    <input
-      type="checkbox"
-      checked={settings.tableMode}
-      onchange={(event) => settings.setTableMode(event.currentTarget.checked)}
-    />
-    <span>Table mode: phone lies flat between you</span>
-  </label>
-
   <div class="home-screen__actions">
-    {#if hasSnapshot}
-      <button type="button" data-testid="resume" class="home-screen__button" onclick={handleResume}>
-        Resume
-      </button>
-    {/if}
-    <button type="button" data-testid="new-game" class="home-screen__button" onclick={handleNewGameClick}>
-      New game
-    </button>
     <RulesButton />
   </div>
 
@@ -233,6 +281,26 @@
     color: var(--cu-muted);
     font-size: var(--cu-text-sm);
     margin: 0;
+  }
+
+  .home-screen__mode {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cu-space-3);
+    padding: var(--cu-space-4);
+    border: 1px solid var(--cu-ink-line);
+    border-radius: var(--cu-radius-sheet);
+  }
+
+  .home-screen__mode-title {
+    margin: 0;
+    font-size: var(--cu-text-lg);
+  }
+
+  .home-screen__mode-note {
+    margin: 0;
+    color: var(--cu-muted);
+    font-size: var(--cu-text-sm);
   }
 
   .home-screen__names {
@@ -349,6 +417,20 @@
     display: flex;
     flex-direction: column;
     gap: var(--cu-space-3);
+  }
+
+  .home-screen__actions--row {
+    flex-direction: row;
+  }
+
+  .home-screen__actions--row .home-screen__button {
+    flex: 1 1 0;
+  }
+
+  .home-screen__button--primary {
+    background: var(--cu-ochre);
+    color: var(--cu-on-accent);
+    font-weight: var(--cu-weight-bold);
   }
 
   .home-screen__button {

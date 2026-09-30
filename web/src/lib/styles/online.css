@@ -1,0 +1,123 @@
+/* Two-phone screens (Create, Waiting, Join, Connected). Shared by the four. */
+.ol-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cu-space-4);
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding: calc(var(--cu-space-5) + var(--cu-safe-top)) var(--cu-gutter-sheet)
+    calc(var(--cu-space-5) + var(--cu-safe-bottom));
+  background: var(--cu-ink);
+  color: var(--cu-pearl);
+  font-family: var(--cu-font-ui);
+}
+
+.ol-screen h1 {
+  margin: 0;
+  font-size: var(--cu-text-xl);
+}
+
+.ol-screen p {
+  margin: 0;
+  line-height: var(--cu-leading-body);
+}
+
+.ol-muted {
+  color: var(--cu-muted);
+  font-size: var(--cu-text-sm);
+}
+
+.ol-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cu-space-1);
+  font-size: var(--cu-text-sm);
+  color: var(--cu-muted);
+}
+
+.ol-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--cu-tap-min);
+  padding: 0 var(--cu-space-3);
+  border-radius: var(--cu-radius-well);
+  border: 1px solid var(--cu-ink-line);
+  background: var(--cu-ink-raised);
+  color: var(--cu-pearl);
+  font-size: var(--cu-text-md);
+}
+
+.ol-field input.ol-code-input {
+  font-family: var(--cu-font-display);
+  font-size: var(--cu-text-xl);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.ol-error {
+  padding: var(--cu-space-3);
+  border-radius: var(--cu-radius-well);
+  border: 1px solid var(--cu-ochre);
+  background: var(--cu-ink-raised);
+  color: var(--cu-pearl);
+  font-size: var(--cu-text-md);
+}
+
+.ol-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cu-space-3);
+}
+
+.ol-button {
+  box-sizing: border-box;
+  min-height: var(--cu-tap-min);
+  min-width: var(--cu-tap-min);
+  padding: 0 var(--cu-space-4);
+  border-radius: var(--cu-radius-control);
+  border: none;
+  background: var(--cu-ink-raised);
+  color: var(--cu-pearl);
+  font-size: var(--cu-text-md);
+  cursor: pointer;
+}
+
+.ol-button--primary {
+  background: var(--cu-ochre);
+  color: var(--cu-on-accent);
+  font-weight: var(--cu-weight-bold);
+}
+
+.ol-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ol-button:focus-visible,
+.ol-field input:focus-visible {
+  outline: 2px solid var(--cu-iris);
+  outline-offset: 2px;
+}
+
+.ol-code {
+  align-self: center;
+  margin: var(--cu-space-4) 0;
+  padding: var(--cu-space-4) var(--cu-space-5);
+  border-radius: var(--cu-radius-sheet);
+  background: var(--cu-ink-raised);
+  color: var(--cu-pearl);
+  font-family: var(--cu-font-display);
+  font-size: 64px;
+  font-weight: var(--cu-weight-bold);
+  letter-spacing: 0.2em;
+  /* the trailing letter-space would tilt the code off-centre */
+  padding-left: calc(var(--cu-space-5) + 0.2em);
+  line-height: 1;
+  user-select: all;
+}
+
+.ol-link {
+  overflow-wrap: anywhere;
+  color: var(--cu-muted);
+  font-size: var(--cu-text-sm);
+}
