@@ -2,7 +2,8 @@
 // envelope, the §3.2 view redaction, the deal, and snapshot/restore. It
 // has no syscall/js dependency, so it builds and tests on the host and can
 // be imported by more than one front end: the WASM shim in internal/wasm
-// today, and the two-phone server later (docs/two-phone-plan.md §4).
+// uses the JSON Bridge, and the two-phone server uses the typed Session
+// (session.go, docs/two-phone-plan.md §4). Both run the same core.
 package game
 
 import (
@@ -28,18 +29,13 @@ import (
 // Argument convention (set by the shim's argument conversion): a JS string
 // arrives as string, a JS number as float64, undefined/null/missing as nil,
 // a boolean as bool, and anything else as UnsupportedArg.
+//
+// Bridge is the JSON wrapper for one local game; its bytes are pinned by
+// the golden transcript (golden_test.go). A server uses Session instead.
 type Bridge struct {
 	game   *session
 	random func() (uint64, error)
-}
-
-// session is the held state: the engine state plus everything needed to
-// rebuild envelopes and snapshots.
-type session struct {
-	state   engine.GameState
-	history []AppliedMove
-	seed    uint64
-	dealer  engine.PlayerID
+	render renderFunc // nil means buildEnvelope; tests swap it per instance
 }
 
 // UnsupportedArg stands in for a JS value the bridge never accepts
@@ -113,7 +109,7 @@ func (b *Bridge) NewGame(arg any) string {
 			}
 			dealer = engine.PlayerID(r & 1)
 		}
-		next := &session{state: dealNewGame(seed, dealer), history: []AppliedMove{}, seed: seed, dealer: dealer}
+		next := newGameData(seed, dealer)
 		// The first actor's view (SPEC §2.4, amended 2026-09-28). The
 		// player who tapped "New game" need not be the first actor, so the
 		// UI drops this envelope unread, raises an opening curtain to the
@@ -169,38 +165,14 @@ func (b *Bridge) Apply(arg any) string {
 				fmt.Sprintf("move index %v outside [0, %d)", f, len(moves)),
 				map[string]any{"index": f, "count": len(moves)})
 		}
-		index := int(f)
-		move := moves[index]
-		description := move.Describe(pre)
-		targetCard := targetCardFor(pre, move)
-		post, err := engine.Apply(pre, move)
-		if err != nil {
-			if errors.Is(err, engine.ErrIllegalMove) {
-				return errorJSON(codeIllegalMove,
-					fmt.Sprintf("engine rejected offered move %d (%q)", index, description),
-					map[string]any{"index": index, "description": description, "seq": len(b.game.history), "phase": int(pre.Phase)})
-			}
-			return errorJSON(codeInternal, "engine.Apply: "+err.Error(), nil)
-		}
-		history := append(append([]AppliedMove{}, b.game.history...), AppliedMove{
-			Index:       &index,
-			By:          pre.Active,
-			Kind:        move.Kind,
-			SubKind:     subKindOf(move),
-			Card:        cardOrNil(move.Card),
-			TargetCard:  targetCard,
-			Description: description,
-			Seq:         len(b.game.history) + 1,
-		})
-		// SPEC §2.7 drawn: a 5 that resolved in this apply records its
-		// count on this entry (append-only; see resolvedFiveDraw).
-		if drawn, ok := resolvedFiveDraw(pre, move, post); ok {
-			history[len(history)-1].Drawn = &drawn
+		next, e := b.game.applyMove(moves, int(f))
+		if e != nil {
+			return errorFrom(e)
 		}
 		// The mover's view, not the incoming actor's: a mutating call never
 		// loads the hand of a player who is not holding the phone. The UI
 		// fetches the new actor's envelope with view() after the reveal.
-		return b.commit(&session{state: post, history: history, seed: b.game.seed, dealer: b.game.dealer}, pre.Active)
+		return b.commit(next, pre.Active)
 	})
 }
 
@@ -227,45 +199,14 @@ func (b *Bridge) View(arg any) string {
 // __cuttleSnapshot() / __cuttleRestore(snapshotJson)
 // ---------------------------------------------------------------------------
 
-// 2 since AppliedMove gained `drawn` (SPEC §2.7, §5.7, amended 2026-09-28).
-const snapshotVersion = 2
-
-// snapshotWire is the full, unredacted SnapshotJson (§2.4, §3.4). `state` is
-// the raw engine.GameState in encoding/json form; it is opaque to TypeScript
-// (§5.7) and exists only to be handed back to Restore verbatim.
-type snapshotWire struct {
-	OK      bool             `json:"ok"`
-	V       int              `json:"v"`
-	State   engine.GameState `json:"state"`
-	History []AppliedMove    `json:"history"`
-	Seed    string           `json:"seed"`
-	Dealer  engine.PlayerID  `json:"dealer"`
-}
-
-// restoreWire mirrors snapshotWire with pointers so missing fields are
-// detectable.
-type restoreWire struct {
-	OK      *bool             `json:"ok"`
-	V       *int              `json:"v"`
-	State   *engine.GameState `json:"state"`
-	History []AppliedMove     `json:"history"`
-	Seed    *string           `json:"seed"`
-	Dealer  *int              `json:"dealer"`
-}
+// The snapshot wire types and decodeSnapshot live in snapshot.go.
 
 func (b *Bridge) Snapshot() string {
 	return guard(func() string {
 		if b.game == nil {
 			return noGame()
 		}
-		return encode(snapshotWire{
-			OK:      true,
-			V:       snapshotVersion,
-			State:   b.game.state,
-			History: append([]AppliedMove{}, b.game.history...),
-			Seed:    strconv.FormatUint(b.game.seed, 10),
-			Dealer:  b.game.dealer,
-		})
+		return encode(b.game.wire())
 	})
 }
 
@@ -283,35 +224,12 @@ func (b *Bridge) Restore(arg, viewerArg any) string {
 			return errorJSON(codeBadRequest, "restore expects viewerId 0 or 1", nil)
 		}
 		viewer := engine.PlayerID(v)
-		// SPEC §5.7 (ruling 2026-09-28): a v1 save is upgraded, not discarded.
-		raw, err := migrateSnapshotV1(raw)
-		if err != nil {
-			return errorJSON(codeBadRequest, "malformed v1 snapshot: "+err.Error(), nil)
+		next, e := decodeSnapshot(raw)
+		if e != nil {
+			// The bridge's §2.9 code for every snapshot defect.
+			return errorJSON(codeBadRequest, e.Message, nil)
 		}
-		var snap restoreWire
-		if err := decodeStrict(raw, &snap); err != nil {
-			return errorJSON(codeBadRequest, "malformed snapshot: "+err.Error(), nil)
-		}
-		if snap.V == nil || *snap.V != snapshotVersion {
-			return errorJSON(codeBadRequest, fmt.Sprintf("snapshot version must be 1 or %d", snapshotVersion), nil)
-		}
-		if snap.State == nil || snap.History == nil || snap.Seed == nil || snap.Dealer == nil {
-			return errorJSON(codeBadRequest, "snapshot requires state, history, seed and dealer", nil)
-		}
-		seed, err := strconv.ParseUint(*snap.Seed, 10, 64)
-		if err != nil {
-			return errorJSON(codeBadRequest, fmt.Sprintf("snapshot seed %q is not a decimal uint64", *snap.Seed), nil)
-		}
-		if *snap.Dealer != 0 && *snap.Dealer != 1 {
-			return errorJSON(codeBadRequest, "snapshot dealer must be 0 or 1", nil)
-		}
-		if err := validateState(*snap.State); err != nil {
-			return errorJSON(codeBadRequest, "invalid snapshot state: "+err.Error(), nil)
-		}
-		if err := validateHistory(snap.History); err != nil {
-			return errorJSON(codeBadRequest, "invalid snapshot history: "+err.Error(), nil)
-		}
-		return b.commit(&session{state: *snap.State, history: snap.History, seed: seed, dealer: engine.PlayerID(*snap.Dealer)}, viewer)
+		return b.commit(next, viewer)
 	})
 }
 
@@ -332,12 +250,13 @@ func (b *Bridge) Restore(arg, viewerArg any) string {
 // LegalMoves/Describe will serve) is rendered too, so the state commits only
 // if both render.
 func (b *Bridge) commit(next *session, viewer engine.PlayerID) string {
-	out, err := json.Marshal(renderEnvelope(next.state, next.history, viewer))
+	render := b.renderer()
+	out, err := json.Marshal(render(next.state, next.history, viewer))
 	if err != nil {
 		return errorJSON(codeInternal, "encoding failed: "+err.Error(), nil)
 	}
 	if actor := next.state.Active; viewer != actor {
-		if _, err := json.Marshal(renderEnvelope(next.state, next.history, actor)); err != nil {
+		if _, err := json.Marshal(render(next.state, next.history, actor)); err != nil {
 			return errorJSON(codeInternal, "actor envelope encoding failed: "+err.Error(), nil)
 		}
 	}
@@ -345,19 +264,28 @@ func (b *Bridge) commit(next *session, viewer engine.PlayerID) string {
 	return string(out)
 }
 
-// renderEnvelope is the envelope builder commit uses. It is a variable only
-// so a test can prove commit refuses to assign state when the actor's
-// envelope fails to render; production never reassigns it.
-var renderEnvelope = buildEnvelope
+// renderer is the envelope builder commit uses. It is a per-Bridge field,
+// not a package variable, so a test can prove commit refuses to assign
+// state when the actor's envelope fails to render without touching any
+// other Bridge or Session running at the same time.
+func (b *Bridge) renderer() renderFunc {
+	if b.render != nil {
+		return b.render
+	}
+	return buildEnvelope
+}
 
 func noGame() string {
 	return errorJSON(codeNoGame, "no game: call newGame or restore first", nil)
 }
 
 func noLegalMoves(g *session) string {
-	return errorJSON(codeNoLegalMoves,
-		fmt.Sprintf("engine offers no legal move in phase %d (SPEC §2.10)", g.state.Phase),
-		map[string]any{"phase": int(g.state.Phase), "active": int(g.state.Active), "seq": len(g.history)})
+	return errorFrom(g.noLegalMovesErr())
+}
+
+// errorFrom renders a core *Error as the §2.9 EngineError JSON.
+func errorFrom(e *Error) string {
+	return errorJSON(string(e.Code), e.Message, e.Detail)
 }
 
 // decodeStrict decodes exactly one JSON object with no unknown fields and

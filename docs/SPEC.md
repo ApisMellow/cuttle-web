@@ -528,6 +528,28 @@ Two smaller contract notes for the same reason:
 - `MovePass` is emitted only as a fallback when nothing else is legal (`engine/apply.go:131-133`) and `Apply` re-checks that gate (`engine/apply.go:160-166`). The UI therefore never shows Pass alongside other actions — this is engine-enforced, not a UI policy (R10).
 - Three consecutive passes set `PhaseGameOver` with `Winner === nil` (`engine/apply.go:167-171`). There is no `IsStalemate` helper; stalemate is exactly `phase === 4 && winner === null`, and the bridge exposes it as the derived `state.stalemate` (R2).
 
+### 2.11 Typed Go API for the two-phone server *(added 2026-09-29, two-phone W2)*
+
+`internal/game` exports a typed API next to the JSON `Bridge`, for `cmd/cuttle-server` (`docs/two-phone-plan.md` §4). Both run one core: the deal, `applyMove` (index to history entry, `targetCard`, `drawn`), `decodeSnapshot` (v1 upgrade and every §2.9 restore check) and `buildEnvelope`. The golden transcript (`internal/game/golden_test.go`) pins the Bridge's bytes, and `TestW2_TypedAPIMatchesBridge` shows the typed API emits the same bytes.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `NewSession(seed uint64, dealer Seat)` | `*Session, error` | `ErrBadSeat` unless the dealer is 0 or 1. The dealer's opponent acts first. The server draws seed and dealer from `crypto/rand`. |
+| `RestoreSession(persisted []byte)` | `*Session, error` | Accepts `ServerSnapshot.PersistBytes()` or any v1/v2 `SnapshotJson`. Any defect is `ErrInvalidSnapshot`, with the Bridge's message. |
+| `(*Session).Status()` | `Status` | `Seq`, `Actor`, `Phase`, `Over`, `Winner` (`NoSeat` = none), `Stalemate`, `Stuck` (§2.10). Public to both seats. |
+| `(*Session).View(seat)` | `Envelope, error` | §2.7 envelope for `seat`, redacted per §3. Never `NO_LEGAL_MOVES`. |
+| `(*Session).LegalMoves(seat)` | `[]MoveView, []string, error` | Filled only for the actor; `[]`, `[]` for the other seat and at game over. |
+| `(*Session).Apply(seat, seq, index)` | `Update, error` | `Update.For(seat)` is that seat's envelope after the move. |
+| `(*Session).Snapshot()` | `ServerSnapshot, error` | The full game, for the store only. |
+
+**Seat binding.** `Apply` accepts only `seat == state.Active`: the player on turn, the responder at a counter window, the 4's discarder, the 7's player while choosing (the engine's `LegalMoves` is always `Active`'s, `engine/apply.go:15-33`; `Active` flips for a counter window at `:337` and for a discard at `:653`). The checks run in this order and every failure leaves the session unchanged: bad seat (`ErrBadSeat`, code `BAD_REQUEST`), game over (`GAME_OVER`), `seq` not the history length (`STALE`), wrong seat (`NOT_YOUR_TURN`), no legal move (`NO_LEGAL_MOVES`), index out of range (`INDEX_OUT_OF_RANGE`), engine rejection (`ILLEGAL_MOVE`). Errors are `*game.Error{Code, Message, Detail}`; match a kind with `errors.Is(err, game.ErrNotYourTurn)` and so on.
+
+**Commit atomicity (§2.9).** `Apply` renders both seats' envelopes for the candidate state and only then commits. A render failure (a recovered panic) is `INTERNAL` and nothing changes. Every `Session` method recovers panics into `INTERNAL`.
+
+**Output safety.** `Envelope` is the only type that satisfies `game.ClientSafe`; a server's send path should take that interface. `ServerSnapshot` holds hands, deck order and seed. `json.Marshal` and `MarshalText` on it fail with `ErrSnapshotNotForClients`, every `fmt` verb and `slog` print a fixed redacted marker, and its bytes come out only through `PersistBytes()`. Returned envelopes and `Update`s are deep copies that share no memory with the session.
+
+**Concurrency.** A `Session` is not safe for concurrent use; the server serializes calls per room. Distinct sessions share no mutable state: the envelope renderer that tests swap is a per-instance field on `Session` and `Bridge`, not a package variable (`TestW2_ParallelSessionsShareNoState`, run under `-race`).
+
 ---
 
 ## 3. Redacted-view rules (R7)
