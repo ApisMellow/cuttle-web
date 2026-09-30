@@ -1029,9 +1029,9 @@ requirements:
       - "unit-test: with VITE_CUTTLE_SERVER unset at build time, Play online is hidden (plan §7)"
     verify: [unit-test, e2e-test]
     status: in-progress
-    evidence: "PARTIAL. Merged: vitest web/tests/unit/online-sw-guard.test.ts 'declares no Workbox runtimeCaching route that could match the server origin', 'does not route the service worker with a custom handler either'; online-config.test.ts 'is null when VITE_CUTTLE_SERVER is unset, so Play online stays hidden'; home-modes.svelte.test.ts 'hides the online mode when it is not available'. Open: the navigateFallback /api/ check, the offline copy (W13b) and both e2e checks (W15)."
+    evidence: "PARTIAL. W14 (this change): vitest online-sw-guard.test.ts 'denies the API and the play socket path on the navigation fallback'; online-config.test.ts 'accepts only an https origin from a production build', 'passes VITE_CUTTLE_SERVER from the CUTTLE_SERVER_ORIGIN repo variable, not a secret'. Earlier: vitest web/tests/unit/online-sw-guard.test.ts 'declares no Workbox runtimeCaching route that could match the server origin', 'does not route the service worker with a custom handler either'; online-config.test.ts 'is null when VITE_CUTTLE_SERVER is unset, so Play online stays hidden'; home-modes.svelte.test.ts 'hides the online mode when it is not available'. Open: the offline copy (W13b) and both e2e checks (W15)."
     fails: 0
-    notes: "Plan W14 (origin config and service-worker guard, partly landed with W11) and W13a/W13b (the offline copy)."
+    notes: "Plan W14 (origin config and service-worker guard, done) and W13a/W13b (the offline copy)."
 
   - id: R24.15
     prd: R24

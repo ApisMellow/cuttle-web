@@ -68,6 +68,10 @@ jobs:
         working-directory: web
         env:
           CUTTLE_BASE: /cuttle-web/
+          # W14: the game server's origin is a repo variable (Settings >
+          # Variables), not a secret: it is public by nature. Unset, this is
+          # an empty string and the build hides Play online, as before.
+          VITE_CUTTLE_SERVER: ${{ vars.CUTTLE_SERVER_ORIGIN }}
 
       # The Mythic card gallery is a standalone static page (gallery/README.md),
       # not part of the Vite app. Its committed site folder is copied in
