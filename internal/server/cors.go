@@ -42,7 +42,8 @@ func (p OriginPolicy) Allowed(origin string) bool {
 }
 
 // CORS wraps next. Requests with no Origin header (non-browser clients, same
-// origin) pass through untouched. A request from a disallowed origin gets 403.
+// origin) pass through untouched. A request from a disallowed origin gets 403
+// with the JSON error body {code: "FORBIDDEN", message}.
 // An allowed origin is echoed exactly, never "*", with Vary: Origin. Preflight
 // requests are answered here with 204.
 func CORS(p OriginPolicy, next http.Handler) http.Handler {
@@ -54,7 +55,7 @@ func CORS(p OriginPolicy, next http.Handler) http.Handler {
 		}
 		w.Header().Add("Vary", "Origin")
 		if !p.Allowed(origin) {
-			http.Error(w, "origin not allowed", http.StatusForbidden)
+			writeError(w, http.StatusForbidden, CodeForbidden, "origin not allowed")
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
