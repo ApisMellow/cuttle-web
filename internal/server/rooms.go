@@ -200,7 +200,13 @@ func (m *Rooms) Move(ctx context.Context, code string, seat game.Seat, seq, inde
 		if err != nil {
 			return err
 		}
-		st := r.sess.Status()
+		st, err := r.sess.Status()
+		if err != nil {
+			// The move is applied in memory but can't be described for
+			// the save: put memory back to what the store holds.
+			m.log.Error("status after move failed; reloading", "code", r.code)
+			return m.reloadLocked(ctx, r, err)
+		}
 		sv := store.Save{
 			PrevGame: r.meta.Game, PrevSeq: r.meta.Seq,
 			Game: r.meta.Game, Seq: st.Seq,

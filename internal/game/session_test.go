@@ -44,6 +44,15 @@ func mustSession(t *testing.T, seed uint64, dealer Seat) *Session {
 	return s
 }
 
+func mustStatus(t *testing.T, s *Session) Status {
+	t.Helper()
+	st, err := s.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	return st
+}
+
 func persisted(t *testing.T, s *Session) string {
 	t.Helper()
 	snap, err := s.Snapshot()
@@ -72,7 +81,7 @@ func walkSession(t *testing.T, seed uint64, visit func(s *Session, st Status)) *
 	s := mustSession(t, seed, Seat(seed&1))
 	rng := xorshift32(uint32(seed))
 	for step := 0; step < 3000; step++ {
-		st := s.Status()
+		st := mustStatus(t, s)
 		visit(s, st)
 		if st.Over || st.Stuck {
 			return s
@@ -116,7 +125,7 @@ func TestW2_SeatHelpers(t *testing.T) {
 func TestW2_StatusOfFreshAndFinishedGames(t *testing.T) {
 	for _, dealer := range []Seat{Seat0, Seat1} {
 		s := mustSession(t, 42, dealer)
-		st := s.Status()
+		st := mustStatus(t, s)
 		if st.Seq != 0 || st.Actor != dealer.Other() || st.Phase != engine.PhaseNormal || st.Over || st.Winner != NoSeat || st.Stalemate || st.Stuck {
 			t.Fatalf("dealer %d: fresh status %+v", dealer, st)
 		}
@@ -127,7 +136,7 @@ func TestW2_StatusOfFreshAndFinishedGames(t *testing.T) {
 	wins := 0
 	for seed := uint64(1); seed <= 30; seed++ {
 		final := walkSession(t, seed, func(*Session, Status) {})
-		st := final.Status()
+		st := mustStatus(t, final)
 		if !st.Over || st.Phase != engine.PhaseGameOver {
 			t.Fatalf("seed %d: final status %+v", seed, st)
 		}
@@ -162,7 +171,7 @@ func TestW2_TypedAPIMatchesBridge(t *testing.T) {
 		b := NewBridge()
 		wire := b.NewGame(fmt.Sprintf(`{"seed":"%d","dealer":%d}`, seed, dealer))
 		s := mustSession(t, seed, dealer)
-		first, err := s.View(s.Status().Actor)
+		first, err := s.View(mustStatus(t, s).Actor)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +183,7 @@ func TestW2_TypedAPIMatchesBridge(t *testing.T) {
 			if step > 3000 {
 				t.Fatalf("seed %d did not terminate", seed)
 			}
-			st := s.Status()
+			st := mustStatus(t, s)
 			for _, seat := range []Seat{Seat0, Seat1} {
 				v, err := s.View(seat)
 				if err != nil {
@@ -290,7 +299,7 @@ func TestW2_SeatBindingRejectsTheOtherSeat(t *testing.T) {
 				_, _, err = s.LegalMoves(bad)
 				wantErr(t, "legal moves bad seat", err, ErrBadSeat, CodeBadRequest)
 			}
-			if persisted(t, s) != before || s.Status() != st {
+			if persisted(t, s) != before || mustStatus(t, s) != st {
 				t.Fatalf("seed %d seq %d: a rejected call changed the session", seed, st.Seq)
 			}
 		})
@@ -332,7 +341,7 @@ func TestW2_StuckPositionRaisesNoLegalMoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status := s.Status()
+	status := mustStatus(t, s)
 	if !status.Stuck || status.Over || status.Actor != Seat1 {
 		t.Fatalf("status %+v", status)
 	}
@@ -525,7 +534,7 @@ func TestW2_ReturnedEnvelopesDoNotAliasSession(t *testing.T) {
 	}
 	// Update envelopes too.
 	s := mustSession(t, 5, Seat0)
-	st := s.Status()
+	st := mustStatus(t, s)
 	up, err := s.Apply(st.Actor, st.Seq, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -644,7 +653,7 @@ func TestW2_SnapshotRestoreRoundTrip(t *testing.T) {
 				t.Fatalf("seed %d step %d: restore: %v", seed, step, err)
 			}
 			restores++
-			if r.Status() != s.Status() || persisted(t, r) != string(snap.PersistBytes()) {
+			if mustStatus(t, r) != mustStatus(t, s) || persisted(t, r) != string(snap.PersistBytes()) {
 				t.Fatalf("seed %d step %d: restore is not exact", seed, step)
 			}
 			s = r
@@ -654,7 +663,7 @@ func TestW2_SnapshotRestoreRoundTrip(t *testing.T) {
 					t.Fatalf("seed %d step %d: restored view %d differs from the bridge", seed, step, seat)
 				}
 			}
-			st := s.Status()
+			st := mustStatus(t, s)
 			if st.Over {
 				break
 			}
@@ -819,7 +828,7 @@ func TestW2_ApplyCommitsOnlyIfBothEnvelopesRender(t *testing.T) {
 	for _, failSeat := range []Seat{Seat0, Seat1} {
 		for seed := uint64(1); seed <= 6; seed++ {
 			s := mustSession(t, seed, Seat(seed&1))
-			st := s.Status()
+			st := mustStatus(t, s)
 			before := persisted(t, s)
 			s.render = func(g engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
 				if viewer == engine.PlayerID(failSeat) {
@@ -829,7 +838,7 @@ func TestW2_ApplyCommitsOnlyIfBothEnvelopesRender(t *testing.T) {
 			}
 			_, err := s.Apply(st.Actor, st.Seq, 0)
 			wantErr(t, fmt.Sprintf("fail seat %d", failSeat), err, ErrInternal, CodeInternal)
-			if persisted(t, s) != before || s.Status() != st {
+			if persisted(t, s) != before || mustStatus(t, s) != st {
 				t.Fatalf("fail seat %d seed %d: state committed although an envelope failed", failSeat, seed)
 			}
 			s.render = nil
@@ -867,7 +876,7 @@ func TestW2_ParallelSessionsShareNoState(t *testing.T) {
 					// A per-instance failing renderer must not touch any
 					// other session running at the same time.
 					s.render = func(engine.GameState, []AppliedMove, engine.PlayerID) Envelope { panic("boom") }
-					st := s.Status()
+					st := mustStatus(t, s)
 					if _, err := s.Apply(st.Actor, st.Seq, 0); !errors.Is(err, ErrInternal) {
 						errs <- "failing renderer did not fail"
 					}
@@ -875,7 +884,7 @@ func TestW2_ParallelSessionsShareNoState(t *testing.T) {
 				}
 				rng := xorshift32(uint32(seed))
 				for {
-					st := s.Status()
+					st := mustStatus(t, s)
 					for _, seat := range []Seat{Seat0, Seat1} {
 						if _, err := s.View(seat); err != nil {
 							errs <- err.Error()
@@ -1080,7 +1089,7 @@ type updNest struct {
 
 func TestW2_UpdateCannotBeSentWhole(t *testing.T) {
 	s := mustSession(t, 42, Seat1)
-	st := s.Status()
+	st := mustStatus(t, s)
 	up, err := s.Apply(st.Actor, st.Seq, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1197,7 +1206,7 @@ func TestW2_SentinelsAreImmutable(t *testing.T) {
 	}
 	// Mutate every field of real returned errors.
 	s := mustSession(t, 42, Seat1)
-	st := s.Status()
+	st := mustStatus(t, s)
 	for _, call := range []func() error{
 		func() error { _, err := s.Apply(st.Actor, st.Seq+1, 0); return err },
 		func() error { _, err := s.Apply(st.Actor.Other(), st.Seq, 0); return err },

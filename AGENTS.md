@@ -271,12 +271,15 @@ that makes your list complete.
   ROOM_FULL 409, RATE_LIMITED 429 + `Retry-After`, SERVER_FULL 503 +
   `Retry-After` (room cap), FORBIDDEN 403 (origin, from `CORS`),
   BAD_REQUEST 400 (every validation failure, oversize and wrong content
-  type included), INTERNAL 500. Messages are fixed strings: never a token,
-  an `err` text or internal detail.
+  type included), INTERNAL 500 (a handler panic too, via `Recover`).
+  Messages are fixed strings: never a token, an `err` text or internal
+  detail.
 - **Request bodies are strict.** `Content-Type: application/json`, at most
-  `MaxBodyBytes` (1 KB), one object, unknown fields rejected. Names:
-  control and bidi-override characters stripped, trimmed, 1–20 runes;
-  other format characters (the ZWJ in emoji) stay.
+  `MaxBodyBytes` (1 KB), one object, unknown fields rejected. Names: NFC
+  (`golang.org/x/text/unicode/norm`), then control, bidi-override and
+  every other format character (Cf: ZWSP, word joiner, BOM, soft hyphen,
+  tag characters, ZWNJ) stripped, except a ZWJ between two emoji;
+  trimmed; 1–20 runes, so an all-invisible name is refused.
 - **`Rooms` (`rooms.go`) is the only holder of `game.Session`s.** A map of
   rooms, each with its own mutex; `withRoom` lazy-loads from the store and
   runs the callback under the room lock. Every Session call and the
@@ -294,15 +297,32 @@ that makes your list complete.
   and join 30/h by default, burst = the hourly amount, every attempt spends
   a token (code guessing included). The client is the peer IP, IPv6
   grouped by /64. `X-Forwarded-For` is read only when the peer is a
-  `-trusted-proxy` address, and then only its rightmost entry.
+  `-trusted-proxy` address, and then only its rightmost entry. IPv6
+  clients also share a /48 bucket (4× the per-client rate), so cycling
+  /64s inside one site mints no new allowance; IPv4 has no /24 group
+  (a /24 is at most 256 keys, and often unrelated carrier users). Each
+  table holds 50k keys; when full, new clients draw from one shared
+  overflow bucket (20× the rate), never a flat refusal. Pruning runs on a
+  one-minute ticker started by `Handler(ctx, ...)` and stopped with ctx;
+  `allow` is O(1) and never prunes.
+- **`-trusted-proxy` must set `X-Forwarded-For`.** If the proxy sends none,
+  every client behind it is keyed by the proxy's address and shares one
+  bucket, so one family's burst throttles everyone. The server logs a
+  warning (at most once a minute) when a trusted proxy's request has no
+  usable XFF. Configure the proxy to set it (Caddy's `reverse_proxy` does).
 - **Janitor:** `RunJanitor` every `JanitorInterval` (10 min) calls
   `Sweep`: `store.DeleteExpired`, then drops cached rooms the store no
   longer has or that sat unused for `MemIdle`. It stops with the server's
   context. The nightly backup is W8.
 - **Logs** carry room codes and events only: never a token or a player
   name. `TestAPI_TokensNeverLogged` scans slog and the std `log` output.
-- **Panics:** `game.SetPanicHook` receives recovered panic values; Session
-  errors carry a fixed message. main logs only the panic's type.
+- **Panics:** `game.SetPanicHook` receives recovered panic values and the
+  cause of every other ErrInternal; every ErrInternal's Message is the
+  fixed "internal error". `NewSession` and `Status` recover too (`Status`
+  returns `(Status, error)`). main logs only the panic's type. `Recover`
+  wraps every route and logs only `%T` and the path; `NewHTTPServer` sets
+  `ErrorLog` so net/http's own "panic serving" line is replaced by a
+  fixed one.
 
 ### Svelte 5 conventions
 
