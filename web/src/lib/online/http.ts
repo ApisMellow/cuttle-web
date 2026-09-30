@@ -3,6 +3,7 @@
 // in a URL and never in an error message.
 
 import type { PlayerId } from '../bridge/schema';
+import { parseRoomCode } from './code';
 
 /** What create and join hand back. Save it with seat.ts; never log it. */
 export interface SeatGrant {
@@ -11,17 +12,28 @@ export interface SeatGrant {
   token: string;
 }
 
+/** How long a create or join may take, reply body included. */
+export const HTTP_TIMEOUT_MS = 10_000;
+
 /**
  * `code` is the server's error code when it sent one (ROOM_FULL, ROOM_GONE,
- * RATE_LIMITED, ...), else one derived from the HTTP status, or NETWORK /
- * BAD_RESPONSE / BAD_REQUEST from the client side. `status` is null when no
- * HTTP response arrived.
+ * RATE_LIMITED, SERVER_FULL, FORBIDDEN, ...), else one derived from the HTTP
+ * status, or NETWORK / TIMEOUT / ABORTED / BAD_RESPONSE / BAD_REQUEST from
+ * the client side. `status` is null when no HTTP response arrived.
+ * `retryAfterMs` is the reply's Retry-After (whole seconds), if it sent one.
  */
 export class OnlineHttpError extends Error {
+  /**
+   * May be the server's own text, so treat it as untrusted: render it as
+   * text (Svelte `{message}`), never as HTML (`{@html}`, innerHTML).
+   */
+  declare message: string;
+
   constructor(
     readonly code: string,
     message: string,
     readonly status: number | null = null,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'OnlineHttpError';
@@ -30,24 +42,8 @@ export class OnlineHttpError extends Error {
 
 export interface HttpOptions {
   fetch?: typeof globalThis.fetch;
-}
-
-/** Same alphabet and folding as the server's store.NormalizeCode. */
-const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const CODE_LENGTH = 4;
-
-/** The canonical room code, or null if the input can't be one. */
-export function normalizeRoomCode(input: string): string | null {
-  const s = input.trim().toUpperCase();
-  if (s.length !== CODE_LENGTH) return null;
-  let out = '';
-  for (let c of s) {
-    if (c === 'O') c = '0';
-    else if (c === 'I' || c === 'L') c = '1';
-    if (!CODE_ALPHABET.includes(c)) return null;
-    out += c;
-  }
-  return out;
+  /** Cancels the request; it rejects with ABORTED. */
+  signal?: AbortSignal;
 }
 
 /** base64url, at least 16 characters (the server sends 32 bytes: 43). */
@@ -60,8 +56,16 @@ function statusCode(status: number): string {
   if (status === 401) return 'UNAUTHORIZED';
   if (status === 403) return 'FORBIDDEN';
   if (status === 426) return 'UPGRADE_REQUIRED';
+  if (status === 503) return 'SERVER_FULL';
   if (status >= 400 && status < 500) return 'BAD_REQUEST';
   return 'INTERNAL';
+}
+
+/** Retry-After as delta-seconds, in ms; null when absent or an HTTP date. */
+function retryAfterMs(res: Response): number | null {
+  const raw = res.headers.get('Retry-After')?.trim();
+  if (!raw || !/^\d{1,6}$/.test(raw)) return null;
+  return Number(raw) * 1000;
 }
 
 async function readJson(res: Response): Promise<unknown> {
@@ -72,21 +76,89 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
+const timeoutError = () => new OnlineHttpError('TIMEOUT', 'The game server took too long to answer.');
+const abortedError = () => new OnlineHttpError('ABORTED', 'The request was cancelled.');
+
+/**
+ * One request's deadline: HTTP_TIMEOUT_MS, or sooner if the caller's signal
+ * aborts. A setTimeout plus AbortController rather than AbortSignal.timeout
+ * and AbortSignal.any, which older iOS Safari lacks. `race` also settles a
+ * promise whose fetch ignores the signal.
+ */
+function deadline(callerSignal: AbortSignal | undefined) {
+  const controller = new AbortController();
+  let reason: OnlineHttpError | null = null;
+  let rejectAbort: (err: OnlineHttpError) => void = () => {};
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = reject;
+  });
+  aborted.catch(() => {}); // settled by race(); never an unhandled rejection
+  const abort = (err: OnlineHttpError) => {
+    if (reason) return;
+    reason = err;
+    controller.abort();
+    rejectAbort(err);
+  };
+  const onCallerAbort = () => abort(abortedError());
+  const timer = setTimeout(() => abort(timeoutError()), HTTP_TIMEOUT_MS);
+  if (callerSignal?.aborted) onCallerAbort();
+  else callerSignal?.addEventListener('abort', onCallerAbort, { once: true });
+  return {
+    signal: controller.signal,
+    /** The reason the request was cut short, if it was. */
+    get reason(): OnlineHttpError | null {
+      return reason;
+    },
+    race<T>(p: Promise<T>): Promise<T> {
+      return Promise.race([p, aborted]);
+    },
+    done(): void {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
 async function post(origin: string, path: string, body: unknown, opts: HttpOptions): Promise<unknown> {
   const doFetch = opts.fetch ?? globalThis.fetch;
+  const limit = deadline(opts.signal);
+  try {
+    return await exchange(doFetch, `${origin}${path}`, body, limit);
+  } finally {
+    limit.done();
+  }
+}
+
+async function exchange(
+  doFetch: typeof globalThis.fetch,
+  url: string,
+  body: unknown,
+  limit: ReturnType<typeof deadline>,
+): Promise<unknown> {
+  if (limit.reason) throw limit.reason;
   let res: Response;
   try {
-    res = await doFetch(`${origin}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      cache: 'no-store',
-      credentials: 'omit',
-    });
+    res = await limit.race(
+      doFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        signal: limit.signal,
+      }),
+    );
   } catch {
-    throw new OnlineHttpError('NETWORK', 'Could not reach the game server.');
+    throw limit.reason ?? new OnlineHttpError('NETWORK', 'Could not reach the game server.');
   }
-  const data = await readJson(res);
+  let data: unknown;
+  try {
+    data = await limit.race(readJson(res));
+  } catch {
+    data = undefined;
+  }
+  if (limit.reason) throw limit.reason;
   if (!res.ok) {
     const code =
       typeof data === 'object' && data !== null && typeof (data as { code?: unknown }).code === 'string'
@@ -96,7 +168,7 @@ async function post(origin: string, path: string, body: unknown, opts: HttpOptio
       typeof data === 'object' && data !== null && typeof (data as { message?: unknown }).message === 'string'
         ? (data as { message: string }).message
         : `The game server answered ${res.status}.`;
-    throw new OnlineHttpError(code, message, res.status);
+    throw new OnlineHttpError(code, message, res.status, retryAfterMs(res));
   }
   if (data === undefined) throw new OnlineHttpError('BAD_RESPONSE', 'The game server sent a reply that is not JSON.', res.status);
   return data;
@@ -109,7 +181,7 @@ function grantFrom(data: unknown, expectedSeat: PlayerId, expectedCode: string |
   };
   if (typeof data !== 'object' || data === null || Array.isArray(data)) bad('body');
   const r = data as Record<string, unknown>;
-  const code = typeof r.code === 'string' ? normalizeRoomCode(r.code) : null;
+  const code = typeof r.code === 'string' ? parseRoomCode(r.code) : null;
   if (code === null || (expectedCode !== null && code !== expectedCode)) bad('code');
   if (r.seat !== expectedSeat) bad('seat');
   if (typeof r.token !== 'string' || !TOKEN_SHAPE.test(r.token)) bad('token');
@@ -130,7 +202,7 @@ export async function createRoom(origin: string, name: string, opts: HttpOptions
 
 /** POST /api/rooms/{code}/join: takes seat 1 of an open room. */
 export async function joinRoom(origin: string, code: string, name: string, opts: HttpOptions = {}): Promise<SeatGrant> {
-  const normalized = normalizeRoomCode(code);
+  const normalized = parseRoomCode(code);
   if (normalized === null) throw new OnlineHttpError('BAD_REQUEST', 'That code is not a game code.');
   const body = { name: cleanName(name) };
   return grantFrom(await post(origin, `/api/rooms/${normalized}/join`, body, opts), 1, normalized);

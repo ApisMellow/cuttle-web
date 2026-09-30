@@ -1,9 +1,9 @@
 // Two-phone W11 (docs/two-phone-plan.md §3, §9): create and join over HTTP.
 // The token comes back in the reply body only; it is never in a URL and
 // never in an error message.
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OnlineHttpError, createRoom, joinRoom, normalizeRoomCode } from '../../src/lib/online/http';
+import { HTTP_TIMEOUT_MS, OnlineHttpError, createRoom, joinRoom } from '../../src/lib/online/http';
 import { ORIGIN, TOKEN } from './online-fakes';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -44,6 +44,39 @@ describe('createRoom', () => {
     expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
     expect(init.cache).toBe('no-store');
     expect(init.credentials).toBe('omit');
+    expect(init.redirect).toBe('error');
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('accepts 201 Created, which the server sends for a new room', async () => {
+    const f = fakeFetch(() => jsonResponse(201, { code: 'K7QX', seat: 0, token: TOKEN }));
+    await expect(createRoom(ORIGIN, 'Alice', { fetch: f.fetch })).resolves.toEqual({ code: 'K7QX', seat: 0, token: TOKEN });
+  });
+
+  it('maps 503 SERVER_FULL, with or without a code, and reads Retry-After', async () => {
+    const withCode = fakeFetch(
+      () =>
+        new Response(JSON.stringify({ code: 'SERVER_FULL', message: 'Too many games right now.' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
+        }),
+    );
+    const a = await caught(createRoom(ORIGIN, 'Alice', { fetch: withCode.fetch }));
+    expect(a.code).toBe('SERVER_FULL');
+    expect(a.status).toBe(503);
+    expect(a.retryAfterMs).toBe(30_000);
+
+    const bare = fakeFetch(() => new Response('busy', { status: 503 }));
+    const b = await caught(createRoom(ORIGIN, 'Alice', { fetch: bare.fetch }));
+    expect(b.code).toBe('SERVER_FULL');
+    expect(b.retryAfterMs).toBeNull();
+  });
+
+  it('keeps FORBIDDEN from an origin rejection body', async () => {
+    const f = fakeFetch(() => jsonResponse(403, { code: 'FORBIDDEN' }));
+    const err = await caught(createRoom(ORIGIN, 'Alice', { fetch: f.fetch }));
+    expect(err.code).toBe('FORBIDDEN');
+    expect(err.status).toBe(403);
   });
 
   it('refuses an empty name without calling the server', async () => {
@@ -114,6 +147,7 @@ describe('joinRoom', () => {
       [403, 'FORBIDDEN'],
       [500, 'INTERNAL'],
       [502, 'INTERNAL'],
+      [503, 'SERVER_FULL'],
     ];
     for (const [status, code] of cases) {
       const f = fakeFetch(() => new Response('oops', { status }));
@@ -131,11 +165,78 @@ describe('joinRoom', () => {
   });
 });
 
-describe('normalizeRoomCode', () => {
-  it('upper-cases, trims and folds the Crockford look-alikes like the server', () => {
-    expect(normalizeRoomCode(' k7qx ')).toBe('K7QX');
-    expect(normalizeRoomCode('O1LI')).toBe('0111');
-    expect(normalizeRoomCode('U7QX')).toBeNull(); // U is outside the alphabet
-    expect(normalizeRoomCode('K7Q')).toBeNull();
+describe('room codes', () => {
+  it('sends the normalized code in the join path (code.ts is the one implementation)', async () => {
+    const f = fakeFetch(() => jsonResponse(200, { code: 'o1li', seat: 1, token: TOKEN }));
+    await expect(joinRoom(ORIGIN, ' oili ', 'Blake', { fetch: f.fetch })).resolves.toMatchObject({ code: '0111' });
+    expect(f.calls[0].url).toBe('https://cuttle.example.com/api/rooms/0111/join');
+  });
+});
+
+describe('timeouts and aborts', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A fetch that never settles and ignores its signal. */
+  function hangingFetch() {
+    const calls: RequestInit[] = [];
+    const fetch = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Promise<Response>(() => {});
+    });
+    return { fetch: fetch as unknown as typeof globalThis.fetch, calls };
+  }
+
+  it(`gives up after ${HTTP_TIMEOUT_MS / 1000} s with TIMEOUT and aborts the request`, async () => {
+    vi.useFakeTimers();
+    expect(HTTP_TIMEOUT_MS).toBe(10_000);
+    const f = hangingFetch();
+    let settled = false;
+    const p = caught(createRoom(ORIGIN, 'Alice', { fetch: f.fetch })).finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(HTTP_TIMEOUT_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const err = await p;
+    expect(err.code).toBe('TIMEOUT');
+    expect(err.status).toBeNull();
+    expect(f.calls[0].signal?.aborted).toBe(true);
+  });
+
+  it('times out a reply whose body never finishes', async () => {
+    vi.useFakeTimers();
+    const body = new ReadableStream({ start() {} }); // never closes
+    const f = fakeFetch(() => new Response(body, { status: 200 }));
+    const p = caught(joinRoom(ORIGIN, 'K7QX', 'Blake', { fetch: f.fetch }));
+    await vi.advanceTimersByTimeAsync(HTTP_TIMEOUT_MS);
+    expect((await p).code).toBe('TIMEOUT');
+  });
+
+  it("honours the caller's signal as ABORTED", async () => {
+    vi.useFakeTimers();
+    const f = hangingFetch();
+    const ctl = new AbortController();
+    const p = caught(joinRoom(ORIGIN, 'K7QX', 'Blake', { fetch: f.fetch, signal: ctl.signal }));
+    ctl.abort();
+    const err = await p;
+    expect(err.code).toBe('ABORTED');
+    expect(f.calls[0].signal?.aborted).toBe(true);
+  });
+
+  it('refuses at once with an already-aborted caller signal', async () => {
+    const f = hangingFetch();
+    const ctl = new AbortController();
+    ctl.abort();
+    const err = await caught(createRoom(ORIGIN, 'Alice', { fetch: f.fetch, signal: ctl.signal }));
+    expect(err.code).toBe('ABORTED');
+  });
+
+  it('clears its timer once the reply arrives', async () => {
+    vi.useFakeTimers();
+    const f = fakeFetch(() => jsonResponse(200, { code: 'K7QX', seat: 0, token: TOKEN }));
+    await expect(createRoom(ORIGIN, 'Alice', { fetch: f.fetch })).resolves.toMatchObject({ seat: 0 });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

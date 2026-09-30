@@ -95,6 +95,15 @@ export type KnownServerErrorCode =
   | 'NOT_YOUR_TURN'
   | 'STALE'
   | 'RATE_LIMITED'
+  /** The server's room cap is hit (HTTP 503 on create, with Retry-After). Not terminal. */
+  | 'SERVER_FULL'
+  | 'FORBIDDEN'
+  | 'GAME_OVER'
+  /**
+   * A newer hello for this seat took over (SPEC §2.12). Not terminal: the
+   * seat stays valid. The connection stops auto-reconnecting (`replaced`).
+   */
+  | 'REPLACED'
   | 'UPGRADE_REQUIRED';
 
 export interface ErrorFrame {
