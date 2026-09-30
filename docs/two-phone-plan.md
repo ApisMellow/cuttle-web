@@ -3,6 +3,31 @@
 **Status:** plan, 2026-09-29. Decisions are recorded in PRD §10 amendment A-7.
 **Replaces:** the PRD §7 design sketch wherever the two disagree (in-memory rooms, 1-hour GC, Fly.io).
 
+## Progress (as of 2026-09-29)
+
+| # | Item | Status |
+|---|---|---|
+| W1 | `internal/game` move | merged #43 |
+| W2 | Typed Go API | merged #45 |
+| W3 | Server skeleton | merged #44 |
+| W4 | SQLite store | merged #47 |
+| W5 | Rooms and HTTP API (includes the janitor and the healthz DB check) | merged #55 |
+| W6 | WebSocket play, presence, rematch | open #60 (review fixes pending) |
+| W7 | Response hold | open #60 (built with W6) |
+| W8 | Janitor | merged #55 (nightly `VACUUM INTO` not started) |
+| W9 | Wire privacy sweep | todo |
+| W10 | `TableSource` seam | merged #46 |
+| W11 | Client connection | merged #52, #57 |
+| W12 | `OnlineGameStore` and app wiring | merged #58 |
+| W13a | Home modes, Create, Join, waiting screen, `#/join/CODE` | merged #49 |
+| W13b | In-game banners, "responding" panel, online result and rematch | todo |
+| W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | partly in #52 (parser and guard test); origin config todo |
+| W15 | Two-browser e2e | todo |
+| W16 | Ops files | todo |
+| W17 | Deploy Action | todo |
+
+Next, in order: W6 review fixes and merge, then the W9 privacy sweep, W13b UI polish, W14 origin config and the service-worker guard, and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
+
 ## 1. Summary and goals
 
 Alice and Blake each play on their own phone. A small Go server on a DigitalOcean droplet runs the same engine and holds the only full copy of the game; each phone receives only its own redacted view. The app stays on GitHub Pages.

@@ -863,8 +863,9 @@ requirements:
   # R24 — Two-phone online play (PRD §10 amendment A-7, docs/two-phone-plan.md)
   # ---------------------------------------------------------------------
   # Added 2026-09-29 when the first two-phone work items started, as A-7
-  # says. W-numbers are the plan's §13 work items. Merged so far on main:
-  # W1 (PR #43), W3 (PR #44), W10 (PR #46), W4 (PR #47). W2 (PR #45) is open.
+  # says. W-numbers are the plan's §13 work items. Merged on main as of
+  # 2026-09-29: W1 #43, W3 #44, W2 #45, W10 #46, W4 #47, W13a #49, W11 #52
+  # and #57, W5 #55, W12 #58. Open: W6 #60.
   - id: R24.1
     prd: R24
     title: "A full game between two phones"
@@ -917,7 +918,7 @@ requirements:
       - "unit-test: a move from the seat that isn't the actor gets NOT_YOUR_TURN, a wrong game or seq gets STALE followed by a fresh state, and each refusal leaves the stored game byte-identical (plan §3 'Seq rules', §12 'Auth and seq')"
     verify: [unit-test]
     status: in-progress
-    evidence: "PARTIAL. Session half, merged (W2, PR #45 @ e791f80): go internal/game/session_test.go TestW2_SeatBindingRejectsTheOtherSeat (60 seeds, every phase: the other seat gets ErrNotYourTurn, seq -1/+1 gets ErrStale, a bad index or seat is refused, and the session is unchanged), TestW2_ApplyCommitsOnlyIfBothEnvelopesRender. Store half, merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestAuthenticate (a token maps to exactly one seat), TestSaveStaleWritesNothing, TestConcurrentSaveOneWinner. Open: the WebSocket hello-to-seat binding and the STALE resend (W6)."
+    evidence: "PARTIAL. Session half, merged (W2, PR #45 @ e791f80): go internal/game/session_test.go TestW2_SeatBindingRejectsTheOtherSeat (60 seeds, every phase: the other seat gets ErrNotYourTurn, seq -1/+1 gets ErrStale, a bad index or seat is refused, and the session is unchanged), TestW2_ApplyCommitsOnlyIfBothEnvelopesRender. Store half, merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestAuthenticate (a token maps to exactly one seat), TestSaveStaleWritesNothing, TestConcurrentSaveOneWinner. Room layer, merged (W5, PR #55 @ fd537b4): go internal/server/rooms_test.go TestRooms_CreateJoinDealsAndBothSeatsAuthenticate, TestRooms_MovePersistsInTheSameCriticalSection. Open: the WebSocket hello-to-seat binding and the STALE resend (W6, PR #60 open)."
     fails: 0
 
   - id: R24.6
@@ -928,8 +929,8 @@ requirements:
       - "unit-test: a room has exactly two seats; creating takes seat 0, joining takes seat 1, and among many concurrent joins exactly one wins while the rest get ROOM_FULL (plan §5, §12)"
       - "unit-test: POST /api/rooms and POST /api/rooms/{code}/join return {code, seat, token} with Cache-Control: no-store; the join deals with a random dealer and both seats get state (plan §3, §5)"
     verify: [unit-test]
-    status: in-progress
-    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/codes_test.go TestCodeAlphabetIsCrockford, TestNewCodeFormat, TestNewCodeUnbiased, TestNormalizeCode; sqlite_test.go TestCreateRetriesOnCollision, TestConcurrentJoinRace (8 rooms x 24 joiners, one winner each), TestJoinErrors. Open: the HTTP create/join API (W5) and the deal on join (W6)."
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29. Store half (W4, PR #47 @ e5e76d7): go internal/store/codes_test.go TestCodeAlphabetIsCrockford, TestNewCodeFormat, TestNewCodeUnbiased, TestNormalizeCode; sqlite_test.go TestCreateRetriesOnCollision, TestConcurrentJoinRace, TestJoinErrors. HTTP API and the deal on join (W5, PR #55, merged @ fd537b4): go internal/server/api_test.go TestAPI_CreateJoinHappyPath, TestAPI_JoinRace, TestAPI_JoinFull, TestAPI_JoinGone; rooms_test.go TestRooms_CreateJoinDealsAndBothSeatsAuthenticate, TestRooms_DealIsRandom, TestRooms_JoinRace, TestRooms_JoinFullRoom. Client half (W11, PR #52): vitest web/tests/unit/online-code.test.ts 'parseRoomCode matches store.NormalizeCode'; online-http.test.ts 'createRoom', 'joinRoom'."
     fails: 0
 
   - id: R24.7
@@ -940,10 +941,10 @@ requirements:
       - "unit-test: localStorage holds only the seat record {v, server, code, seat, token, names} under cuttle.online.v1, never game state (A-7, SPEC OQ-9 closed for online play)"
       - "unit-test: a phone holds at most one online game; starting a second asks first and forgets the first seat (plan §14 question 3)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29. Seat record (W11 PR #52, W12 PR #58): vitest web/tests/unit/online-seat.test.ts 'uses the one namespaced key cuttle.online.v1', 'stores only the seat fields, never game state', 'keeps one online game per phone: a second save replaces the first'. Join link and screens (W13a, PR #49 @ 5ce81c5): online-screens.svelte.test.ts 'JoinRoomScreen' ('prefills the code from a link and focuses the name'), 'a saved online seat asks before it is replaced', 'OnlineFlow' ('opens the join screen prefilled from a link hash'); home-modes.svelte.test.ts 'Home: one online game per phone'. Online wiring (W12, PR #58 @ 21d029e): app-online.svelte.test.ts 'W12 App: online routing' ('#/join/CODE opens Join'). The hash is cleared in App.svelte with history.replaceState; no test asserts the clear or the hashchange path on its own."
     fails: 0
-    notes: "Plan W12 (seat record) and W13a (join link, Create/Join screens)."
+    notes: "Plan W12 and W13a, both merged."
 
   - id: R24.8
     prd: R24
@@ -953,7 +954,7 @@ requirements:
       - "unit-test: the token travels only in the create/join reply and the first WebSocket hello frame, never in a URL or query string; request logs carry no query string, header or body (plan §3, §9)"
     verify: [unit-test]
     status: in-progress
-    evidence: "PARTIAL. Merged: W4 (PR #47 @ e5e76d7) go internal/store/token_test.go TestNewToken, TestNewTokenReaderError; sqlite_test.go TestRawTokensNeverStored, TestAuthenticate. W3 (PR #44 @ a4ce617) go internal/server/server_test.go TestRequestLogOmitsQueryString. Open: the client and server send the token only in hello and the create/join reply (W5, W6, W11)."
+    evidence: "PARTIAL. Merged: W4 (PR #47 @ e5e76d7) go internal/store/token_test.go TestNewToken, TestNewTokenReaderError; sqlite_test.go TestRawTokensNeverStored, TestAuthenticate. W3 (PR #44 @ a4ce617) go internal/server/server_test.go TestRequestLogOmitsQueryString. W5 (PR #55 @ fd537b4) go internal/server/api_test.go TestAPI_TokensNeverLogged. Client (W11, PR #52) vitest web/tests/unit/online-connection.test.ts 'connects to /api/play with no token in the URL and sends hello first', 'sends the token only in hello, never in any other frame'. Open: the server side of hello (W6, PR #60 open)."
     fails: 0
 
   - id: R24.9
@@ -964,7 +965,7 @@ requirements:
       - "unit-test: a janitor deletes idle rooms every 10 minutes, and a phone holding a dead seat gets ROOM_GONE and forgets the seat (plan §5 step 4, §3)"
     verify: [unit-test]
     status: in-progress
-    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestExpiredRoomIsGoneBeforeSweep, TestExpiredWaitingRoomCannotBeJoined, TestTouch, TestDeleteExpiredOnlyIdle, TestDeleteExpiredCustomTTL; DefaultIdleTTL is 24 h (internal/store/store.go). Open: the janitor (W8) and ROOM_GONE handling (W6, W12)."
+    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestExpiredRoomIsGoneBeforeSweep, TestExpiredWaitingRoomCannotBeJoined, TestTouch, TestDeleteExpiredOnlyIdle, TestDeleteExpiredCustomTTL; DefaultIdleTTL is 24 h. Janitor and gone rooms merged (W5, PR #55 @ fd537b4): go internal/server/rooms_test.go TestRooms_SweepDeletesExpiredAndDropsIdle, TestRooms_SweepDropsStoreExpiredEvenIfRecentlyUsed, TestRooms_JanitorRunsAndStops, TestRooms_UnknownMalformedAndExpiredAreGone; api_test.go TestAPI_JoinGone. Client (W12, PR #58): vitest app-online.svelte.test.ts 'ROOM_GONE forgets the seat and returns Home with a message'. Open: ROOM_GONE over the WebSocket hello (W6, PR #60 open)."
     fails: 0
 
   - id: R24.10
@@ -986,10 +987,10 @@ requirements:
       - "unit-test: with and without a 2 in the responder's hand, the mover's frames match in type and order; a reconnect during the hold gets responding again (plan §6, §12 'Hold test')"
       - "unit-test: only the responder's phone shows the counter prompt, and only when it holds a legal 2 (plan §6)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: in-progress
+    evidence: "PARTIAL. Client half merged (W12, PR #58 @ 21d029e): vitest web/tests/unit/online-game-store.test.ts 'OnlineGameStore: responding, presence, rematch' ('responding holds the board (pending) until the state arrives', 'after a reconnect, welcome then responding holds the board again'); online-game-screen.svelte.test.ts 'plays a move: state -> Confirm -> pending -> responding -> state'. Open: the server hold (PR #60 open) and the 'responding' panel (W13b)."
     fails: 0
-    notes: "Plan W7 (server hold) and W13b (the 'responding' panel). A long think still tells; that leak is accepted by R14."
+    notes: "Plan W7 (server hold, in PR #60 with W6) and W13b (the 'responding' panel). A long think still tells; that leak is accepted by R14."
 
   - id: R24.12
     prd: R24
@@ -1000,10 +1001,10 @@ requirements:
       - "unit-test: the client reconnects with backoff (0.5, 1, 2, 4, then every 8 s), and at once on visibilitychange to visible and on online (plan §8)"
       - "unit-test: 45 s without a heartbeat marks a connection dead and the other seat gets presence {opponentOnline: false}; the UI shows 'Reconnecting…' and 'NAME is offline', and a seq jump shows a recap of the missed entries (plan §7, §8)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: in-progress
+    evidence: "PARTIAL. Client merged (W11, PRs #52 and #57; W12, PR #58): vitest web/tests/unit/online-connection.test.ts 'reconnect backoff' ('retries at 0.5, 1, 2, 4, 8, 16, then every 30 seconds'), 'rate limiting and stalling', 'replaced by a newer hello (SPEC §2.12)'; online-game-store.test.ts 'presence sets opponentOnline and the status line says so', 'a fresh welcome with no hold clears a stuck pending'; online-game-screen.svelte.test.ts 'reconnect to the same position: the kept move is still staged and Confirm sends it', 'reconnect after the game moved on: staging resets and a notice says so'. The shipped backoff (16 s, then 30 s) differs from the 8 s in the acceptance above; the acceptance text needs the product owner's call or a matching change. Open: server hello, heartbeat and presence (W6, PR #60 open), the banners (W13b), and the restart resync check."
     fails: 0
-    notes: "Plan W6 (server), W11 (connection module), W12 (store), W13b (banners)."
+    notes: "Plan W6 (server, PR #60 open), W11 and W12 (client, merged), W13b (banners)."
 
   - id: R24.13
     prd: R24
@@ -1015,7 +1016,7 @@ requirements:
       - "unit-test: there are no accounts, email or analytics; a code grants only the empty seat 1, once (plan §9)"
     verify: [unit-test]
     status: in-progress
-    evidence: "PARTIAL. CORS half merged (W3, PR #44 @ a4ce617): go internal/server/server_test.go TestCORSAllowedOrigin, TestCORSNeverWildcard, TestCORSDeniedOrigins, TestCORSNoOriginPassesThrough, TestCORSPreflight, TestDevFlagAllowsLocalOrigins, TestParseConfigRejects. Store refuses an empty name (TestCreateRejectsEmptyName) and a second join (TestJoinErrors). Open: the WebSocket Origin check (W6), rate limits and name/frame/room caps (W5, W6)."
+    evidence: "PARTIAL. CORS merged (W3, PR #44 @ a4ce617): go internal/server/server_test.go TestCORSAllowedOrigin, TestCORSNeverWildcard, TestCORSDeniedOrigins, TestCORSNoOriginPassesThrough, TestCORSPreflight, TestDevFlagAllowsLocalOrigins, TestParseConfigRejects. HTTP limits, caps and names merged (W5, PR #55 @ fd537b4): go internal/server/api_test.go TestAPI_CORSOnRoomRoutes, TestAPI_CreateRateLimit, TestAPI_JoinRateLimitCountsFailures, TestAPI_ForwardedForTrustedOnlyFromProxy, TestAPI_RoomCap, TestAPI_NameValidation, TestAPI_BodyRules, TestAPI_InvisibleNameRejected; ratelimit_test.go TestLimiterIPv6SlashFortyEightAggregate, TestLimiterOverflowWhenFull; hardening_test.go TestCleanNameInvisibleCharacters, TestRecoverMiddlewareKeepsPanicValuesOut. Open: the WebSocket Origin check, the 1 KB frame cap, the per-socket frame rate and failed-hello limit (W6, PR #60 open)."
     fails: 0
 
   - id: R24.14
@@ -1027,10 +1028,10 @@ requirements:
       - "e2e-test: pass-and-play and table mode still start and play with the network off after first load (A-7 'Modes', O4)"
       - "unit-test: with VITE_CUTTLE_SERVER unset at build time, Play online is hidden (plan §7)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: in-progress
+    evidence: "PARTIAL. Merged: vitest web/tests/unit/online-sw-guard.test.ts 'declares no Workbox runtimeCaching route that could match the server origin', 'does not route the service worker with a custom handler either'; online-config.test.ts 'is null when VITE_CUTTLE_SERVER is unset, so Play online stays hidden'; home-modes.svelte.test.ts 'hides the online mode when it is not available'. Open: the navigateFallback /api/ check, the offline copy (W13b) and both e2e checks (W15)."
     fails: 0
-    notes: "Plan W14 (config and service-worker guard) and W13a/W13b (the offline copy)."
+    notes: "Plan W14 (origin config and service-worker guard, partly landed with W11) and W13a/W13b (the offline copy)."
 
   - id: R24.15
     prd: R24
@@ -1039,8 +1040,8 @@ requirements:
       - "e2e-test: Home offers Pass and play, Table mode and Play online (Create or Join); Create leads to a waiting screen with the code in large type, Share and Copy link; a saved seat adds 'Resume online game with NAME' (A-7 'Modes', plan §7)"
       - "unit-test: the online mode runs without the curtain, handoff, reveal gate, resume gate or viewer switching; rematch shows 'Waiting for NAME' until both tap (plan §7)"
     verify: [e2e-test, unit-test]
-    status: todo
-    evidence: ""
+    status: in-progress
+    evidence: "PARTIAL. Home and the room screens merged (W13a, PR #49 @ 5ce81c5; W12, PR #58): vitest web/tests/unit/home-modes.svelte.test.ts 'Home: three modes' ('Start a room and Join with a code open the online screens'), 'a saved seat shows Resume online game instead of Create and Join'; online-screens.svelte.test.ts 'WaitingScreen' ('shows the code large with a spoken label, the link, and waiting copy', 'Share uses the share sheet when there is one'); app-online.svelte.test.ts 'W12 App: online routing'. Open: the online result and 'Waiting for NAME' rematch copy (W13b) and the e2e check (W15)."
     fails: 0
     notes: "Plan W13a (Home, Create, Join, waiting screen) and W13b (online result and rematch)."
 
@@ -1061,8 +1062,8 @@ requirements:
     acceptance:
       - "unit-test: GET /healthz returns JSON with ok status, the build version and the live room count, checks the database, and is never cached; other methods get 405 (plan §3, §11)"
     verify: [unit-test]
-    status: in-progress
-    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): go internal/server/server_test.go TestHealthz (status ok, version and commit, application/json), TestHealthzWrongMethodAndUnknownPath; the handler sets Cache-Control: no-store. Open: the database check and the room count once the store is wired in (W5)."
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29. W3 (PR #44 @ a4ce617): go internal/server/server_test.go TestHealthz, TestHealthzWrongMethodAndUnknownPath. W5 (PR #55 @ fd537b4): go internal/server/api_test.go TestAPI_Healthz (ok, status, version, commit and the live room count, Cache-Control: no-store, and 503 when the database is closed)."
     fails: 0
 
   - id: R24.18
@@ -1073,7 +1074,7 @@ requirements:
       - "human-approval: the Caddyfile, systemd unit, setup script and deploy script exist, and a first manual deploy serves /healthz over TLS; the server listens on localhost only and never on 8765 (plan §11, W16)"
     verify: [unit-test, human-approval]
     status: in-progress
-    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. Open: ops files (W16) and the deploy Action (W17)."
+    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. W5 (PR #55) adds TestParseConfigW5Flags. Open: ops files (W16) and the deploy Action (W17)."
     fails: 0
 
   - id: R24.19
