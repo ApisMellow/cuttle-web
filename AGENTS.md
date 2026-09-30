@@ -208,6 +208,33 @@ that makes your list complete.
   403. Add new routes in `server.Handler` so CORS and logging wrap them.
 - `scripts/build-server.sh [out]` builds the static linux/amd64 binary.
 
+### Room store (two-phone W4)
+
+- `internal/store` is the only code that touches SQLite (`modernc.org/sqlite`,
+  pure Go, so `CGO_ENABLED=0` builds keep working). Pinned at v1.59.0, the
+  newest release that still declares `go 1.25`; later releases require
+  Go 1.26 and would move the toolchain and the `wasm_exec.js` pairing.
+  Upgrade them together or not at all.
+- **Raw seat tokens never reach the database.** `Create` and `Join` return
+  the token once; only `SHA-256(token)` is stored, and `Authenticate`
+  compares hashes in constant time. A test scans the DB and WAL bytes for
+  the raw token. Never add a column, log line or error that carries one.
+- **The snapshot is opaque.** The store never parses it, and it holds every
+  hidden card; no handler may return it. The DB file is created `0600`.
+- **Writes are serialized by a one-connection writer pool**; reads use a
+  separate `query_only` pool (WAL). Guarded writes are single conditional
+  UPDATEs: `Join` claims seat 1 only `WHERE token1_hash IS NULL`, `Save`
+  writes only when the stored `(game, seq)` equals the caller's. Keep new
+  guarded writes in that shape rather than read-then-write.
+- `Save`'s version is `(Game, Seq)` and must strictly increase: a move
+  bumps `Seq`, a deal or rematch bumps `Game` and restarts `Seq` at 0.
+- Codes are stored upper-case only (a table CHECK). Pass user input through
+  `store.NormalizeCode`; every store method already does.
+- Migrations are an append-only list in `migrate.go`, tracked by
+  `PRAGMA user_version`. Never edit a shipped entry; add the next one.
+- Tests open stores under `t.TempDir()` (or `OpenMemory`), so no DB files
+  are left in the tree.
+
 ### Svelte 5 conventions
 
 - Runes only: `$state`, `$derived`, `$props`, `$effect`. No `export let`,
