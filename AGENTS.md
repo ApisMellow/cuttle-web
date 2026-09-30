@@ -324,6 +324,43 @@ that makes your list complete.
   `ErrorLog` so net/http's own "panic serving" line is replaced by a
   fixed one.
 
+### Online client connection (two-phone W11)
+
+- `web/src/lib/online/` is framework-light TypeScript with no Svelte and no
+  game state: `protocol.ts` (typed frames, plan §3), `connection.ts`
+  (socket, hello, backoff, heartbeat), `http.ts` (create/join), `seat.ts`
+  (the one saved seat), `config.ts` (server origin). The online store (W12)
+  builds on it; components never touch it directly.
+- **The seat token travels only in the `hello` frame and the create/join
+  reply body.** Never in a URL, query, log line, status or error message.
+  Nothing in `lib/online/` calls `console`; a test spies on it.
+- Every inbound `state` envelope goes through `parseBridgeResult`
+  (schema.ts) and must carry `viewer === seat`. Unknown frame types decode
+  to `null` and are ignored; malformed known frames throw.
+- The client never queues or resends a move: `sendMove` returns false
+  unless the connection is `open` (after `welcome`).
+- `ROOM_GONE`, `UNAUTHORIZED` and `UPGRADE_REQUIRED` are terminal; add a
+  code to `TERMINAL_ERROR_CODES` only with a plan or SPEC change. The
+  client-side `SEAT_MISMATCH` (a welcome or state for the wrong seat) is
+  also terminal and means "forget the seat". `REPLACED` (a newer tab took
+  the seat) sets status `replaced`: no auto-reconnect, seat kept, `retry()`
+  resumes. The binding contract is SPEC §2.12.
+- Reconnect: backoff capped at 30 s with jitter; after `RATE_LIMITED` wait
+  at least 60 s, even on online/visible; after 10 failures without a
+  welcome the status is `stalled` until `retry()`. A socket factory that
+  throws counts as a drop. HTTP calls time out after 10 s.
+- `code.ts` is the one room-code implementation (pinned to Go
+  `store.NormalizeCode`); `config.ts` is the one reader of
+  `VITE_CUTTLE_SERVER`. Don't add a second of either.
+- Seat storage is one key, `cuttle.online.v1`, holding only
+  `{v, server, code, seat, token, names}`.
+- The server origin comes from `VITE_CUTTLE_SERVER`; a dev build may
+  override it with localStorage `cuttle.online.devServer`. Never hard-code a
+  host. The service worker must never get a `runtimeCaching` route
+  (`online-sw-guard.test.ts`).
+- Connection tests inject a fake socket factory, a fake environment
+  (`online-fakes.ts`) and `random`, and drive time with `vi.useFakeTimers`.
+
 ### Svelte 5 conventions
 
 - Runes only: `$state`, `$derived`, `$props`, `$effect`. No `export let`,

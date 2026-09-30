@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isValidCode, joinLink, normalizeCode, parseJoinHash } from '../../src/lib/online/code';
+import { isValidCode, joinLink, normalizeCode, parseJoinHash, parseRoomCode } from '../../src/lib/online/code';
 
 describe('normalizeCode', () => {
   it('uppercases', () => expect(normalizeCode('k7qx')).toBe('K7QX'));
@@ -50,5 +50,42 @@ describe('joinLink', () => {
   });
   it('replaces an existing hash', () => {
     expect(joinLink('K7QX', 'https://example.test/app/#/join/OLD1')).toBe('https://example.test/app/#/join/K7QX');
+  });
+});
+
+// Pinned to the server: internal/store/codes.go NormalizeCode and its table in
+// codes_test.go TestNormalizeCode. Change one side only with the other.
+describe('parseRoomCode matches store.NormalizeCode', () => {
+  const SERVER_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // store.CodeAlphabet
+
+  it('accepts what the server accepts, with the same result', () => {
+    const ok: Record<string, string> = {
+      K7QX: 'K7QX',
+      k7qx: 'K7QX',
+      ' k7qx ': 'K7QX',
+      o0il: '0011',
+      OILZ: '011Z',
+    };
+    for (const [input, want] of Object.entries(ok)) expect(parseRoomCode(input), input).toBe(want);
+  });
+
+  it('rejects what the server rejects', () => {
+    for (const input of ['', 'K7Q', 'K7QXZ', 'K7QU', 'K7Q!', 'K7-Q', 'K7QÉ']) {
+      expect(parseRoomCode(input), input).toBeNull();
+    }
+  });
+
+  it('keeps every server alphabet character and rejects every other ASCII one', () => {
+    for (let i = 33; i < 127; i++) {
+      const c = String.fromCharCode(i);
+      const folded = c.toUpperCase().replace('O', '0').replace(/[IL]/, '1');
+      const want = SERVER_ALPHABET.includes(folded) ? `${folded}000` : null;
+      expect(parseRoomCode(`${c}000`), c).toBe(c === '-' ? null : want);
+    }
+  });
+
+  it('also drops inner separators, a client-only forgiveness', () => {
+    expect(parseRoomCode('k7-qx')).toBe('K7QX');
+    expect(parseRoomCode('k7 qx')).toBe('K7QX');
   });
 });
