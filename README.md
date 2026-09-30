@@ -6,7 +6,7 @@
 
 <p align="center"><b>A card duel for two, played with an ordinary deck.</b></p>
 
-<p align="center"><a href="https://apismellow.github.io/cuttle-web/"><b>▶ Play now</b></a></p>
+<p align="center"><a href="https://apismellow.github.io/cuttle-web/"><b>▶ Play now</b></a> · <a href="https://apismellow.github.io/cuttle-web/gallery/"><b>Card gallery</b></a></p>
 
 Cuttle feels like Magic: The Gathering, except all you need is the 52-card deck in your kitchen drawer. Every card gives you a choice. You can lay it down for points, or you can spend it for what it does:
 
@@ -22,7 +22,7 @@ The first player to 21 points wins. Games are quick, and one bad trade can swing
 
 Open the [game](https://apismellow.github.io/cuttle-web/) on a phone and hand it across the table. It's pass-and-play, so your hand stays hidden while the phone changes hands. You don't need an account and there's nothing to install. It also works on a laptop.
 
-Not sure what a card does? Tap it and the game tells you. The [card gallery](https://apismellow.github.io/cuttle-web/gallery/) shows off the full Mythic deck.
+Not sure what a card does? Tap it and the game tells you. The card gallery, linked above and in the game's menu, shows off the full Mythic deck.
 
 ---
 
