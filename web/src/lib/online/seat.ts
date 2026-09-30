@@ -4,11 +4,17 @@
 // authorizes play: never log a record or put it in a URL.
 
 import type { PlayerId } from '../bridge/schema';
-import { parseServerOrigin } from './config';
+import { parseServerOrigin, serverOrigin } from './config';
 import type { SeatNames } from './protocol';
 
 export const SEAT_STORAGE_KEY = 'cuttle.online.v1';
 
+/**
+ * A saved seat. For W12: resume a record only when `record.server` equals
+ * this build's `serverOrigin()` (use seatMatchesServer). A seat saved against
+ * another server (a dev override, a moved deployment) must not be sent there:
+ * its token would go to a server that never issued it.
+ */
 export interface SeatRecord {
   v: 1;
   /** Server origin the seat belongs to. */
@@ -82,6 +88,14 @@ export function saveSeat(record: SeatRecord, storage: SeatStorage | undefined = 
   } catch {
     return false;
   }
+}
+
+/**
+ * True when `record` belongs to `origin`, by default this build's
+ * serverOrigin(). False when online play is off (origin null).
+ */
+export function seatMatchesServer(record: SeatRecord, origin: string | null = serverOrigin()): boolean {
+  return origin !== null && record.server === origin;
 }
 
 /** Forgets the saved seat (UNAUTHORIZED, ROOM_GONE, or a new game). */

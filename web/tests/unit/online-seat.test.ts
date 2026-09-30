@@ -1,8 +1,8 @@
 // Two-phone W11 (docs/two-phone-plan.md §7, §14 q3): the phone keeps one
 // online seat, under one namespaced localStorage key, and no game state.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { SEAT_STORAGE_KEY, clearSeat, loadSeat, saveSeat, type SeatRecord } from '../../src/lib/online/seat';
+import { SEAT_STORAGE_KEY, clearSeat, loadSeat, saveSeat, seatMatchesServer, type SeatRecord } from '../../src/lib/online/seat';
 import { fakeStorage } from './game-test-support';
 import { CODE, ORIGIN, TOKEN } from './online-fakes';
 
@@ -91,5 +91,24 @@ describe('seat storage', () => {
     const storage = fakeStorage();
     expect(saveSeat(record({ token: '' }), storage)).toBe(false);
     expect(storage.getItem(SEAT_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('seatMatchesServer', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('matches only the configured server origin', () => {
+    expect(seatMatchesServer(record(), ORIGIN)).toBe(true);
+    expect(seatMatchesServer(record(), 'https://other.example.com')).toBe(false);
+    expect(seatMatchesServer(record(), null)).toBe(false);
+  });
+
+  it("defaults to this build's serverOrigin()", () => {
+    vi.stubEnv('VITE_CUTTLE_SERVER', ORIGIN);
+    expect(seatMatchesServer(record())).toBe(true);
+    vi.stubEnv('VITE_CUTTLE_SERVER', 'https://other.example.com');
+    expect(seatMatchesServer(record())).toBe(false);
   });
 });

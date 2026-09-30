@@ -10,18 +10,40 @@
 //   - Every inbound `state` is validated by schema.ts (via protocol.ts) and
 //     must be addressed to this seat. A bad frame is reported through
 //     onProtocolError and not delivered; the connection stays up.
-//   - A drop reconnects with backoff 0.5, 1, 2, 4, then every 8 s, each with
-//     ±20% jitter so two phones don't retry in step. A successful welcome
-//     resets it. `online` resets it and retries at once; `visibilitychange`
-//     to visible retries at once without resetting.
+//   - A drop reconnects with backoff 0.5, 1, 2, 4, 8, 16, then every 30 s,
+//     each with ±20% jitter so two phones don't retry in step. A successful
+//     welcome resets it. `online` resets it and retries at once;
+//     `visibilitychange` to visible retries at once without resetting. A
+//     socket factory that throws (SecurityError, bad URL) counts as a drop.
+//   - An `error` frame with RATE_LIMITED sets a floor: no socket for at
+//     least RATE_LIMIT_FLOOR_MS, whatever `online`, `visibilitychange` or
+//     retry() say.
+//   - After MAX_FAILED_ATTEMPTS failures in a row without a welcome the
+//     connection is `stalled`: no more retries, whatever the page does, until
+//     retry() is called (the UI's "Tap to reconnect").
 //   - Heartbeat: an app-level `ping` every PING_INTERVAL_MS; any inbound
 //     frame counts as life. No frame within PONG_TIMEOUT_MS of a ping means
 //     the socket is dead (iOS suspends a backgrounded page and the socket
 //     can die without a close event), so it is dropped and replaced. On
 //     visible, an open socket is probed at once with a shorter deadline.
+//   - REPLACED (a newer hello for this seat, on another tab or phone) stops
+//     auto-reconnecting, so two devices don't take the seat back and forth.
+//     The status is `replaced` and the seat stays valid; retry() resumes
+//     here ("tap to play here").
+//   - A `welcome` while already open is normal (a waiting room's seat 0 gets
+//     a second one when someone joins): it is delivered and the status stays
+//     `open`. A welcome with no `state` after it leaves the status `open` too.
 //   - ROOM_GONE, UNAUTHORIZED and UPGRADE_REQUIRED are terminal: the socket
 //     closes and nothing reconnects. The frame is still delivered, so the
-//     store can forget the seat and say why.
+//     store can forget the seat and say why. A `welcome` for another seat or
+//     a `state` for another viewer is terminal too, as the client-side code
+//     SEAT_MISMATCH (the saved seat is wrong; W12 clears it).
+//   - `state` and non-terminal `error` frames before `welcome` are dropped.
+//     `lastSeq` never goes backwards within a game and resets when a newer
+//     game starts.
+//   - Each listener call is isolated: one that throws doesn't skip the
+//     others. The throw is reported through onProtocolError as a
+//     ListenerError whose message is fixed text (never frame contents).
 //   - `navigator.onLine` false, or an `offline` event, puts the connection
 //     in `offline`: socket closed, no retries until `online`.
 //
@@ -42,7 +64,11 @@ import {
 } from './protocol';
 
 /** Backoff before reconnect attempt 1, 2, 3, ...; the last value repeats. */
-export const BACKOFF_MS: readonly number[] = [500, 1000, 2000, 4000, 8000];
+export const BACKOFF_MS: readonly number[] = [500, 1000, 2000, 4000, 8000, 16000, 30000];
+/** The least wait before the next socket after the server says RATE_LIMITED. */
+export const RATE_LIMIT_FLOOR_MS = 60_000;
+/** Failures in a row, without a welcome, after which the connection stalls. */
+export const MAX_FAILED_ATTEMPTS = 10;
 /** Each delay is scaled by a random factor in [1 - JITTER_RATIO, 1 + JITTER_RATIO). */
 export const JITTER_RATIO = 0.2;
 /** How often an open socket sends `ping`. */
@@ -79,6 +105,21 @@ export interface ConnectionEnvironment {
   listen(type: EnvironmentEvent, fn: () => void): () => void;
 }
 
+/**
+ * Client-side terminal codes, reported as `closed-by-server` like the
+ * server's terminal codes. SEAT_MISMATCH: the server answered for a
+ * different seat than the saved one, so the saved seat should be cleared.
+ */
+export type ClientTerminalCode = 'SEAT_MISMATCH';
+
+/** A status or frame listener threw. The message is fixed text. */
+export class ListenerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ListenerError';
+  }
+}
+
 export type ConnectionStatus =
   | { kind: 'idle' }
   /** First connection, before any welcome and with no failure yet. */
@@ -91,7 +132,18 @@ export type ConnectionStatus =
    */
   | { kind: 'reconnecting'; attempt: number; retryInMs: number | null }
   | { kind: 'offline' }
-  | { kind: 'closed-by-server'; code: TerminalErrorCode }
+  /**
+   * MAX_FAILED_ATTEMPTS failures in a row without a welcome. Nothing retries
+   * (not `online`, not `visibilitychange`) until retry() is called; the UI
+   * offers "Tap to reconnect".
+   */
+  | { kind: 'stalled'; attempt: number }
+  /**
+   * The server sent REPLACED: this seat was taken over by a newer hello. No
+   * auto-reconnect; the seat is still good, and retry() takes it back.
+   */
+  | { kind: 'replaced' }
+  | { kind: 'closed-by-server'; code: TerminalErrorCode | ClientTerminalCode }
   /** close() was called. */
   | { kind: 'closed' };
 
@@ -102,6 +154,11 @@ export interface ConnectionOptions {
   token: string;
   /** The last envelope seq this phone saw; sent in hello. Default 0. */
   lastSeq?: number;
+  /**
+   * The game `lastSeq` belongs to, if known. With it, a `state` for the same
+   * game can't move lastSeq backwards; without it, the first `state` sets it.
+   */
+  lastGame?: number;
   socketFactory?: SocketFactory;
   environment?: ConnectionEnvironment;
   /** Jitter source in [0, 1). Default Math.random. */
@@ -118,6 +175,12 @@ export interface OnlineConnection {
   onProtocolError(fn: (error: Error) => void): () => void;
   /** Opens the connection. Idempotent; does nothing once closed. */
   start(): void;
+  /**
+   * Retries now with a clean backoff (still no sooner than a RATE_LIMITED
+   * floor). The way out of `stalled` and `replaced`; also skips a backoff
+   * wait or leaves `offline`. Does nothing while idle, connecting, open or closed.
+   */
+  retry(): void;
   /** Sends `move`. False (nothing sent) unless the connection is open. */
   sendMove(game: number, seq: number, index: number): boolean;
   /** Sends `rematch`. False (nothing sent) unless the connection is open. */
@@ -160,8 +223,13 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
 
   let status: ConnectionStatus = { kind: 'idle' };
   let lastSeq = options.lastSeq ?? 0;
+  let lastGame: number | null = options.lastGame ?? null;
   let failures = 0;
   let everOpened = false;
+  /** Any attempt has failed, so a new socket is a reconnect, not a first try. */
+  let everFailed = false;
+  /** Date.now() before which no socket may be made (RATE_LIMITED). */
+  let floorUntil = 0;
 
   let socket: SocketLike | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -176,9 +244,29 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
 
   const isFinal = () => status.kind === 'closed' || status.kind === 'closed-by-server';
 
+  /** Reports to the error listeners; one that throws is skipped over. */
+  function emitError(error: Error): void {
+    for (const fn of [...errorListeners]) {
+      try {
+        fn(error);
+      } catch {
+        // An error listener's own throw has nowhere safe to go.
+      }
+    }
+  }
+
+  /** Calls one status or frame listener; a throw is reported, never rethrown. */
+  function callListener<T>(fn: (value: T) => void, value: T, what: string): void {
+    try {
+      fn(value);
+    } catch {
+      emitError(new ListenerError(`${what} listener threw`));
+    }
+  }
+
   function setStatus(next: ConnectionStatus): void {
     status = next;
-    for (const fn of [...statusListeners]) fn(next);
+    for (const fn of [...statusListeners]) callListener(fn, next, 'status');
   }
 
   function clearTimer(t: ReturnType<typeof setTimeout> | null): null {
@@ -240,7 +328,21 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
     return Math.round(base * (1 - JITTER_RATIO + 2 * JITTER_RATIO * random()));
   }
 
-  /** The current socket failed or died: go offline or schedule a retry. */
+  /** Milliseconds left on a RATE_LIMITED floor, or 0. */
+  function floorRemaining(): number {
+    return Math.max(0, floorUntil - Date.now());
+  }
+
+  function scheduleConnect(delay: number): void {
+    reconnectTimer = clearTimer(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+    setStatus({ kind: 'reconnecting', attempt: failures, retryInMs: delay });
+  }
+
+  /** The current socket failed or died: go offline, stall, or schedule a retry. */
   function drop(): void {
     if (isFinal()) return;
     discardSocket();
@@ -249,13 +351,13 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
       return;
     }
     failures += 1;
-    const delay = backoffDelay(failures);
-    reconnectTimer = clearTimer(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, delay);
-    setStatus({ kind: 'reconnecting', attempt: failures, retryInMs: delay });
+    everFailed = true;
+    if (failures >= MAX_FAILED_ATTEMPTS) {
+      reconnectTimer = clearTimer(reconnectTimer);
+      setStatus({ kind: 'stalled', attempt: failures });
+      return;
+    }
+    scheduleConnect(Math.max(backoffDelay(failures), floorRemaining()));
   }
 
   function goOffline(): void {
@@ -273,7 +375,14 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
       goOffline();
       return;
     }
-    const s = makeSocket(url);
+    let s: SocketLike;
+    try {
+      s = makeSocket(url);
+    } catch {
+      // SecurityError, a bad URL, ...: no socket to wait on, so it's a drop.
+      drop();
+      return;
+    }
     socket = s;
     const current = () => socket === s;
     s.onopen = () => {
@@ -299,13 +408,18 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
       drop();
     }, HANDSHAKE_TIMEOUT_MS);
     setStatus(
-      everOpened || failures > 0 ? { kind: 'reconnecting', attempt: failures, retryInMs: null } : { kind: 'connecting' },
+      everOpened || everFailed ? { kind: 'reconnecting', attempt: failures, retryInMs: null } : { kind: 'connecting' },
     );
   }
 
   function reportError(err: unknown): void {
-    const error = err instanceof Error ? err : new ProtocolError('frame: could not be decoded');
-    for (const fn of [...errorListeners]) fn(error);
+    emitError(err instanceof Error ? err : new ProtocolError('frame: could not be decoded'));
+  }
+
+  /** Wrong seat from the server: report it, then stop for good. */
+  function seatMismatch(error: ProtocolError): void {
+    reportError(error);
+    finish({ kind: 'closed-by-server', code: 'SEAT_MISMATCH' });
   }
 
   function receive(data: unknown): void {
@@ -321,25 +435,51 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
     }
     if (frame === null || frame.t === 'pong') return;
 
+    if (frame.t === 'error' && frame.code === 'RATE_LIMITED') {
+      floorUntil = Math.max(floorUntil, Date.now() + RATE_LIMIT_FLOOR_MS);
+    }
+    const welcomed = status.kind === 'open';
+    const stops = frame.t === 'error' && (isTerminalErrorCode(frame.code) || frame.code === 'REPLACED');
+    if (!welcomed && (frame.t === 'state' || (frame.t === 'error' && !stops))) {
+      // Nothing but welcome (or a terminal error) may come first.
+      return;
+    }
+
     if (frame.t === 'welcome') {
       if (frame.seat !== seat) {
-        reportError(new ProtocolError('welcome.seat: must be this phone\'s seat'));
+        seatMismatch(new ProtocolError('welcome.seat: must be this phone\'s seat'));
         return;
       }
       handshakeTimer = clearTimer(handshakeTimer);
       failures = 0;
       everOpened = true;
-      setStatus({ kind: 'open' });
+      if (!welcomed) setStatus({ kind: 'open' });
     } else if (frame.t === 'state') {
       if (frame.envelope.state.viewer !== seat) {
-        reportError(new ProtocolError('state.envelope.state.viewer: must be this phone\'s seat'));
+        seatMismatch(new ProtocolError('state.envelope.state.viewer: must be this phone\'s seat'));
         return;
       }
-      lastSeq = frame.envelope.seq;
+      noteSeq(frame.game, frame.envelope.seq);
     } else if (frame.t === 'error' && isTerminalErrorCode(frame.code)) {
       finish({ kind: 'closed-by-server', code: frame.code });
+    } else if (frame.t === 'error' && frame.code === 'REPLACED') {
+      // Park: no socket, no timer. Env listeners stay for retry() but ignore
+      // everything while replaced.
+      discardSocket();
+      reconnectTimer = clearTimer(reconnectTimer);
+      setStatus({ kind: 'replaced' });
     }
-    for (const fn of [...frameListeners]) fn(frame);
+    for (const fn of [...frameListeners]) callListener(fn, frame, 'frame');
+  }
+
+  /** lastSeq only moves forward within a game; a newer game starts it over. */
+  function noteSeq(game: number, seq: number): void {
+    if (lastGame === null || game > lastGame) {
+      lastGame = game;
+      lastSeq = seq;
+    } else if (game === lastGame && seq > lastSeq) {
+      lastSeq = seq;
+    }
   }
 
   function finish(final: ConnectionStatus): void {
@@ -350,9 +490,18 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
     setStatus(final);
   }
 
-  /** Retry now instead of waiting out the backoff; optionally reset it. */
+  /**
+   * Retry now instead of waiting out the backoff; optionally reset it. A
+   * RATE_LIMITED floor still holds: then the retry waits it out instead.
+   */
   function retryNow(resetBackoff: boolean): void {
     if (resetBackoff) failures = 0;
+    const wait = floorRemaining();
+    if (wait > 0 && env.isOnline()) {
+      discardSocket();
+      scheduleConnect(wait);
+      return;
+    }
     connect();
   }
 
@@ -383,7 +532,8 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
   }
 
   function onOffline(): void {
-    if (!isFinal()) goOffline();
+    // Stalled and replaced stay put until retry(), network or not.
+    if (!isFinal() && status.kind !== 'stalled' && status.kind !== 'replaced') goOffline();
   }
 
   return {
@@ -392,7 +542,7 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
     },
     subscribe(fn) {
       statusListeners.add(fn);
-      fn(status);
+      callListener(fn, status, 'status');
       return () => statusListeners.delete(fn);
     },
     onFrame(fn) {
@@ -412,6 +562,12 @@ export function createConnection(options: ConnectionOptions): OnlineConnection {
       ];
       if (env.isOnline()) connect();
       else goOffline();
+    },
+    retry() {
+      const k = status.kind;
+      if (k === 'stalled' || k === 'replaced' || k === 'offline' || (k === 'reconnecting' && status.retryInMs !== null)) {
+        retryNow(true);
+      }
     },
     sendMove(game, seq, index) {
       return status.kind === 'open' && send({ t: 'move', game, seq, index });
