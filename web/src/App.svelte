@@ -29,8 +29,15 @@
   import OnlineFlow from './lib/components/OnlineFlow.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
-  import { configureOnlineActions, onlineAvailable } from './lib/online/provider';
-  import { applyUpdateAtRematch, reportScreen, takePendingRematch } from './lib/pwa/register';
+  import { configureOnlineActions, getOnlineActions, onlineAvailable } from './lib/online/provider';
+  import {
+    applyUpdateAtOnlineRematch,
+    applyUpdateAtRematch,
+    reportScreen,
+    takePendingOnlineRematch,
+    takePendingRematch,
+    type PendingOnlineRematch,
+  } from './lib/pwa/register';
   import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
   import { online } from './lib/stores/online.svelte';
@@ -93,6 +100,9 @@
           session.setNames(pending.names[0], pending.names[1]);
           void game.newGame(pending.dealer === undefined ? {} : { dealer: pending.dealer });
         }
+        // Review F4: an online Rematch tapped just before an update reload.
+        const onlinePending = takePendingOnlineRematch();
+        if (onlinePending !== null) resumeForRematch(onlinePending);
       })
       .catch((err: unknown) => {
         engineStatus = 'failed';
@@ -263,6 +273,26 @@
     return winningMoveLine(history, view.winner, names, side.points, side.threshold);
   }
 
+  // Review F4 (R18): the online result screen's Rematch is a safe point
+  // too. With an update waiting (and this seat's request not already out),
+  // the page reloads onto the new build instead of sending the rematch; the
+  // reloaded page resumes the saved seat and sends it (`resumeForRematch`).
+  // Only the room code and the game number cross the reload.
+  function handleOnlineRematch(): void {
+    const code = getOnlineActions().savedSeat()?.code;
+    const safe = code !== undefined && !onlineGame.rematchPending && !onlineGame.pending;
+    if (safe && applyUpdateAtOnlineRematch({ code, game: onlineGame.game })) return;
+    void onlineGame.newGame();
+  }
+
+  /** After the update reload: resume the same room's seat, then ask for the rematch once its finished state arrives. */
+  function resumeForRematch(pending: PendingOnlineRematch): void {
+    const actions = getOnlineActions();
+    if (actions.savedSeat()?.code !== pending.code) return;
+    actions.resume();
+    if (onlineGame.attached) onlineGame.rematchWhenResumed(pending.game);
+  }
+
   // Two-phone W12: the online result reads the online store only: its own
   // envelope, the room's names and the room's tally (by seat, from the
   // server's `state`). Rematch asks the server (once; the store gates it),
@@ -330,7 +360,7 @@
       names={onlineGame.names}
       tally={onlineTally}
       scores={finalScores(onlineView)}
-      onRematch={() => void onlineGame.newGame()}
+      onRematch={handleOnlineRematch}
       onHome={() => onlineGame.goHome()}
       winningMove={winningMove(onlineView, onlineGame.history, onlineGame.names)}
     />

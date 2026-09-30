@@ -2,7 +2,7 @@
   // Two-phone play, guest side: a code (prefilled from a link, or typed) and a name.
   import { onMount, untrack } from 'svelte';
 
-  import { ERROR_TEXT, type OnlineActions } from '../online/actions';
+  import { ERROR_TEXT, replaceSeatQuestion, type OnlineActions } from '../online/actions';
   import { CODE_LENGTH, isValidCode, normalizeCode } from '../online/code';
   import { settings } from '../stores/settings.svelte';
 
@@ -24,6 +24,8 @@
   let error = $state<string | null>(
     untrack(() => badLink) ? 'That link doesn’t look right. Type the 4-character code instead.' : null,
   );
+  /** Review F3: the join waiting on "Leave it", while a saved seat would be replaced. */
+  let replacing = $state<{ question: string; code: string; name: string } | null>(null);
   let codeInput: HTMLInputElement | undefined;
   let nameInput: HTMLInputElement | undefined;
 
@@ -44,12 +46,36 @@
       return;
     }
     code = normalized;
-    busy = true;
     error = null;
+    // Review F3: one online game per phone. A link to the saved seat's own
+    // room goes back to that game; any other room asks before replacing it.
+    const saved = actions.savedSeat();
+    if (saved !== null) {
+      if (saved.code === normalized) {
+        actions.resume();
+        onJoined(saved.opponentName ?? '');
+        return;
+      }
+      replacing = { question: replaceSeatQuestion(saved, 'join'), code: normalized, name: trimmed };
+      return;
+    }
+    await join(normalized, trimmed);
+  }
+
+  async function join(normalized: string, trimmed: string): Promise<void> {
+    busy = true;
     const result = await actions.joinRoom(normalized, trimmed);
     busy = false;
     if (result.ok) onJoined(result.value.opponentName);
     else error = ERROR_TEXT[result.error];
+  }
+
+  async function leaveAndJoin(): Promise<void> {
+    const pending = replacing;
+    if (pending === null || busy) return;
+    replacing = null;
+    actions.leaveSavedSeat();
+    await join(pending.code, pending.name);
   }
 </script>
 
@@ -91,10 +117,22 @@
     <p class="ol-error" role="alert" data-testid="online-error">{error}</p>
   {/if}
 
-  <div class="ol-actions">
-    <button type="submit" class="ol-button ol-button--primary" data-testid="join-room" disabled={busy}>
-      {busy ? 'Joining…' : 'Join'}
-    </button>
-    <button type="button" class="ol-button" data-testid="online-back" onclick={onBack}>Back</button>
-  </div>
+  {#if replacing}
+    <div class="ol-confirm" role="alertdialog" aria-labelledby="join-replace-question">
+      <p id="join-replace-question">{replacing.question}</p>
+      <div class="ol-actions">
+        <button type="button" class="ol-button ol-button--primary" data-testid="replace-seat-leave" onclick={leaveAndJoin}>
+          Leave it
+        </button>
+        <button type="button" class="ol-button" data-testid="replace-seat-keep" onclick={onBack}>Keep my game</button>
+      </div>
+    </div>
+  {:else}
+    <div class="ol-actions">
+      <button type="submit" class="ol-button ol-button--primary" data-testid="join-room" disabled={busy}>
+        {busy ? 'Joining…' : 'Join'}
+      </button>
+      <button type="button" class="ol-button" data-testid="online-back" onclick={onBack}>Back</button>
+    </div>
+  {/if}
 </form>

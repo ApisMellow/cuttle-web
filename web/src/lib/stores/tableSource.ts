@@ -72,6 +72,12 @@ export interface TableSource {
   readonly history: readonly AppliedMove[];
   /** History length of the position on show. A change resets staging. */
   readonly seq: number;
+  /**
+   * Two-phone W12: the room's game number (1, 2, … across rematches), set
+   * only by an online source. With `seq` it names the position; a change
+   * resets staging.
+   */
+  readonly game?: number;
   /** Whose view `envelope` holds, or null. */
   readonly viewer: PlayerId | null;
   /**

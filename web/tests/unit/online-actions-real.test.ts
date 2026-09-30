@@ -9,7 +9,9 @@ import { createRealOnlineActions, type OnlineStoreLike } from '../../src/lib/onl
 import { SEAT_STORAGE_KEY, loadSeat, type SeatRecord } from '../../src/lib/online/seat';
 import { createFakeOnlineActions } from '../../src/lib/online/actions';
 import { fakeStorage } from './game-test-support';
-import { CODE, ORIGIN, TOKEN } from './online-fakes';
+import { createConnection } from '../../src/lib/online/connection';
+import { OnlineGameStore } from '../../src/lib/stores/onlineGame.svelte';
+import { CODE, FakeEnvironment, ORIGIN, TOKEN, socketFactory } from './online-fakes';
 
 function reply(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -101,6 +103,16 @@ describe('real OnlineActions', () => {
     expect(loadSeat(storage)).toBeNull();
   });
 
+  it('leaveSavedSeat detaches and forgets the saved seat (review F3)', () => {
+    const { actions, store, storage } = setup();
+    const record: SeatRecord = { v: 1, server: ORIGIN, code: CODE, seat: 0, token: TOKEN, names: ['Alice', 'Blake'] };
+    storage.setItem(SEAT_STORAGE_KEY, JSON.stringify(record));
+    actions.leaveSavedSeat();
+    expect(store.detached).toBe(1);
+    expect(loadSeat(storage)).toBeNull();
+    expect(actions.savedSeat()).toBeNull();
+  });
+
   it('onRoomEvent passes the store’s events through', async () => {
     const { actions, store } = setup();
     const events: RoomEvent[] = [];
@@ -135,6 +147,63 @@ describe('real OnlineActions', () => {
     actions.resume();
     expect(store.attached).toEqual([record]);
     expect(connected).toEqual(['Alice']);
+  });
+});
+
+// Review F1: the join waits for the welcome through the REAL OnlineGameStore
+// (a stub whose whenWelcomed resolves at once hid that attach() cancelled it).
+describe('real OnlineActions over the real OnlineGameStore', () => {
+  const stores: OnlineGameStore[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    for (const s of stores.splice(0)) s.detach();
+    vi.useRealTimers();
+  });
+
+  function realSetup(welcomeTimeoutMs = 5_000) {
+    const sockets = socketFactory();
+    const env = new FakeEnvironment();
+    const storage = fakeStorage();
+    const store = new OnlineGameStore({
+      connect: (o) => createConnection({ ...o, socketFactory: sockets.factory, environment: env, random: () => 0.5 }),
+      seatStorage: storage,
+    });
+    stores.push(store);
+    const actions = createRealOnlineActions({
+      origin: ORIGIN,
+      store,
+      ui: { connected: () => undefined },
+      storage,
+      fetch: (async () => reply(200, { code: CODE, seat: 1, token: TOKEN })) as unknown as typeof fetch,
+      welcomeTimeoutMs,
+    });
+    return { actions, store, sockets, storage };
+  }
+
+  it('joinRoom names the host from the welcome that follows the attach', async () => {
+    const { actions, sockets } = realSetup();
+    const joined = actions.joinRoom(CODE, 'Blake');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets.sockets).toHaveLength(1);
+    sockets.last.serverOpen();
+    sockets.last.serverSend({ t: 'welcome', seat: 1, names: ['Alice', 'Blake'], status: 'playing' });
+    await expect(joined).resolves.toEqual({ ok: true, value: { code: CODE, opponentName: 'Alice' } });
+  });
+
+  it('joinRoom still lets the player in when no welcome comes before the timeout', async () => {
+    const { actions, sockets, storage } = realSetup(5_000);
+    const joined = actions.joinRoom(CODE, 'Blake');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets.sockets).toHaveLength(1);
+    let settled = false;
+    void joined.then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
+    await expect(joined).resolves.toEqual({ ok: true, value: { code: CODE, opponentName: '' } });
+    expect(loadSeat(storage)?.seat).toBe(1);
   });
 });
 

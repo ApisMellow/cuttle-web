@@ -13,12 +13,19 @@
 //   - `envelope`, `history` and `seq` come from `state` frames, whole (never
 //     a diff). `viewer` is this seat whenever an envelope is held.
 //   - `apply(i)` sends `move {game, seq, i}` and returns; `pending` holds
-//     from then until the next `state` or `error`. It also holds while the
-//     server has this seat under the response hold (`responding`), since the
-//     envelope on show is the pre-move one. The client never queues or
-//     resends a move (SPEC §2.12.2 "Seq rules"): a second apply while
-//     pending sends nothing, and an apply while the socket is down sends
-//     nothing and rejects with `MoveNotSent`, so the staged move survives.
+//     from then until the next `state`, `error` or `welcome`, or a stall or
+//     replacement (a send from before a drop may never be answered). It also
+//     holds while the server has this seat under the response hold
+//     (`responding`), since the envelope on show is the pre-move one. The
+//     client never queues or resends a move (SPEC §2.12.2 "Seq rules"): a
+//     second apply while pending sends nothing, and an apply while the
+//     socket is down sends nothing and rejects with `MoveNotSent`, so the
+//     staged move survives. A resent state for the same position keeps the
+//     same `curtain` object, so GameScreen keeps that staged move; a state
+//     for a new position says the game moved on.
+//   - `rematchWhenResumed(game)`: after an update reload taken at the
+//     result screen's Rematch, the first state of that finished game sends
+//     the rematch (lib/pwa/register.ts).
 //   - Draw reveal (SPEC §4.7): there is no pass online, so "before the pass"
 //     maps to "as soon as the state arrives on the drawer's phone". The
 //     reveal is always the `beforePass: false` form (the whole hand, drawn
@@ -64,7 +71,8 @@ export interface OnlineGameDeps {
   onLeave?: (notice: string | null) => void;
 }
 
-const NOTICE_NOT_SENT = 'You’re offline, so your move wasn’t sent. Confirm it again once you’re back.';
+const NOTICE_NOT_SENT = 'You’re offline, so your move wasn’t sent. It stays staged: Confirm it again once you’re back.';
+const NOTICE_MOVED_ON = 'The game moved on while you were away, so the move you kept was cleared.';
 const NOTICE_NOT_THROUGH = 'That move didn’t go through. Try again.';
 const NOTICE_STUCK = 'The game hit an error it could not recover from.';
 const NOTICE_RATE = 'Too many tries. Wait a moment and try again.';
@@ -113,6 +121,14 @@ export class OnlineGameStore implements TableSource {
   #drawSeen = 0;
   /** The game of the last state; 0 before any. */
   #lastGame = 0;
+  /**
+   * An apply was refused with MoveNotSent and nothing has been sent since:
+   * the player may still have that move staged. A state for a different
+   * position then says the game moved on (review F2).
+   */
+  #unsent = false;
+  /** Review F4: the finished game to ask a rematch for once its state arrives (after an update reload), or null. */
+  #rematchOnResume: number | null = null;
 
   // ---- TableSource ----------------------------------------------------------
   envelope = $state<Envelope | null>(null);
@@ -195,6 +211,8 @@ export class OnlineGameStore implements TableSource {
     this.#sawWaiting = false;
     this.#drawSeen = 0;
     this.#lastGame = 0;
+    this.#unsent = false;
+    this.#rematchOnResume = null;
     this.#sending = false;
     this.#rematchSent = false;
     this.envelope = null;
@@ -256,9 +274,11 @@ export class OnlineGameStore implements TableSource {
     const connection = this.#connection;
     if (connection === null || !connection.sendMove(this.game, env.seq, moveIndex)) {
       this.notice = NOTICE_NOT_SENT;
+      this.#unsent = true;
       throw new MoveNotSent();
     }
     this.notice = null;
+    this.#unsent = false;
     this.#sending = true;
   }
 
@@ -285,6 +305,16 @@ export class OnlineGameStore implements TableSource {
     if (this.curtain.kind !== 'result' || this.pending || this.#rematchSent) return;
     if (this.seat !== null && this.rematchRequestedBy === this.seat) return;
     if (this.#connection?.sendRematch(this.game)) this.#rematchSent = true;
+  }
+
+  /**
+   * Review F4: a Rematch tapped just before an update reload. Call right
+   * after attach(): the first state, if it is finished game `game`, sends the
+   * rematch (through newGame()'s gates). Any other first state drops it. One
+   * shot; a detach drops it too.
+   */
+  rematchWhenResumed(game: number): void {
+    this.#rematchOnResume = game;
   }
 
   /** True while this seat's rematch request is out (sent, or echoed and waiting for the other seat). */
@@ -323,8 +353,12 @@ export class OnlineGameStore implements TableSource {
 
   #onWelcome(names: SeatNames, status: RoomStatus): void {
     // A welcome is followed by exactly one of state / responding / nothing,
-    // so any earlier hold is over (SPEC §2.12.2).
+    // so any earlier hold is over (SPEC §2.12.2). So is a send from before
+    // the drop: its answer is that state (or hold), or never comes (review
+    // F5). A second Confirm meanwhile can't apply twice: the server refuses
+    // an old seq (STALE).
     this.responding = null;
+    this.#sending = false;
     this.roomStatus = status;
     const joined = this.#sawWaiting && names[1] !== null && this.roomNames[1] === null;
     this.roomNames = [names[0], names[1]];
@@ -341,6 +375,9 @@ export class OnlineGameStore implements TableSource {
     const seat = this.seat;
     if (seat === null || env.state.viewer !== seat) return; // the connection already refuses these
     const newGame = game !== this.#lastGame;
+    // A kept (unsent) move is still good only at the same position (review F2).
+    const movedOn = this.#unsent && (newGame || env.seq !== this.seq);
+    if (movedOn) this.#unsent = false;
     if (newGame) {
       // A first state (resume, reload) or a rematch: nothing already drawn is replayed.
       this.#drawSeen = env.seq;
@@ -354,13 +391,21 @@ export class OnlineGameStore implements TableSource {
     this.opponentOnline = opponentOnline;
     this.#sending = false;
     this.responding = null;
-    this.notice = null;
+    this.notice = movedOn ? NOTICE_MOVED_ON : null;
     this.history = env.history.map((entry) => redactedFor(seat, entry));
     this.seq = env.seq;
     this.envelope = { ...env, history: this.history };
     this.viewer = seat;
-    this.curtain = curtainFor(env, seat);
+    // Reassign only on a real change: a resent identical state (a reconnect)
+    // must not look like a new curtain to GameScreen's staging reset (review F2).
+    const curtain = curtainFor(env, seat);
+    if (!sameCurtain(this.curtain, curtain)) this.curtain = curtain;
     if (!newGame) this.#revealUnseenDraw(env, seat);
+    const rematchFor = this.#rematchOnResume;
+    if (rematchFor !== null) {
+      this.#rematchOnResume = null;
+      if (game === rematchFor && this.curtain.kind === 'result') void this.newGame();
+    }
   }
 
   #onError(code: string): void {
@@ -374,6 +419,8 @@ export class OnlineGameStore implements TableSource {
 
   #onStatus(status: ConnectionStatus): void {
     this.status = status;
+    // Review F5: no answer comes while stalled or replaced; free the board.
+    if (status.kind === 'stalled' || status.kind === 'replaced') this.#sending = false;
     if (status.kind !== 'closed-by-server') return;
     // Terminal (SPEC §2.12.3). Read what is needed, then drop everything.
     const forget = status.code !== 'UPGRADE_REQUIRED';
@@ -453,6 +500,14 @@ function curtainFor(env: Envelope, seat: PlayerId): CurtainState {
   if (view.phase === Phase.GameOver) return { kind: 'result' };
   if (view.phase === Phase.AwaitingCounter && view.active === seat) return { kind: 'ack', to: seat };
   return { kind: 'none' };
+}
+
+/** Same kind and, where it has one, same `to`: the only curtains this store makes. */
+function sameCurtain(a: CurtainState, b: CurtainState): boolean {
+  if (a.kind !== b.kind) return false;
+  const aTo = 'to' in a ? a.to : null;
+  const bTo = 'to' in b ? b.to : null;
+  return aTo === bTo;
 }
 
 /** The app's one online store. Nothing runs until `attach()`. Leaving goes back to Home. */

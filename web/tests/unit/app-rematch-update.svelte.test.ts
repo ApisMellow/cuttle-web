@@ -30,6 +30,9 @@ const pwa = vi.hoisted(() => ({
   reportScreen: vi.fn(),
   applyUpdateAtRematch: vi.fn((): boolean => false),
   takePendingRematch: vi.fn((): { names: [string, string]; dealer: 0 | 1 | undefined } | null => null),
+  // Review F4's online variants; this suite covers pass-and-play only.
+  applyUpdateAtOnlineRematch: vi.fn((): boolean => false),
+  takePendingOnlineRematch: vi.fn((): null => null),
 }));
 vi.mock('../../src/lib/pwa/register', () => pwa);
 

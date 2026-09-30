@@ -87,11 +87,13 @@ export function createRealOnlineActions(deps: RealActionsDeps): OnlineActions {
       } catch (err) {
         return { ok: false, error: errorFor(err) };
       }
-      const welcomed = store.whenWelcomed(welcomeTimeoutMs);
       start(grant, [null, name.trim()]);
       // The join reply doesn't name the host; the welcome does. A slow
       // socket still lets the player in (the name fills in on welcome).
-      const names = await welcomed;
+      // Wait only after start(): attach() begins with a detach, which
+      // cancels every waiter registered before it (review F1). The welcome
+      // can't arrive during attach(): the socket opens asynchronously.
+      const names = await store.whenWelcomed(welcomeTimeoutMs);
       return { ok: true, value: { code: grant.code, opponentName: names?.[0] ?? '' } };
     },
 
@@ -115,6 +117,11 @@ export function createRealOnlineActions(deps: RealActionsDeps): OnlineActions {
       if (record === null) return;
       store.attach(record);
       ui.connected(record.names[record.seat === 0 ? 1 : 0] ?? '');
+    },
+
+    leaveSavedSeat(): void {
+      store.detach();
+      clearSeat(storage);
     },
   };
 }

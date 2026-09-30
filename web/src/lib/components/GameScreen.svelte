@@ -163,10 +163,24 @@
   // cleared by the next tap and on the same boundaries as staging, so it
   // never survives a curtain.
   let notice = $state<string | null>(null);
+  // Review F2: online, the reset keys off the position (game, seq, viewer,
+  // curtain kind and `to`) as a primitive, never the curtain object's
+  // identity, so a reconnect that resends the same state keeps a staged
+  // move (MoveNotSent keeps it staged). Pass-and-play keeps its old keys
+  // exactly, curtain identity included.
+  const isOnline = $derived(source.online != null);
+  const onlineResetKey = $derived.by(() => {
+    const c = source.curtain;
+    return `${source.game ?? 0}|${source.seq}|${source.viewer}|${c.kind}|${'to' in c ? c.to : ''}`;
+  });
   $effect(() => {
-    void source.viewer;
-    void source.seq;
-    void source.curtain.kind;
+    if (isOnline) {
+      void onlineResetKey;
+    } else {
+      void source.viewer;
+      void source.seq;
+      void source.curtain.kind;
+    }
     untrack(() => {
       endDrag();
       staging.reset();
@@ -652,9 +666,9 @@
   }
 
   // R4.3: only after GameMenu's confirm, which names the game.
-  // W12: never while a move is in flight. Online, New game asks for a
-  // rematch, and the store sends it only at game over (mid-game it is a
-  // no-op).
+  // W12: never while a move is in flight. Online the menu doesn't offer New
+  // game at all (review F5): a rematch exists only at game over, where the
+  // result screen's Rematch asks for it.
   function menuNewGame(): void {
     menuOpen = false;
     if (source.pending) return;
@@ -876,6 +890,7 @@
     onclose={closeMenu}
     onhome={menuHome}
     onnewgame={menuNewGame}
+    newGame={!isOnline}
   />
 </div>
 

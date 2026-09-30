@@ -45,6 +45,18 @@ export interface OnlineActions {
   /** W11 owns storage. One online game per phone: non-null means Home offers Resume only. */
   savedSeat(): SavedSeat | null;
   resume(): void;
+  /**
+   * Review F3: give up the saved seat so another room can take its place
+   * (the player said "Leave it"). Closes any connection and forgets the seat.
+   */
+  leaveSavedSeat(): void;
+}
+
+/** Review F3: the question before a new room replaces a saved seat. Fixed text plus the opponent's name. */
+export function replaceSeatQuestion(saved: SavedSeat, action: 'join' | 'create'): string {
+  const game = saved.opponentName ? `a game with ${saved.opponentName}` : 'an online game';
+  const next = action === 'join' ? 'join this one' : 'start a new one';
+  return `You have ${game} in progress. Leave it and ${next}?`;
 }
 
 export const ERROR_TEXT: Record<OnlineErrorCode, string> = {
@@ -75,6 +87,7 @@ export interface FakeOnlineActions extends OnlineActions {
     join: { code: string; name: string }[];
     cancel: number;
     resume: number;
+    leave: number;
   };
   /** Push a room event to subscribers, as the server would. */
   emit(event: RoomEvent): void;
@@ -86,7 +99,8 @@ export interface FakeOnlineActions extends OnlineActions {
  */
 export function createFakeOnlineActions(options: FakeOptions = {}): FakeOnlineActions {
   const handlers = new Set<(event: RoomEvent) => void>();
-  const calls: FakeOnlineActions['calls'] = { create: [], join: [], cancel: 0, resume: 0 };
+  const calls: FakeOnlineActions['calls'] = { create: [], join: [], cancel: 0, resume: 0, leave: 0 };
+  let saved = options.saved ?? null;
   const wait = (): Promise<void> =>
     options.delay ? new Promise((resolve) => setTimeout(resolve, options.delay)) : Promise.resolve();
 
@@ -114,9 +128,13 @@ export function createFakeOnlineActions(options: FakeOptions = {}): FakeOnlineAc
       handlers.add(handler);
       return () => handlers.delete(handler);
     },
-    savedSeat: () => options.saved ?? null,
+    savedSeat: () => saved,
     resume() {
       calls.resume += 1;
+    },
+    leaveSavedSeat() {
+      calls.leave += 1;
+      saved = null;
     },
     emit(event) {
       for (const handler of [...handlers]) handler(event);

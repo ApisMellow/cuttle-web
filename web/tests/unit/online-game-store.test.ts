@@ -256,6 +256,73 @@ describe('OnlineGameStore: apply and pending', () => {
     expect(store.online?.notice).toBeNull();
   });
 
+  it('a resent state with the same curtain keeps the same curtain object (review F2)', () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    const curtain = store.curtain;
+    server.send(stateFrame(aliceToAct()));
+    expect(store.curtain).toBe(curtain);
+    server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(3) })));
+    expect(store.curtain).toEqual({ kind: 'result' });
+  });
+
+  it('a kept move and a reconnect to a new position: "The game moved on" notice (review F2)', async () => {
+    const { store, server, env } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    env.goOffline();
+    await expect(store.apply(1)).rejects.toBeInstanceOf(MoveNotSent);
+    env.goOnline();
+    server.open();
+    server.send(stateFrame(aliceToAct(draws(4))));
+    expect(store.online?.notice).toMatch(/The game moved on while you were away/);
+    // The next state after that is ordinary.
+    server.send(stateFrame(aliceToAct(draws(4))));
+    expect(store.online?.notice).toBeNull();
+  });
+
+  // Review F5: a move sent just before a drop may get no answer at all (the
+  // server's welcome is followed by state, responding or nothing).
+  it('a fresh welcome with no hold clears a stuck pending; a responding after it holds again', async () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    await store.apply(1);
+    expect(store.pending).toBe(true);
+    server.socket.serverClose();
+    vi.advanceTimersByTime(1000);
+    server.open();
+    expect(store.pending).toBe(false);
+    // No double send: the move went once, and the board is free to confirm again.
+    expect(server.sentMoves()).toHaveLength(1);
+    server.send({ t: 'responding', by: 1 });
+    expect(store.pending).toBe(true);
+  });
+
+  it('a stall clears a stuck pending', async () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    await store.apply(1);
+    for (let i = 0; i < 10; i++) {
+      server.socket.serverClose();
+      vi.advanceTimersByTime(60_000);
+    }
+    expect(store.status.kind).toBe('stalled');
+    expect(store.pending).toBe(false);
+  });
+
+  it('replaced clears a stuck pending', async () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    await store.apply(1);
+    server.send({ t: 'error', code: 'REPLACED', message: 'x' });
+    expect(store.status.kind).toBe('replaced');
+    expect(store.pending).toBe(false);
+  });
+
   it('refuses to apply when it is not this seat’s turn, or with no state yet', async () => {
     const { store, server } = setup();
     server.open();
@@ -322,6 +389,52 @@ describe('OnlineGameStore: responding, presence, rematch', () => {
     expect(store.game).toBe(2);
     expect(store.curtain).toEqual({ kind: 'none' });
     expect(store.rematchRequestedBy).toBeNull();
+  });
+
+  it('rematchWhenResumed: after an update reload, the first state of that finished game sends the rematch once (review F4)', () => {
+    const { store, server } = setup();
+    store.rematchWhenResumed(1);
+    server.open(0, ['Alice', 'Blake'], 'over');
+    expect(server.sentMoves()).toEqual([]);
+    server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) })));
+    expect(server.sentMoves()).toEqual([{ t: 'rematch', game: 1 }]);
+    expect(store.rematchPending).toBe(true);
+    // A reconnect resends the same state: nothing more is sent.
+    server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) })));
+    expect(server.sentMoves()).toHaveLength(1);
+  });
+
+  it('rematchWhenResumed sends nothing if the room is on another game, or not over', () => {
+    const a = setup();
+    a.store.rematchWhenResumed(1);
+    a.server.open();
+    // The room is already on a later finished game (another tab played on).
+    a.server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) }), { game: 2 }));
+    expect(a.server.sentMoves()).toEqual([]);
+
+    const c = setup();
+    c.store.rematchWhenResumed(1);
+    c.server.open();
+    c.server.send(stateFrame(aliceToAct(draws(0)), { game: 2 }));
+    c.server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) }), { game: 2 }));
+    expect(c.server.sentMoves()).toEqual([]);
+
+    const b = setup();
+    b.store.rematchWhenResumed(1);
+    b.server.open();
+    b.server.send(stateFrame(aliceToAct()));
+    b.server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) })));
+    expect(b.server.sentMoves()).toEqual([]);
+  });
+
+  it('rematchWhenResumed is dropped by a detach', () => {
+    const { store, server, sockets } = setup();
+    store.rematchWhenResumed(1);
+    store.detach();
+    store.attach(seatRecord());
+    server.open();
+    sockets.last.serverSend(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) })));
+    expect(server.sentMoves()).toEqual([]);
   });
 
   it('shows the other seat’s rematch request', () => {

@@ -69,6 +69,66 @@ export function takePendingRematch(): PendingRematch | null {
   }
 }
 
+/**
+ * Review F4: sessionStorage key carrying an online Rematch across the update
+ * reload. It holds the room code and the finished game's number only; the
+ * seat (and its token) stays where it always is, in localStorage (seat.ts).
+ */
+export const ONLINE_REMATCH_KEY = 'cuttle-web:online-rematch-after-update';
+
+export interface PendingOnlineRematch {
+  /** The saved seat's room: the reloaded page resumes only that seat. */
+  code: string;
+  /** The finished game the rematch is for (the `rematch` frame's `game`). */
+  game: number;
+}
+
+/**
+ * The online result screen's Rematch is a safe point too (no move can be in
+ * flight at game over). If an update is waiting, saves the rematch, starts
+ * the takeover and returns true: the caller must not send the rematch; the
+ * reloaded page resumes the seat and sends it (`takePendingOnlineRematch`).
+ */
+export function applyUpdateAtOnlineRematch(rematch: PendingOnlineRematch): boolean {
+  if (!policy) return false;
+  try {
+    sessionStorage.setItem(ONLINE_REMATCH_KEY, JSON.stringify({ code: rematch.code, game: rematch.game }));
+  } catch {
+    return false;
+  }
+  if (policy.rematch()) return true;
+  clearKey(ONLINE_REMATCH_KEY);
+  return false;
+}
+
+/** On boot: the online rematch a pre-update tap left behind, once; else null. */
+export function takePendingOnlineRematch(): PendingOnlineRematch | null {
+  let raw: string | null;
+  try {
+    raw = sessionStorage.getItem(ONLINE_REMATCH_KEY);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  clearKey(ONLINE_REMATCH_KEY);
+  try {
+    const v = JSON.parse(raw) as { code?: unknown; game?: unknown };
+    if (typeof v.code !== 'string' || v.code === '') return null;
+    if (typeof v.game !== 'number' || !Number.isInteger(v.game) || v.game < 1) return null;
+    return { code: v.code, game: v.game };
+  } catch {
+    return null;
+  }
+}
+
+function clearKey(key: string): void {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Best-effort.
+  }
+}
+
 function isTyping(): boolean {
   const el = document.activeElement;
   return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;

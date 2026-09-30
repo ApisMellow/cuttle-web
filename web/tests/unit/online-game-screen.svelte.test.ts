@@ -162,6 +162,61 @@ describe('W12: GameScreen on the online store', () => {
     expect(q('online-notice')?.textContent).toContain('wasn’t sent');
   });
 
+  // Review F2: a move kept after MoveNotSent must survive the reconnect's
+  // welcome and full state when the position is unchanged.
+  async function stagedThenOffline() {
+    const s = setup();
+    s.sockets.last.serverOpen();
+    s.sockets.last.serverSend({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'playing' });
+    s.sockets.last.serverSend(stateFrame(aliceToAct()));
+    await settle();
+    await click('deck-pile');
+    s.env.goOffline();
+    await settle();
+    await click('staging-confirm');
+    expect(moves(s.sockets)).toEqual([]);
+    expect(q('staging-confirm')).not.toBeNull();
+    const before = s.sockets.sockets.length;
+    s.env.goOnline();
+    await settle();
+    expect(s.sockets.sockets.length).toBe(before + 1);
+    s.sockets.last.serverOpen();
+    s.sockets.last.serverSend({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'playing' });
+    return s;
+  }
+
+  it('reconnect to the same position: the kept move is still staged and Confirm sends it', async () => {
+    const { sockets } = await stagedThenOffline();
+    sockets.last.serverSend(stateFrame(aliceToAct()));
+    await settle();
+    expect(q('staging-confirm')).not.toBeNull();
+    expect(q('online-notice')).toBeNull();
+    await click('staging-confirm');
+    expect(moves(sockets)).toEqual([{ t: 'move', game: 1, seq: 2, index: 0 }]);
+  });
+
+  it('reconnect after the game moved on: staging resets and a notice says so', async () => {
+    const { sockets } = await stagedThenOffline();
+    sockets.last.serverSend(stateFrame(aliceToAct(draws(4))));
+    await settle();
+    expect(q('staging-confirm')).toBeNull();
+    expect(q('online-notice')?.textContent).toContain('The game moved on while you were away');
+    expect(moves(sockets)).toEqual([]);
+  });
+
+  it('online, an identical curtain object reassigned does not clear a staged move', async () => {
+    const { sockets } = setup();
+    sockets.last.serverOpen();
+    sockets.last.serverSend({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'playing' });
+    sockets.last.serverSend(stateFrame(aliceToAct()));
+    await settle();
+    await click('deck-pile');
+    expect(q('staging-confirm')).not.toBeNull();
+    (store as OnlineGameStore).curtain = { kind: 'none' };
+    await settle();
+    expect(q('staging-confirm')).not.toBeNull();
+  });
+
   it('replaced: the status line offers "Play here", which reconnects', async () => {
     const { sockets } = setup();
     sockets.last.serverOpen();
@@ -214,19 +269,27 @@ describe('W12: GameScreen on the online store', () => {
     expect(sockets.sockets.flatMap((s) => s.frames()).filter((f) => f.t === 'rematch')).toEqual([]);
   });
 
-  it('the menu’s New game is gated while a move is pending', async () => {
+  // Review F5: online, the menu's New game did nothing mid-game (a rematch
+  // only exists at game over, where the result screen offers Rematch), so
+  // the menu doesn't offer it. Home, Rules and Close stay.
+  it('the menu has no New game online, pending or not', async () => {
     const { sockets } = setup();
     sockets.last.serverOpen();
     sockets.last.serverSend({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'playing' });
     sockets.last.serverSend(stateFrame(aliceToAct()));
     await settle();
+    const newGame = vi.spyOn(store as OnlineGameStore, 'newGame');
+    await click('menu-button');
+    expect(q('game-menu')).not.toBeNull();
+    expect(q('menu-new-game')).toBeNull();
+    expect(q('menu-home')).not.toBeNull();
+    expect(q('menu-rules')).not.toBeNull();
+    await click('menu-close');
     await click('deck-pile');
     await click('staging-confirm');
     expect(store?.pending).toBe(true);
-    const newGame = vi.spyOn(store as OnlineGameStore, 'newGame');
     await click('menu-button');
-    await click('menu-new-game');
-    await click('confirm-abandon');
+    expect(q('menu-new-game')).toBeNull();
     expect(newGame).not.toHaveBeenCalled();
   });
 
