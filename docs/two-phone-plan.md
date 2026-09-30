@@ -26,7 +26,7 @@
 | W16 | Ops files | todo |
 | W17 | Deploy Action | todo |
 
-Next, in order: W6 review fixes and merge, then the W9 privacy sweep, W13b UI polish, W14 origin config and the service-worker guard, and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
+Next, in order: W6 review fixes and merge, then the W9 privacy sweep, W13b UI polish, and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
 
 ## 1. Summary and goals
 

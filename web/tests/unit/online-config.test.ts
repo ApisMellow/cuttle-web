@@ -136,6 +136,8 @@ describe('Pages workflow', () => {
   });
 
   it('hard-codes no server host', () => {
-    expect(workflow).not.toMatch(/VITE_CUTTLE_SERVER:\s*['"]?https?:/);
+    // Comments may name the Pages site; no executable line may hold a URL.
+    const code = workflow.split('\n').filter((line) => !line.trim().startsWith('#')).join('\n');
+    expect(code).not.toMatch(/https?:\/\//);
   });
 });

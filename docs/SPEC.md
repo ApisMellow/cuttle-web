@@ -1368,7 +1368,7 @@ VitePWA({
     maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
     ignoreURLParametersMatching: [/^v$/],   // cuttle.wasm?v=<hash> (R10)
     navigateFallback: 'index.html',
-    navigateFallbackDenylist: [/\/gallery(\/|$)/, /\/api(\/|$)/],   // W14: REST and /api/play reach the network
+    navigateFallbackDenylist: [/\/gallery(\/|$)/, /\/api(\/|\?|$)/],   // W14: REST and /api/play reach the network
     cleanupOutdatedCaches: true,
     clientsClaim: false,
     skipWaiting: false,
@@ -1381,7 +1381,7 @@ VitePWA({
 - **What is precached.** Everything the build emits that the game can load: `index.html`, the JS and CSS bundles, `cuttle.wasm`, `wasm_exec.js`, the web manifest, the icons, `themes/index.json`, and every file of every catalog theme (Mythic's 52 faces, 4 glasses faces and back, at both sizes, plus its `manifest.json`). Classic is drawn by the JS bundle and has no files. The app loads no fonts (the UI face falls back to the system stack) and makes no third-party request. Measured 2026-09-29: 126 entries, 5,322,676 bytes raw (wasm 3.57 MB, Mythic 1.47 MB, JS/CSS 0.23 MB); Pages gzips the wasm, so the first visit transfers about 2.7 MB.
 - **What is not.** The card gallery (`/cuttle-web/gallery/`, copied into the site after the build) and its ~4.8 MB of images. Its navigations are on the fallback denylist, so the worker never answers them with the app shell; offline, the gallery is simply unavailable.
 - **The game server is never answered by the worker (W14).** `/api/` (REST and the `/api/play` socket) is on the fallback denylist, so a navigation there is never served the app shell. The server lives on its own origin, which the worker's precache and navigation routes don't match anyway; the denylist covers a same-origin proxy. `web/tests/unit/online-sw-guard.test.ts` asserts the entry.
-- **Server origin (W14).** `lib/online/config.ts` is the one reader of `VITE_CUTTLE_SERVER`, set at build time (`pages.yml` passes the `CUTTLE_SERVER_ORIGIN` repo variable). Unset, empty or invalid, Play online is hidden. A production build accepts an `https` origin only; plain `http` to loopback is honoured in dev builds only, where localStorage `cuttle.online.devServer` may also override it. There is no user-facing override.
+- **Server origin (W14).** `lib/online/config.ts` is the one reader of `VITE_CUTTLE_SERVER`, set at build time (`pages.yml` passes the `CUTTLE_SERVER_ORIGIN` repo variable). In a production build, unset, empty or invalid means Play online is hidden (it is always available in dev builds). A production build accepts an `https` origin only; plain `http` to loopback is honoured in dev builds only, where localStorage `cuttle.online.devServer` may also override it. There is no user-facing override.
 - **No runtime caching.** The worker caches only files from its own build, so it never stores anything user-specific (there is nothing user-specific on the server anyway). Saves stay in `localStorage` (§5.7).
 - **Base path.** The worker is `BASE/sw.js` and its scope is `BASE` (`/cuttle-web/` on Pages), so it controls only the app. Navigations in scope that aren't a precached file fall back to `index.html`. The manifest's `start_url` and `scope` are `.`, which resolve to the same `BASE`.
 - **Engine URL token.** R10 fetches `cuttle.wasm?v=<hash>` and `wasm_exec.js?v=<hash>`. The precache matches them with `v` ignored, which is safe because the worker only ever serves the engine from its own build, the same build as the JS it serves.

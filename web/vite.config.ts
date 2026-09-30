@@ -78,7 +78,7 @@ export default defineConfig({
         // and /api/ (REST and the /api/play socket): a navigation there must
         // reach the network, never be answered with the app shell (plan §10).
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/gallery(\/|$)/, /\/api(\/|$)/],
+        navigateFallbackDenylist: [/\/gallery(\/|$)/, /\/api(\/|\?|$)/],
         cleanupOutdatedCaches: true,
         clientsClaim: false,
         skipWaiting: false,

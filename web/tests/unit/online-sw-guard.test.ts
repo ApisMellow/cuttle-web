@@ -39,7 +39,7 @@ describe('service worker and the game server', () => {
     const denylist = new Function(`return ${match![1]}`)() as RegExp[];
     // Workbox tests each pattern against pathname + search of the navigation.
     const denied = (path: string) => denylist.some((re) => re.test(path));
-    for (const path of ['/api/rooms', '/api/play', '/cuttle-web/api/rooms/ABCD/join', '/api', '/api/healthz?x=1']) {
+    for (const path of ['/api/rooms', '/api/play', '/cuttle-web/api/rooms/ABCD/join', '/api', '/api/healthz?x=1', '/api?x=1', '/cuttle-web/api?x=1']) {
       expect(denied(path), path).toBe(true);
     }
     // The gallery stays denied, and ordinary app navigations still fall back.
