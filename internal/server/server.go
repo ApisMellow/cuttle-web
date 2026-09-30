@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -16,23 +15,48 @@ type BuildInfo struct {
 	Commit  string `json:"commit"`
 }
 
-// Handler assembles the routes and middleware. Later work items add their
-// routes to the mux here; CORS and logging already wrap everything.
-func Handler(cfg Config, info BuildInfo, log *slog.Logger) http.Handler {
+// Handler assembles the routes and middleware. New routes go on the mux
+// here so CORS and logging wrap them.
+func Handler(cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) http.Handler {
+	createRate, joinRate := cfg.CreatePerHour, cfg.JoinPerHour
+	if createRate <= 0 {
+		createRate = DefaultCreatePerHour
+	}
+	if joinRate <= 0 {
+		joinRate = DefaultJoinPerHour
+	}
+	a := &api{
+		rooms:   rooms,
+		log:     log,
+		create:  newLimiter(createRate, rooms.now),
+		join:    newLimiter(joinRate, rooms.now),
+		trusted: newTrustedSet(cfg.TrustedProxies),
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz(info))
+	mux.HandleFunc("GET /healthz", healthz(info, rooms))
+	mux.HandleFunc("POST /api/rooms", a.handleCreate)
+	mux.HandleFunc("POST /api/rooms/{code}/join", a.handleJoin)
 	return RequestLog(log, CORS(NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev), mux))
 }
 
-func healthz(info BuildInfo) http.HandlerFunc {
-	body, _ := json.Marshal(struct {
+// healthz reports the build and the stored room count; the count is also
+// the database check. No room codes appear.
+func healthz(info BuildInfo, rooms *Rooms) http.HandlerFunc {
+	type reply struct {
+		OK     bool   `json:"ok"`
 		Status string `json:"status"`
+		Rooms  int    `json:"rooms"`
 		BuildInfo
-	}{"ok", info})
-	return func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write(body)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		n, err := rooms.Count(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, reply{OK: false, Status: "db", BuildInfo: info})
+			return
+		}
+		writeJSON(w, http.StatusOK, reply{OK: true, Status: "ok", Rooms: n, BuildInfo: info})
 	}
 }
 

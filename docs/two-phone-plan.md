@@ -84,6 +84,10 @@ Server to client:
 | `STALE` | Resync. |
 | `RATE_LIMITED` | "Too many tries, wait a minute." |
 | `UPGRADE_REQUIRED` | Protocol `v` mismatch (an old cached app). "Refresh to update." |
+| `SERVER_FULL` | Create at the live-room cap (HTTP 503, `Retry-After`). "The server is busy, try again later." Added in W5. |
+| `FORBIDDEN` | Disallowed `Origin` (HTTP 403). Added in W5. |
+
+**HTTP status per code (W5).** Create answers 201 and join 200, both `{code, seat, token}` with `Cache-Control: no-store`. Errors are `{code, message}`: `ROOM_GONE` 404, `ROOM_FULL` 409, `RATE_LIMITED` 429 with `Retry-After`, `SERVER_FULL` 503, `FORBIDDEN` 403, `BAD_REQUEST` 400 (including an over-1 KB body, a non-JSON content type and unknown fields), `INTERNAL` 500. The store can't tell an expired code from an unknown one, so both are 404.
 
 ## 4. Server design
 

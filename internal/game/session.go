@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/ApisMellow/cuttle/engine"
 )
@@ -175,17 +176,19 @@ func restoreSession(persisted []byte, render renderFunc) (s *Session, err error)
 	// Bridge.Restore's render-before-commit check (commit): a blob that
 	// decodes but can't be shown to both seats is refused, not handed out.
 	if e := s.renderBoth(); e != nil {
-		return nil, newError(ErrInvalidSnapshot, "snapshot does not render: "+e.Error(), nil)
+		return nil, newError(ErrInvalidSnapshot, "snapshot does not render", nil)
 	}
 	return s, nil
 }
 
 // renderBoth renders both seats' envelopes of the held game and reports a
-// panic in either as an error.
+// panic in either as an error. The panic value goes to the panic hook
+// only: it can carry card state.
 func (s *Session) renderBoth() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("recovered panic: %v", r)
+			reportPanic(r)
+			err = errors.New("render panicked")
 		}
 	}()
 	render := s.renderer()
@@ -317,10 +320,33 @@ func badSeat(seat Seat) *Error {
 
 // recoverInternal turns a panic in a Session method into ErrInternal. The
 // method's state change is always its last statement, so a panic leaves
-// the session unchanged.
+// the session unchanged. The Message is fixed: the panic value can carry
+// card state, so it goes to the panic hook only (W2 review nit).
 func recoverInternal(err *error) {
 	if r := recover(); r != nil {
-		*err = newError(ErrInternal, fmt.Sprintf("recovered panic: %v", r), nil)
+		reportPanic(r)
+		*err = newError(ErrInternal, "recovered panic", nil)
+	}
+}
+
+// panicHook receives recovered panic values (SetPanicHook).
+var panicHook atomic.Pointer[func(any)]
+
+// SetPanicHook installs h to receive the value of every panic a Session
+// method or RestoreSession recovers; nil removes it. The value can hold
+// card state, so it goes only to h (server side), never into an Error.
+// Safe to call concurrently with running sessions.
+func SetPanicHook(h func(any)) {
+	if h == nil {
+		panicHook.Store(nil)
+		return
+	}
+	panicHook.Store(&h)
+}
+
+func reportPanic(v any) {
+	if h := panicHook.Load(); h != nil {
+		(*h)(v)
 	}
 }
 

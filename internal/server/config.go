@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -27,12 +29,20 @@ type Config struct {
 	Addr           string   // listen address, host:port
 	AllowedOrigins []string // exact origins, e.g. https://apismellow.github.io
 	Dev            bool     // also allow http://127.0.0.1:* and http://localhost:*
-	DataDir        string   // data directory (unused until the store lands); "" = unset
+	DataDir        string   // data directory holding the SQLite file; "" = unset
+	// TrustedProxies are the reverse-proxy addresses (Caddy on 127.0.0.1)
+	// whose X-Forwarded-For is believed. Empty: always use the peer address.
+	TrustedProxies []string
+	CreatePerHour  int // per-client create limit; 0 in a literal = default
+	JoinPerHour    int // per-client join limit; 0 in a literal = default
+	MaxRooms       int // live-room cap; 0 in a literal = default
 }
 
 // ParseConfig reads flags from args, falling back to environment values from
-// getenv (CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS comma-separated, CUTTLE_DATA_DIR),
-// then to defaults. Flags win over the environment.
+// getenv (CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS comma-separated, CUTTLE_DATA_DIR,
+// CUTTLE_TRUSTED_PROXY comma-separated, CUTTLE_CREATE_PER_HOUR,
+// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS), then to defaults. Flags win over
+// the environment.
 func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -50,6 +60,33 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	origins := fs.String("origins", envOr("CUTTLE_ALLOWED_ORIGINS", DefaultOrigin), "comma-separated allowed web origins")
 	dev := fs.Bool("dev", false, "also allow http://127.0.0.1:* and http://localhost:* origins")
 	dataDir := fs.String("data-dir", getenv("CUTTLE_DATA_DIR"), "data directory (must exist)")
+	proxies := fs.String("trusted-proxy", getenv("CUTTLE_TRUSTED_PROXY"), "comma-separated proxy IPs whose X-Forwarded-For is trusted")
+	envInt := func(key string, def int) (int, error) {
+		v := getenv(key)
+		if v == "" {
+			return def, nil
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %q is not an integer", key, v)
+		}
+		return n, nil
+	}
+	createDef, err := envInt("CUTTLE_CREATE_PER_HOUR", DefaultCreatePerHour)
+	if err != nil {
+		return Config{}, err
+	}
+	joinDef, err := envInt("CUTTLE_JOIN_PER_HOUR", DefaultJoinPerHour)
+	if err != nil {
+		return Config{}, err
+	}
+	maxDef, err := envInt("CUTTLE_MAX_ROOMS", DefaultMaxRooms)
+	if err != nil {
+		return Config{}, err
+	}
+	createRate := fs.Int("create-per-hour", createDef, "room creates per client per hour")
+	joinRate := fs.Int("join-per-hour", joinDef, "room joins per client per hour")
+	maxRooms := fs.Int("max-rooms", maxDef, "most live rooms")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -57,7 +94,13 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
 
-	cfg := Config{Addr: *addr, Dev: *dev, DataDir: *dataDir}
+	cfg := Config{Addr: *addr, Dev: *dev, DataDir: *dataDir,
+		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms}
+	for _, p := range strings.Split(*proxies, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
+		}
+	}
 	for _, o := range strings.Split(*origins, ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			cfg.AllowedOrigins = append(cfg.AllowedOrigins, o)
@@ -89,6 +132,17 @@ func (c Config) Validate() error {
 		if err := validateOrigin(o); err != nil {
 			return err
 		}
+	}
+	for _, p := range c.TrustedProxies {
+		if _, err := netip.ParseAddr(p); err != nil {
+			return fmt.Errorf("trusted proxy %q must be a bare IP address", p)
+		}
+	}
+	if c.CreatePerHour < 1 || c.JoinPerHour < 1 {
+		return fmt.Errorf("rate limits must be at least 1 per hour")
+	}
+	if c.MaxRooms < 1 {
+		return fmt.Errorf("max rooms must be at least 1")
 	}
 	if c.DataDir != "" {
 		st, err := os.Stat(c.DataDir)
