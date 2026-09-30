@@ -69,6 +69,21 @@ describe('card-style picker (A-6)', () => {
     expect(localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
 
+  it('offers a Card gallery link under the picker: a real anchor to the gallery under the app base', async () => {
+    const el = render();
+    expect(el.querySelector('[data-testid="home-gallery"]')).toBeNull();
+    await loadThemeCatalog({ fetch: fakeFetch(mythicRoutes()), themesUrl: THEMES_URL });
+    flushSync();
+    await tick();
+    const link = el.querySelector<HTMLAnchorElement>('[data-testid="home-gallery"]');
+    expect(link?.tagName).toBe('A');
+    expect(link?.getAttribute('href')).toBe(`${import.meta.env.BASE_URL}gallery/`);
+    expect(link?.textContent?.trim()).toBe('Card gallery');
+    expect(link?.hasAttribute('target')).toBe(false);
+    const picker = el.querySelector('.home-screen__themes')!;
+    expect(picker.compareDocumentPosition(link!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('a saved choice that is not in the catalog shows Classic checked', async () => {
     settings.setThemeId('retired-theme');
     await loadThemeCatalog({ fetch: fakeFetch(mythicRoutes()), themesUrl: THEMES_URL });

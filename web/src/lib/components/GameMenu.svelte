@@ -4,7 +4,8 @@
   // button and `open`; this component is the panel it opens, plus the Rules
   // sheet the panel can open.
   //
-  // Items: Rules, Card style (only when there is more than one), Home, New
+  // Items: Rules, Card style (only when there is more than one) with a Card
+  // gallery link under it (a plain same-tab link, see lib/gallery.ts), Home, New
   // game (behind a confirm that names the game; not offered online, where
   // the result screen's Rematch is the only new game), Close.
   //
@@ -20,6 +21,7 @@
   // to the menu button) and keeps Tab inside the panel. It stops Escape
   // there, so GameScreen's own Escape (clear a selection or a staged move)
   // never fires under the menu.
+  import { GALLERY_LABEL, galleryHref } from '../gallery';
   import { settings } from '../stores/settings.svelte';
   import { listThemeChoices, vectorTheme } from '../theme';
   import RulesSheet from './RulesSheet.svelte';
@@ -68,7 +70,7 @@
 
   function focusables(): HTMLElement[] {
     if (!panel) return [];
-    return [...panel.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')].filter(
+    return [...panel.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href]')].filter(
       (el) => !(el instanceof HTMLInputElement && el.type === 'radio' && !el.checked),
     );
   }
@@ -157,6 +159,10 @@
             {/each}
           </div>
         </fieldset>
+        <!-- The gallery shows the Mythic deck, so it comes and goes with the
+             style choice. Same tab: the game is already saved, and Resume
+             on Home picks it up. -->
+        <a class="game-menu__item game-menu__link" data-testid="menu-gallery" href={galleryHref()}>{GALLERY_LABEL}</a>
       {/if}
 
       <button type="button" class="game-menu__item" data-testid="menu-home" onclick={onhome}>Home</button>
@@ -227,6 +233,12 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  .game-menu__link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
   }
 
   .game-menu__item:focus-visible,

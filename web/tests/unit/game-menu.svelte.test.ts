@@ -362,6 +362,39 @@ describe('Card style in the menu (SPEC §5.6 rule 5)', () => {
   });
 });
 
+describe('Card gallery entry in the menu', () => {
+  it('is a real link to the gallery under the app base, same tab, beside Card style', async () => {
+    const el = await liveBoard();
+    await loadMythicCatalog();
+    await click(el, 'menu-button');
+    const link = q(el, 'menu-gallery');
+    expect(link?.tagName).toBe('A');
+    expect(link?.getAttribute('href')).toBe(`${import.meta.env.BASE_URL}gallery/`);
+    expect(link?.textContent?.trim()).toBe('Card gallery');
+    expect(link?.hasAttribute('target')).toBe(false);
+    expect(q(el, 'game-menu')?.contains(link)).toBe(true);
+  });
+
+  it('sits after the style pills and before Home in the menu', async () => {
+    const el = await liveBoard();
+    await loadMythicCatalog();
+    await click(el, 'menu-button');
+    const order = [...q(el, 'game-menu')!.querySelectorAll('[data-testid]')].map((n) => n.getAttribute('data-testid'));
+    expect(order.indexOf('menu-gallery')).toBeGreaterThan(order.indexOf('menu-theme-option-mythic'));
+    expect(order.indexOf('menu-gallery')).toBeLessThan(order.indexOf('menu-home'));
+  });
+
+  it('opening the menu still changes nothing the game holds (the save is what Resume picks up)', async () => {
+    const el = await liveBoard();
+    await loadMythicCatalog();
+    const before = held();
+    await click(el, 'menu-button');
+    expect(q(el, 'menu-gallery')).not.toBeNull();
+    expect(held()).toBe(before);
+    expect(localStorage.getItem(SNAPSHOT_KEY)).not.toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Home and New game
 // ---------------------------------------------------------------------------

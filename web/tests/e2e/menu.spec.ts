@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 
 // The in-game menu: R17.2 (Rules from the menu mid-decision, the game
@@ -225,6 +227,31 @@ test('R23.2: the menu swaps Classic for Mythic mid-game, nothing moves, and the 
   await page.getByTestId('resume').click();
   await passResumeGate(page, 'Alice');
   await expect(page.locator('.bitmap-card-face').first()).toBeVisible();
+});
+
+test('the menu links to the card gallery in the same tab; the game is saved and Resume picks it up', async ({ page }) => {
+  // The gallery is a standalone page the Pages build copies in, not part of
+  // the dev server, so serve its index from disk for this one URL.
+  const index = readFileSync(fileURLToPath(new URL('../../../gallery/site/index.html', import.meta.url)));
+  await page.route('**/gallery/', (route) => route.fulfill({ body: index, contentType: 'text/html' }));
+  await startGoldenGame(page);
+  const saved = await save(page);
+
+  await openMenu(page);
+  const link = page.getByTestId('menu-gallery');
+  await expect(link).toHaveText('Card gallery');
+  await tapSizesOk(page, ['menu-gallery']);
+  await link.click();
+  await expect(page).toHaveURL(/\/gallery\/$/);
+  await expect(page).toHaveTitle('Mythic Deck Gallery');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mythic');
+
+  // Back in the game: the same save, and Resume brings the board back.
+  await page.goto('/');
+  expect(await save(page)).toBe(saved);
+  await page.getByTestId('resume').click();
+  await passResumeGate(page, 'Alice');
+  await expect(page.getByTestId('board')).toBeVisible();
 });
 
 test('R4: Home keeps the game; Resume brings back the same board and the same save, mid-game and mid-curtain', async ({ page }) => {
