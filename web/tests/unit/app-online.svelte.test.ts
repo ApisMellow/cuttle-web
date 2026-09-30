@@ -289,11 +289,34 @@ describe('W12 App: online routing', () => {
     expect(sent('rematch')).toEqual([{ t: 'rematch', game: 1 }]);
     await server({ t: 'rematch', requestedBy: 0 });
     expect(q('online-rematch-status')?.textContent).toContain('Waiting for Blake');
+    // W13b: Rematch is spent while the request is out.
+    expect((q('rematch') as HTMLButtonElement).disabled).toBe(true);
     await server(stateFrame(toAct(0, []), { game: 2, tally: [1, 0] }));
     expect(q('result-screen')).toBeNull();
     expect(q('board')).not.toBeNull();
     // The pass-and-play tally is untouched by an online win.
     expect(session.tally).toEqual({ 0: 0, 1: 0 });
+  });
+
+  // W13b (plan §7): the rematch line when Blake asks first.
+  it('Blake asks first: "Blake wants a rematch.", then Rematch says the rematch is starting', async () => {
+    localStorage.setItem(SEAT_STORAGE_KEY, JSON.stringify({ v: 1, server: ORIGIN, code: CODE, seat: 0, token: TOKEN, names: ['Alice', 'Blake'] }));
+    await renderApp();
+    await click('resume-online');
+    lastSocket().serverOpen();
+    await server({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'over' });
+    const over = envelope({
+      state: view(0, { phase: Phase.GameOver, winner: 1, active: 1 }),
+      history: [appliedMove({ by: 1, kind: Kind.PlayPoint, card: { Rank: 10, Suit: 2 }, description: 'play 10♥ as point card', seq: 1 })],
+    });
+    await server(stateFrame(over, { tally: [0, 1] }));
+    expect(q('online-rematch-status')).toBeNull();
+    await server({ t: 'rematch', requestedBy: 1 });
+    expect(q('online-rematch-status')?.textContent).toContain('Blake wants a rematch.');
+    expect((q('rematch') as HTMLButtonElement).disabled).toBe(false);
+    await click('rematch');
+    expect(sent('rematch')).toEqual([{ t: 'rematch', game: 1 }]);
+    expect(q('online-rematch-status')?.textContent).toContain('Starting the rematch…');
   });
 
   it('pass-and-play is unaffected: no socket, no request', async () => {

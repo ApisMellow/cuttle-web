@@ -22,7 +22,7 @@
 // raises a curtain, so nothing else stands between the wire and the screen;
 // GameScreen renders `history` as given and does not redact it again.
 
-import type { AppliedMove, Envelope, PlayerId } from '../bridge/schema';
+import type { AppliedMove, Card, Envelope, PlayerId } from '../bridge/schema';
 import type { DrawReveal } from '../drawReveal';
 import type { CurtainState } from './curtain.svelte';
 
@@ -57,6 +57,43 @@ export interface OnlineTableInfo {
   readonly notice: string | null;
   /** The status line's button: `retry()` on the connection. */
   runStatusAction(): void;
+  /**
+   * W13b: how the status line reads. `warn` for this phone's own connection
+   * (connecting, reconnecting, offline, stalled, replaced), `info` for the
+   * opponent being away; null when there is no status line.
+   */
+  readonly statusTone: 'warn' | 'info' | null;
+  /**
+   * W13b: the card this seat played that the hold is about, from its own
+   * legal-move list at the Confirm (so never another seat's card); null when
+   * not held, or when the hold was met on a resume with no move sent here.
+   */
+  readonly respondingCard: Card | null;
+  /**
+   * W13b (plan §7 `waitingOn`): what the other seat is doing when that is
+   * more than "their turn", from public phase and turn only: "Blake is
+   * choosing what to discard.", "Blake is choosing from the 7." Null otherwise.
+   */
+  readonly waitingText: string | null;
+  /**
+   * W13b (SPEC §2.12.2 `lastSeq`): the other seat's moves this phone missed
+   * on a same-game `seq` jump, oldest first, `isRecapVisible` only, from
+   * this seat's own redacted history. Empty when there is nothing to show.
+   */
+  readonly missed: readonly AppliedMove[];
+  /** Closes the missed-moves recap. */
+  dismissMissed(): void;
+  /** W13b (SPEC §2.10): the game can't go on from this position, or null. */
+  readonly stuck: OnlineStuck | null;
+  /** The stuck screen's one way forward: forget this seat and go Home. */
+  leaveGame(): void;
+}
+
+/** W13b: an online game stuck at `game`/`seq` (SPEC §2.10). Public room data and a code only. */
+export interface OnlineStuck {
+  readonly code: 'ILLEGAL_MOVE' | 'NO_LEGAL_MOVES';
+  readonly game: number;
+  readonly seq: number;
 }
 
 export interface TableSource {

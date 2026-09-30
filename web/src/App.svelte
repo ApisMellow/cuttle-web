@@ -304,8 +304,11 @@
     const by = onlineGame.rematchRequestedBy;
     if (seat === null) return '';
     const other = onlineGame.names[seat === 0 ? 1 : 0];
-    if (onlineGame.rematchPending) return `Waiting for ${other}…`;
-    if (by !== null && by !== seat) return `${other} wants a rematch.`;
+    const theyAsked = by !== null && by !== seat;
+    // W13b (plan §7): "Waiting for Blake" until both tap. Once both have,
+    // the server deals the next game; until its state arrives, say so.
+    if (onlineGame.rematchPending) return theyAsked ? 'Starting the rematch…' : `Waiting for ${other}…`;
+    if (theyAsked) return `${other} wants a rematch.`;
     return '';
   });
 </script>
@@ -363,11 +366,9 @@
       onRematch={handleOnlineRematch}
       onHome={() => onlineGame.goHome()}
       winningMove={winningMove(onlineView, onlineGame.history, onlineGame.names)}
+      rematchStatus={rematchLine}
+      rematchWaiting={onlineGame.rematchPending}
     />
-    {#if rematchLine !== ''}
-      <!-- Placeholder text; W13b draws the rematch state properly. -->
-      <p class="status-screen__rematch" data-testid="online-rematch-status" role="status">{rematchLine}</p>
-    {/if}
   {:else if screen === 'result' && game.view}
     <ResultScreen
       state={{ winner: game.view.winner, stalemate: game.view.stalemate }}
@@ -410,24 +411,6 @@
     color: var(--cu-muted);
     font-size: var(--cu-text-sm);
     font-variant-numeric: tabular-nums;
-  }
-
-  .status-screen__rematch {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: var(--cu-safe-bottom, 0px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    min-height: var(--cu-tap-min);
-    margin: 0;
-    padding: 0 var(--cu-gutter-sheet);
-    background: var(--cu-ink-raised);
-    color: var(--cu-pearl);
-    font-family: var(--cu-font-ui);
-    text-align: center;
   }
 
   .status-screen__confirm {

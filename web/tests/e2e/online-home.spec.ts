@@ -23,6 +23,26 @@ test('Home offers three ways to play and fits the phone', async ({ page }) => {
   await fits(page, 'home-screen');
 });
 
+// W13b, R24.14 (plan §10): offline, Play on two phones stays and explains.
+test('offline, Play on two phones stays visible and says it needs a connection', async ({ page, context }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('online-create')).toBeEnabled();
+  await expect(page.getByTestId('online-offline')).toHaveCount(0);
+
+  await context.setOffline(true);
+  await expect(page.getByTestId('mode-online')).toBeVisible();
+  await expect(page.getByTestId('online-offline')).toHaveText('You’re offline. Online games need a connection.');
+  await expect(page.getByTestId('online-create')).toBeDisabled();
+  await expect(page.getByTestId('online-join')).toBeDisabled();
+  const box = await page.getByTestId('online-offline').boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44 - 0.5);
+  await fits(page, 'home-screen');
+
+  await context.setOffline(false);
+  await expect(page.getByTestId('online-offline')).toHaveCount(0);
+  await expect(page.getByTestId('online-create')).toBeEnabled();
+});
+
 test('a join link opens the join screen with the code filled in and clears the hash', async ({ page }) => {
   await page.goto('/#/join/abcd');
   await expect(page.getByTestId('join-screen')).toBeVisible();
