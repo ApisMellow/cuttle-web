@@ -804,7 +804,10 @@ func (d *duo) absorb(seat game.Seat, f frameIn) {
 			t.Fatalf("seat %d: state went back from seq %d to %d", seat, prev.Seq, env.Seq)
 		}
 		if d.held[seat] {
-			if el := f.at.Sub(d.heldFrom[seat]); el < d.hold {
+			// heldFrom is stamped client-side after the send while the server's
+			// timer starts on receipt; a loaded runner can skew them by tens of
+			// ms, so the check allows 100ms of slack.
+			if el := f.at.Sub(d.heldFrom[seat]); el+100*time.Millisecond < d.hold {
 				t.Fatalf("seat %d: held state arrived after %v, hold is %v", seat, el, d.hold)
 			}
 			if st := d.truths[env.Seq].st; st.Phase == engine.PhaseAwaitingCounter && st.Active != engine.PlayerID(seat) {

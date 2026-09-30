@@ -16,7 +16,7 @@ attached evidence.
 
 ## Commands
 
-- `go test ./...` — the Go gate. The repo is **test-first**: test files
+- `go test ./...` — the Go gate (`ci.sh` runs it with `-short`, which thins the W9 privacy sweep to every 7th seed; the full 240-seed sweep is `go test ./internal/server/ -run TestW9_WirePrivacySweep`). The repo is **test-first**: test files
   exist before implementations; golden scenarios (e.g. seed-42 deal in
   `internal/game/deal_test.go`) are authoritative, not judgment calls.
 - `./scripts/build-wasm.sh` — builds the WASM bridge and reports raw/gzip
