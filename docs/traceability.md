@@ -102,7 +102,7 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R24.15 | Home offers pass-and-play, table mode and two phones | `vitest: home-modes.svelte.test.ts` ('Home: three modes', 'a saved seat shows Resume online game...')<br>`vitest: online-screens.svelte.test.ts` ('WaitingScreen', 'OnlineFlow')<br>`vitest: app-online.svelte.test.ts` | vitest (e2e and rematch copy open) | e2e-test, unit-test | in-progress |
 | R24.16 | GameScreen reads a TableSource, with a pending gate | `vitest: game-screen-table-source.svelte.test.ts` ('W10: …' suites) | vitest | unit-test | implemented |
 | R24.17 | Health endpoint | `TestHealthz`<br>`TestHealthzWrongMethodAndUnknownPath`<br>`TestAPI_Healthz` | go unit | unit-test | implemented |
-| R24.18 | Static linux binary and ops files | `TestParseConfigDefaults`<br>`TestParseConfigRejects`<br>`TestRunGracefulShutdown` | go unit (build script merged, untested; ops files open) | unit-test, human-approval | in-progress (PARTIAL) |
+| R24.18 | Static linux binary and ops files | `TestParseConfigDefaults`<br>`TestParseConfigRejects`<br>`TestRunGracefulShutdown` | go unit (build script merged, untested; ops files and deploy Action written in `deploy/` and `.github/workflows/deploy-server.yml`, first deploy open) | unit-test, human-approval | in-progress (PARTIAL) |
 | R24.19 | The owner's setup checklist exists | — (docs/two-phone-plan.md §11) | — | human-approval | in-progress |
 
 ## SPEC contracts not traced to a ledger ID

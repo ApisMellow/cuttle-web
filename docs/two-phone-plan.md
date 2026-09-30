@@ -23,8 +23,8 @@
 | W13b | In-game banners, "responding" panel, online result and rematch | todo |
 | W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | done (parser and guard test in #52; https-only production origin, `/api/` fallback denylist and the Pages variable in this change) |
 | W15 | Two-browser e2e | todo |
-| W16 | Ops files | todo |
-| W17 | Deploy Action | todo |
+| W16 | Ops files | done (`deploy/`, `docs/ops.md`; open PR) |
+| W17 | Deploy Action | done (`.github/workflows/deploy-server.yml`, manual only; open PR; first manual deploy still to do) |
 
 Next, in order: W6 review fixes and merge, then the W9 privacy sweep, W13b UI polish, and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
 
@@ -205,7 +205,7 @@ The one-phone modes stay fully offline. Online play needs the network and says s
 
 ## 11. Ops and hosting
 
-**Layout on the droplet:** Ubuntu 24.04 LTS. Caddy from its apt repo. The binary at `/opt/cuttle/cuttle-server`, run by systemd as user `cuttle`. The database at `/var/lib/cuttle/cuttle.db`.
+**Layout on the droplet:** Ubuntu 24.04 LTS. Caddy from its apt repo. The binary at `/opt/cuttle/bin/cuttle-server` *(amended: matches the droplet as built; files in `deploy/`, steps in `docs/ops.md`)*, run by systemd as user `cuttle`. The database at `/var/lib/cuttle/cuttle.db`.
 
 Caddyfile:
 
