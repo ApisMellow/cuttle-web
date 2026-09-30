@@ -33,3 +33,5 @@ The work-in-progress source art and its review sheet are on the `art/source-asse
 - **Offline play (shipped 2026-09-29).** A service worker keeps the installed home-screen app working without a connection.
 - **Player colours:** an optional colour for each player, possibly tied to theme suits.
 - **An accessibility pass:** screen-reader labels for every card and action, and contrast checks for every theme.
+- **Native iOS app (planned).** A Swift app for iPhone, built as its own project. The Go engine stays the rules reference, and the Swift rules are checked against it.
+- **Smaller engine download (experiment).** Try compiling the Go engine with TinyGo to shrink the WebAssembly file (about 3.5 MB raw today), keeping one copy of the rules for the browser and the server.
