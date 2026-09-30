@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,8 +86,11 @@ func OpenDir(dir string, opt Options) (*SQLite, error) {
 }
 
 // Open opens (creating if needed) the database file at path, applies any
-// pending migrations and returns a store ready for concurrent use. A new
-// file is created with mode 0600: the snapshots hold every hidden card.
+// pending migrations and returns a store ready for concurrent use. The
+// database and its -wal and -shm files are kept at mode 0600 because the
+// snapshots hold every hidden card: a new file is created 0600, and a
+// pre-existing looser file is tightened (with a logged warning) rather than
+// refused.
 func Open(path string, opt Options) (*SQLite, error) {
 	if path == "" || strings.ContainsAny(path, "?#") || strings.HasPrefix(path, "file:") || path == ":memory:" {
 		return nil, fmt.Errorf("%w: database path %q", ErrInvalid, path)
@@ -96,13 +100,16 @@ func Open(path string, opt Options) (*SQLite, error) {
 		return nil, fmt.Errorf("store: creating database file: %w", err)
 	}
 	f.Close()
+	tightenPerms(path)
 
 	pragmas := "_pragma=busy_timeout(" + fmt.Sprint(busyTimeoutMS) + ")" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
 		"&_pragma=foreign_keys(1)"
 
-	w, err := sql.Open("sqlite", path+"?"+pragmas+"&_txlock=immediate")
+	// secure_delete zeroes freed pages, so a deleted room's snapshot and
+	// token hashes don't linger in the file. Only the writer deletes.
+	w, err := sql.Open("sqlite", path+"?"+pragmas+"&_pragma=secure_delete(1)&_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("store: open writer: %w", err)
 	}
@@ -130,7 +137,36 @@ func Open(path string, opt Options) (*SQLite, error) {
 		return nil, fmt.Errorf("store: open reader: %w", err)
 	}
 	s.r = r
+	// SQLite creates the sidecars with the database's mode, but tighten
+	// again in case any appeared with a looser one.
+	tightenPerms(path)
 	return s, nil
+}
+
+// tightenPerms chmods the database and any existing -wal/-shm sidecars to
+// 0600 and logs a warning (no path, which could reveal deployment layout)
+// if any was looser. A missing file is fine; other errors are logged, not
+// fatal, since the store can still run.
+func tightenPerms(path string) {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		st, err := os.Stat(p)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				log.Printf("store: warning: cannot stat %s file: %v", filepath.Ext(p), errors.Unwrap(err))
+			}
+			continue
+		}
+		if st.Mode().Perm() == 0o600 {
+			continue
+		}
+		if err := os.Chmod(p, 0o600); err != nil {
+			log.Printf("store: warning: cannot restrict a database file to 0600: %v", errors.Unwrap(err))
+			continue
+		}
+		if st.Mode().Perm()&0o077 != 0 {
+			log.Printf("store: warning: a database file was readable by group or others; restricted to 0600")
+		}
+	}
 }
 
 // OpenMemory opens a private in-memory database, for tests. Nothing touches
@@ -164,6 +200,12 @@ func newSQLite(w, r *sql.DB, opt Options) *SQLite {
 }
 
 func (s *SQLite) nowMS() int64 { return s.now().UnixMilli() }
+
+// cutoffMS is the oldest updated_at that is still alive: a room idle for
+// exactly the TTL survives, one millisecond longer is gone. DeleteExpired
+// and every read or guarded write use this one boundary, so an expired
+// room is ErrNotFound immediately, not only after the next sweep.
+func (s *SQLite) cutoffMS() int64 { return s.nowMS() - s.ttl.Milliseconds() }
 
 func fromMS(ms int64) time.Time { return time.UnixMilli(ms).UTC() }
 
@@ -205,7 +247,9 @@ func (s *SQLite) Create(ctx context.Context, name string) (Claim, error) {
 
 // Join claims seat 1 with a single conditional UPDATE: the row changes only
 // while token1_hash is NULL, so of any set of concurrent joins exactly one
-// sees a changed row.
+// sees a changed row. When no row changes, the follow-up read that picks
+// ErrNotFound or ErrRoomFull can race another writer, so the kind can be
+// off, but nothing is ever written wrongly.
 func (s *SQLite) Join(ctx context.Context, code, name string) (Claim, error) {
 	if name == "" {
 		return Claim{}, fmt.Errorf("%w: empty name", ErrInvalid)
@@ -218,10 +262,12 @@ func (s *SQLite) Join(ctx context.Context, code, name string) (Claim, error) {
 	if err != nil {
 		return Claim{}, err
 	}
+	now := s.nowMS()
+	cutoff := now - s.ttl.Milliseconds()
 	res, err := s.w.ExecContext(ctx,
 		`UPDATE rooms SET name1 = ?, token1_hash = ?, status = 'active', updated_at = ?
-		 WHERE code = ? AND token1_hash IS NULL`,
-		name, hash[:], s.nowMS(), code)
+		 WHERE code = ? AND token1_hash IS NULL AND updated_at >= ?`,
+		name, hash[:], now, code, cutoff)
 	if err != nil {
 		return Claim{}, fmt.Errorf("store: join: %w", err)
 	}
@@ -231,7 +277,7 @@ func (s *SQLite) Join(ctx context.Context, code, name string) (Claim, error) {
 		return Claim{Code: code, Seat: 1, Token: token}, nil
 	}
 	var one int
-	switch err := s.w.QueryRowContext(ctx, `SELECT 1 FROM rooms WHERE code = ?`, code).Scan(&one); {
+	switch err := s.w.QueryRowContext(ctx, `SELECT 1 FROM rooms WHERE code = ? AND updated_at >= ?`, code, cutoff).Scan(&one); {
 	case errors.Is(err, sql.ErrNoRows):
 		return Claim{}, ErrNotFound
 	case err != nil:
@@ -257,7 +303,7 @@ func (s *SQLite) Get(ctx context.Context, code string) (Room, error) {
 	err = s.r.QueryRowContext(ctx,
 		`SELECT code, created_at, updated_at, status, name0, name1,
 		        token1_hash IS NOT NULL, game_no, seq, tally0, tally1, last_dealer, snapshot
-		 FROM rooms WHERE code = ?`, code).Scan(
+		 FROM rooms WHERE code = ? AND updated_at >= ?`, code, s.cutoffMS()).Scan(
 		&room.Code, &created, &updated, &status, &room.Names[0], &name1,
 		&room.Joined, &room.Game, &room.Seq, &room.Tally[0], &room.Tally[1], &lastDealer, &room.Snapshot)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -288,7 +334,8 @@ func (s *SQLite) Authenticate(ctx context.Context, code, token string) (Seat, er
 	}
 	var h0, h1 []byte
 	err = s.r.QueryRowContext(ctx,
-		`SELECT token0_hash, token1_hash FROM rooms WHERE code = ?`, code).Scan(&h0, &h1)
+		`SELECT token0_hash, token1_hash FROM rooms WHERE code = ? AND updated_at >= ?`,
+		code, s.cutoffMS()).Scan(&h0, &h1)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNotFound
 	}
@@ -331,7 +378,11 @@ func validSave(sv Save) error {
 // is taken and the stored (game, seq) equals (PrevGame, PrevSeq). A single
 // statement is atomic, so the check and the write can't be split by another
 // writer. Only when no row changed does a second read work out which error
-// to return; that read can't cause a write.
+// to return; that read can't cause a write. It is not atomic with the
+// UPDATE, so if another writer commits in between, the error kind can be
+// off (ErrStale where ErrNotJoined or ErrNotFound would be exact, and so
+// on) but nothing is ever written wrongly. Callers should treat ErrStale,
+// ErrNotJoined and ErrNotFound from Save alike: resync.
 func (s *SQLite) Save(ctx context.Context, code string, sv Save) error {
 	if err := validSave(sv); err != nil {
 		return err
@@ -340,13 +391,16 @@ func (s *SQLite) Save(ctx context.Context, code string, sv Save) error {
 	if err != nil {
 		return ErrNotFound
 	}
+	now := s.nowMS()
+	cutoff := now - s.ttl.Milliseconds()
 	res, err := s.w.ExecContext(ctx,
 		`UPDATE rooms SET game_no = ?, seq = ?, snapshot = ?, status = ?,
 		        tally0 = ?, tally1 = ?, last_dealer = ?, updated_at = ?
-		 WHERE code = ? AND token1_hash IS NOT NULL AND game_no = ? AND seq = ?`,
+		 WHERE code = ? AND token1_hash IS NOT NULL AND game_no = ? AND seq = ?
+		   AND updated_at >= ?`,
 		sv.Game, sv.Seq, sv.Snapshot, string(sv.Status),
-		sv.Tally[0], sv.Tally[1], sv.LastDealer, s.nowMS(),
-		code, sv.PrevGame, sv.PrevSeq)
+		sv.Tally[0], sv.Tally[1], sv.LastDealer, now,
+		code, sv.PrevGame, sv.PrevSeq, cutoff)
 	if err != nil {
 		return fmt.Errorf("store: save: %w", err)
 	}
@@ -357,7 +411,8 @@ func (s *SQLite) Save(ctx context.Context, code string, sv Save) error {
 	}
 	var joined bool
 	err = s.w.QueryRowContext(ctx,
-		`SELECT token1_hash IS NOT NULL FROM rooms WHERE code = ?`, code).Scan(&joined)
+		`SELECT token1_hash IS NOT NULL FROM rooms WHERE code = ? AND updated_at >= ?`,
+		code, cutoff).Scan(&joined)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return ErrNotFound
@@ -375,7 +430,9 @@ func (s *SQLite) Touch(ctx context.Context, code string) error {
 	if err != nil {
 		return ErrNotFound
 	}
-	res, err := s.w.ExecContext(ctx, `UPDATE rooms SET updated_at = ? WHERE code = ?`, s.nowMS(), code)
+	now := s.nowMS()
+	res, err := s.w.ExecContext(ctx, `UPDATE rooms SET updated_at = ? WHERE code = ? AND updated_at >= ?`,
+		now, code, now-s.ttl.Milliseconds())
 	if err != nil {
 		return fmt.Errorf("store: touch: %w", err)
 	}
@@ -390,8 +447,7 @@ func (s *SQLite) Touch(ctx context.Context, code string) error {
 // DeleteExpired removes rooms idle for longer than the TTL: updated_at
 // strictly before now − TTL. A room idle for exactly the TTL survives.
 func (s *SQLite) DeleteExpired(ctx context.Context) (int, error) {
-	cutoff := s.nowMS() - s.ttl.Milliseconds()
-	res, err := s.w.ExecContext(ctx, `DELETE FROM rooms WHERE updated_at < ?`, cutoff)
+	res, err := s.w.ExecContext(ctx, `DELETE FROM rooms WHERE updated_at < ?`, s.cutoffMS())
 	if err != nil {
 		return 0, fmt.Errorf("store: delete expired: %w", err)
 	}

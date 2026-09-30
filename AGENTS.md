@@ -225,7 +225,19 @@ that makes your list complete.
   separate `query_only` pool (WAL). Guarded writes are single conditional
   UPDATEs: `Join` claims seat 1 only `WHERE token1_hash IS NULL`, `Save`
   writes only when the stored `(game, seq)` equals the caller's. Keep new
-  guarded writes in that shape rather than read-then-write.
+  guarded writes in that shape rather than read-then-write. When a
+  conditional UPDATE changes 0 rows, the follow-up read that classifies the
+  failure can race another writer, so the returned error kind can be off
+  (`ErrStale` vs `ErrNotJoined`, say) but nothing is ever written wrongly.
+  Callers treat any of them as "resync".
+- **Expiry is immediate.** A room idle longer than `IdleTTL` is
+  `ErrNotFound` from `Get`, `Join`, `Authenticate`, `Save` and `Touch`
+  before `DeleteExpired` sweeps it (exactly the TTL is still alive).
+- **File hygiene.** `Open` tightens a pre-existing db, `-wal` and `-shm`
+  to `0600` (logging a warning, never refusing) and sets
+  `secure_delete=ON` on the writer so deleted snapshots are zeroed.
+- **The store does not bound input.** The HTTP layer must cap name length
+  and snapshot size before calling it.
 - `Save`'s version is `(Game, Seq)` and must strictly increase: a move
   bumps `Seq`, a deal or rematch bumps `Game` and restarts `Seq` at 0.
 - Codes are stored upper-case only (a table CHECK). Pass user input through

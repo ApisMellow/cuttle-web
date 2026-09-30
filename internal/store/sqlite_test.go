@@ -493,13 +493,114 @@ func TestRawTokensNeverStored(t *testing.T) {
 }
 
 func TestDBFileIsPrivate(t *testing.T) {
-	_, dir := openFile(t, nil, Options{})
-	st, err := os.Stat(filepath.Join(dir, FileName))
+	s, dir := openFile(t, nil, Options{})
+	mustCreate(t, s, "Alice") // a write, so the WAL and shm exist
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		st, err := os.Stat(filepath.Join(dir, FileName+suffix))
+		if err != nil {
+			t.Fatalf("stat %q: %v", FileName+suffix, err)
+		}
+		if perm := st.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("%s mode %v, want 0600", FileName+suffix, perm)
+		}
+	}
+}
+
+func TestOpenTightensLooseFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	// Leave a database plus sidecars behind, as a crashed process would.
+	s, err := OpenDir(dir, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := st.Mode().Perm(); perm&0o077 != 0 {
-		t.Fatalf("db file mode %v is readable by group or others", perm)
+	mustCreate(t, s, "Alice")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.WriteFile(path+suffix, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil { // WriteFile keeps an existing mode subject to umask
+		t.Fatal(err)
+	}
+	s2, err := OpenDir(dir, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s2.Close() })
+	mustCreate(t, s2, "Blake")
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		st, err := os.Stat(path + suffix)
+		if err != nil {
+			t.Fatalf("stat %q: %v", FileName+suffix, err)
+		}
+		if perm := st.Mode().Perm(); perm != 0o600 {
+			t.Errorf("%s mode %v after Open, want 0600", FileName+suffix, perm)
+		}
+	}
+}
+
+// expiryFixture returns a store with a 1h TTL and a joined, dealt room
+// last touched at the returned time.
+func expiryFixture(t *testing.T) (*SQLite, *fakeClock, Claim, Claim) {
+	t.Helper()
+	clk := newClock()
+	s, _ := openFile(t, clk, Options{IdleTTL: time.Hour})
+	a, b := dealt(t, s)
+	return s, clk, a, b
+}
+
+func TestExpiredRoomIsGoneBeforeSweep(t *testing.T) {
+	sv := Save{PrevGame: 1, PrevSeq: 0, Game: 1, Seq: 1, Snapshot: []byte(`{}`), Status: StatusActive, LastDealer: 1}
+	ops := map[string]func(s *SQLite, a, b Claim) error{
+		"Get":          func(s *SQLite, a, b Claim) error { _, err := s.Get(bg, a.Code); return err },
+		"Join":         func(s *SQLite, a, b Claim) error { _, err := s.Join(bg, a.Code, "Cy"); return err },
+		"Authenticate": func(s *SQLite, a, b Claim) error { _, err := s.Authenticate(bg, a.Code, a.Token); return err },
+		"Save":         func(s *SQLite, a, b Claim) error { return s.Save(bg, a.Code, sv) },
+		"Touch":        func(s *SQLite, a, b Claim) error { return s.Touch(bg, a.Code) },
+	}
+	for name, op := range ops {
+		t.Run(name+"/boundary", func(t *testing.T) {
+			s, clk, a, b := expiryFixture(t)
+			clk.Advance(time.Hour) // idle exactly the TTL: still alive
+			err := op(s, a, b)
+			if errors.Is(err, ErrNotFound) {
+				t.Fatalf("%s at exactly the TTL = ErrNotFound; the boundary is kept", name)
+			}
+		})
+		t.Run(name+"/expired", func(t *testing.T) {
+			s, clk, a, b := expiryFixture(t)
+			clk.Advance(time.Hour + time.Millisecond)
+			if err := op(s, a, b); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("%s 1ms past the TTL = %v, want ErrNotFound", name, err)
+			}
+			// Nothing was written to the expired row.
+			if n, err := s.Count(bg); err != nil || n != 1 {
+				t.Fatalf("Count = %d, %v; want the unswept row still stored", n, err)
+			}
+			var seq int
+			if err := s.w.QueryRow(`SELECT seq FROM rooms WHERE code = ?`, a.Code).Scan(&seq); err != nil || seq != 0 {
+				t.Fatalf("expired row seq = %d, %v; want untouched 0", seq, err)
+			}
+		})
+	}
+}
+
+func TestExpiredWaitingRoomCannotBeJoined(t *testing.T) {
+	clk := newClock()
+	s, _ := openFile(t, clk, Options{IdleTTL: time.Hour})
+	a := mustCreate(t, s, "Alice")
+	clk.Advance(time.Hour + time.Millisecond)
+	if _, err := s.Join(bg, a.Code, "Blake"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("join of an expired room = %v, want ErrNotFound", err)
 	}
 }
 
@@ -722,6 +823,7 @@ func TestPragmas(t *testing.T) {
 		check(pool, `PRAGMA foreign_keys`, "1")
 		check(pool, `PRAGMA busy_timeout`, "5000")
 	}
+	check("writer", `PRAGMA secure_delete`, "1")
 	check("reader", `PRAGMA query_only`, "1")
 	check("writer", `PRAGMA query_only`, "0")
 	if max := s.w.Stats().MaxOpenConnections; max != 1 {
