@@ -963,9 +963,10 @@ requirements:
     acceptance:
       - "unit-test: a room with no activity for longer than the idle limit (default 24 h, CUTTLE_IDLE_TTL) is treated as gone by every store call at once, joined or not, before any sweep; exactly the limit is still alive (A-7 'Game life', plan §5)"
       - "unit-test: a janitor deletes idle rooms every 10 minutes, and a phone holding a dead seat gets ROOM_GONE and forgets the seat (plan §5 step 4, §3)"
+      - "unit-test: when a backup directory is configured, a daily VACUUM INTO writes a valid, openable copy of the game store (0600 file in a 0700 directory, temp name then atomic rename, no partial file on error), keeps the newest N (default 3) and prunes the rest; with no directory set nothing is written (plan §11, SPEC §2.12.6)"
     verify: [unit-test]
     status: in-progress
-    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestExpiredRoomIsGoneBeforeSweep, TestExpiredWaitingRoomCannotBeJoined, TestTouch, TestDeleteExpiredOnlyIdle, TestDeleteExpiredCustomTTL; DefaultIdleTTL is 24 h. Janitor and gone rooms merged (W5, PR #55 @ fd537b4): go internal/server/rooms_test.go TestRooms_SweepDeletesExpiredAndDropsIdle, TestRooms_SweepDropsStoreExpiredEvenIfRecentlyUsed, TestRooms_JanitorRunsAndStops, TestRooms_UnknownMalformedAndExpiredAreGone; api_test.go TestAPI_JoinGone. Client (W12, PR #58): vitest app-online.svelte.test.ts 'ROOM_GONE forgets the seat and returns Home with a message'. Open: ROOM_GONE over the WebSocket hello (W6, PR #60 open)."
+    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestExpiredRoomIsGoneBeforeSweep, TestExpiredWaitingRoomCannotBeJoined, TestTouch, TestDeleteExpiredOnlyIdle, TestDeleteExpiredCustomTTL; DefaultIdleTTL is 24 h. Janitor and gone rooms merged (W5, PR #55 @ fd537b4): go internal/server/rooms_test.go TestRooms_SweepDeletesExpiredAndDropsIdle, TestRooms_SweepDropsStoreExpiredEvenIfRecentlyUsed, TestRooms_JanitorRunsAndStops, TestRooms_UnknownMalformedAndExpiredAreGone; api_test.go TestAPI_JoinGone. Client (W12, PR #58): vitest app-online.svelte.test.ts 'ROOM_GONE forgets the seat and returns Home with a message'. Backup half IMPLEMENTED 2026-09-29 (W8, pending review): go internal/store/backup_test.go TestBackup_ValidDatabaseWithSameRows, TestBackup_IncludesUncheckpointedWALRows, TestBackup_FileIsPrivate, TestBackup_RefusesExistingFileAndLeavesItAlone, TestBackup_ErrorLeavesNoPartialFile; internal/server/backup_test.go TestBackupOnce_WritesNamedPrivateFileAndNoTemp, TestBackupOnce_TightensLooseExistingDir, TestBackupOnce_FailureLeavesNoPartialFile, TestBackupOnce_FailureDoesNotPrune, TestBackupOnce_PrunesToKeepNewest, TestBackupOnce_PruneIgnoresOtherFilesAndClearsStaleTemps, TestBackupOnce_RealStoreBackupIsOpenable, TestRunBackups_DisabledWhenDirEmpty, TestRunBackups_RunsThenStopsOnCancel, TestRunBackups_SkipsWhenRecentBackupExists, TestRunBackups_FailureIsLoggedWithoutContents, TestParseConfig_Backup*. Open: ROOM_GONE over the WebSocket hello (W6, PR #60 open)."
     fails: 0
 
   - id: R24.10
@@ -1074,7 +1075,7 @@ requirements:
       - "human-approval: the Caddyfile, systemd unit, setup script and deploy script exist, and a first manual deploy serves /healthz over TLS; the server listens on localhost only and never on 8765 (plan §11, W16)"
     verify: [unit-test, human-approval]
     status: in-progress
-    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. W5 (PR #55) adds TestParseConfigW5Flags. Open: ops files (W16) and the deploy Action (W17)."
+    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. W5 (PR #55) adds TestParseConfigW5Flags. Written (W16, W17; not yet exercised on a droplet): deploy/ (cuttle.service, Caddyfile, cuttle.env.example, setup.sh, update.sh), docs/ops.md, .github/workflows/deploy-server.yml (manual only, skips cleanly without secrets). Open: the first manual deploy serving /healthz over TLS, and the product owner's approval."
     fails: 0
 
   - id: R24.19
@@ -1084,5 +1085,5 @@ requirements:
       - "human-approval: a step-by-step checklist lets the product owner create the droplet, SSH key, firewall and hostname and set CUTTLE_SERVER_ORIGIN, with no prior DigitalOcean knowledge (plan §11 'Setup checklist for the owner')"
     verify: [human-approval]
     status: in-progress
-    evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Open: the product owner's walk-through, and the setup script it points to (W16)."
+    evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Setup script written (W16): deploy/setup.sh, with docs/ops.md covering first setup, updates, restore and CUTTLE_SERVER_ORIGIN. Open: the product owner's walk-through."
     fails: 0
