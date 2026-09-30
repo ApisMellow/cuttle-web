@@ -8,7 +8,11 @@ export type OnlineErrorCode =
   | 'full'
   | 'expired'
   | 'network'
-  | 'rate-limited';
+  | 'rate-limited'
+  /** W12: the server is at its room cap (SERVER_FULL). */
+  | 'busy'
+  /** W12: the server refused the request (BAD_REQUEST, e.g. a name it won't take). */
+  | 'bad-request';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: OnlineErrorCode };
 
@@ -41,6 +45,18 @@ export interface OnlineActions {
   /** W11 owns storage. One online game per phone: non-null means Home offers Resume only. */
   savedSeat(): SavedSeat | null;
   resume(): void;
+  /**
+   * Review F3: give up the saved seat so another room can take its place
+   * (the player said "Leave it"). Closes any connection and forgets the seat.
+   */
+  leaveSavedSeat(): void;
+}
+
+/** Review F3: the question before a new room replaces a saved seat. Fixed text plus the opponent's name. */
+export function replaceSeatQuestion(saved: SavedSeat, action: 'join' | 'create'): string {
+  const game = saved.opponentName ? `a game with ${saved.opponentName}` : 'an online game';
+  const next = action === 'join' ? 'join this one' : 'start a new one';
+  return `You have ${game} in progress. Leave it and ${next}?`;
 }
 
 export const ERROR_TEXT: Record<OnlineErrorCode, string> = {
@@ -49,6 +65,8 @@ export const ERROR_TEXT: Record<OnlineErrorCode, string> = {
   expired: 'That room has expired. Ask your friend to start a new one.',
   network: 'Couldn’t reach the server. Check your connection and try again.',
   'rate-limited': 'Too many tries. Wait a little and try again.',
+  busy: 'The game server is busy. Try again in a few minutes.',
+  'bad-request': 'The game server didn’t accept that. Check your name and try again.',
 };
 
 export interface FakeOptions {
@@ -69,6 +87,7 @@ export interface FakeOnlineActions extends OnlineActions {
     join: { code: string; name: string }[];
     cancel: number;
     resume: number;
+    leave: number;
   };
   /** Push a room event to subscribers, as the server would. */
   emit(event: RoomEvent): void;
@@ -80,7 +99,8 @@ export interface FakeOnlineActions extends OnlineActions {
  */
 export function createFakeOnlineActions(options: FakeOptions = {}): FakeOnlineActions {
   const handlers = new Set<(event: RoomEvent) => void>();
-  const calls: FakeOnlineActions['calls'] = { create: [], join: [], cancel: 0, resume: 0 };
+  const calls: FakeOnlineActions['calls'] = { create: [], join: [], cancel: 0, resume: 0, leave: 0 };
+  let saved = options.saved ?? null;
   const wait = (): Promise<void> =>
     options.delay ? new Promise((resolve) => setTimeout(resolve, options.delay)) : Promise.resolve();
 
@@ -108,9 +128,13 @@ export function createFakeOnlineActions(options: FakeOptions = {}): FakeOnlineAc
       handlers.add(handler);
       return () => handlers.delete(handler);
     },
-    savedSeat: () => options.saved ?? null,
+    savedSeat: () => saved,
     resume() {
       calls.resume += 1;
+    },
+    leaveSavedSeat() {
+      calls.leave += 1;
+      saved = null;
     },
     emit(event) {
       for (const handler of [...handlers]) handler(event);

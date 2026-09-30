@@ -29,17 +29,31 @@
   import OnlineFlow from './lib/components/OnlineFlow.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
-  import { onlineAvailable } from './lib/online/provider';
-  import { applyUpdateAtRematch, reportScreen, takePendingRematch } from './lib/pwa/register';
+  import { configureOnlineActions, getOnlineActions, onlineAvailable } from './lib/online/provider';
+  import {
+    applyUpdateAtOnlineRematch,
+    applyUpdateAtRematch,
+    reportScreen,
+    takePendingOnlineRematch,
+    takePendingRematch,
+    type PendingOnlineRematch,
+  } from './lib/pwa/register';
   import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
   import { online } from './lib/stores/online.svelte';
+  import { onlineGame } from './lib/stores/onlineGame.svelte';
   import { session } from './lib/stores/session.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { ensureThemeLoaded, loadThemeCatalog } from './lib/theme';
   import { SNAPSHOT_KEY, decodeSnapshot } from './lib/stores/snapshot';
   import './lib/styles/tokens.css';
   import './lib/styles/online.css';
+
+  // Two-phone W12: with a server configured, the real online actions replace
+  // the W13a fake before any screen reads them. Nothing online runs until
+  // the player picks Play on two phones (or Resume): the online store only
+  // connects on attach().
+  configureOnlineActions();
 
   type EngineStatus = 'loading' | 'ready' | 'failed';
 
@@ -66,7 +80,7 @@
   function readJoinLink(): void {
     const hash = location.hash;
     if (!hash.startsWith('#/join/')) return;
-    if (onlineAvailable() && game.screen === 'home') online.applyHash(hash);
+    if (onlineAvailable() && game.screen === 'home' && !onlineGame.attached) online.applyHash(hash);
     history.replaceState(null, '', location.pathname + location.search);
   }
 
@@ -86,6 +100,9 @@
           session.setNames(pending.names[0], pending.names[1]);
           void game.newGame(pending.dealer === undefined ? {} : { dealer: pending.dealer });
         }
+        // Review F4: an online Rematch tapped just before an update reload.
+        const onlinePending = takePendingOnlineRematch();
+        if (onlinePending !== null) resumeForRematch(onlinePending);
       })
       .catch((err: unknown) => {
         engineStatus = 'failed';
@@ -93,7 +110,23 @@
       });
   });
 
-  type Screen = 'loading' | 'boot-failed' | 'error' | 'home' | 'online' | 'result' | 'game';
+  type Screen =
+    | 'loading'
+    | 'boot-failed'
+    | 'error'
+    | 'home'
+    | 'online'
+    | 'online-game'
+    | 'online-result'
+    | 'result'
+    | 'game';
+
+  // Two-phone W12: the source is `onlineGame` once the online store is
+  // attached and the flow has reached `connected` (after a create's opponent
+  // joins, a join, or Resume); otherwise `game`. The W13a fake never
+  // attaches the store, so with it `connected` stays OnlineFlow's own
+  // placeholder. Pass-and-play never reaches the online branches.
+  const onlineTable = $derived(onlineGame.attached && online.view === 'connected');
 
   const screen = $derived<Screen>(
     engineStatus === 'loading'
@@ -103,9 +136,13 @@
         : game.error !== null
           ? 'error'
           : game.screen === 'home'
-            ? online.view === 'none'
-              ? 'home'
-              : 'online'
+            ? onlineTable
+              ? onlineGame.curtain.kind === 'result'
+                ? 'online-result'
+                : 'online-game'
+              : online.view === 'none'
+                ? 'home'
+                : 'online'
             : game.curtain.kind === 'result'
               ? 'result'
               : 'game',
@@ -115,10 +152,13 @@
   // boot failure) before it takes over. Never mid-game.
   // Two-phone screens: a room waiting for its guest (or a live connection)
   // must not be reloaded away, so those count as in-game; the create and join
-  // forms are as safe as Home.
+  // forms are as safe as Home. An online game, result included, counts as
+  // in-game too: a reload there would drop the socket mid-rematch.
   $effect(() => {
     if (screen === 'online') {
       reportScreen(online.view === 'waiting' || online.view === 'connected' ? 'game' : 'home');
+    } else if (screen === 'online-game' || screen === 'online-result') {
+      reportScreen('game');
     } else {
       reportScreen(screen);
     }
@@ -223,11 +263,51 @@
   // Amended 2026-09-28: the result screen's winning-move line. Public data
   // only: the history's last visible entry (cards played face up) and the
   // winner's final points and goal, read verbatim off the scoreboard.
-  function winningMove(view: NonNullable<typeof game.view>): string {
+  function winningMove(
+    view: NonNullable<typeof game.view>,
+    history: typeof game.history = game.history,
+    names: [string, string] = session.names,
+  ): string {
     if (view.winner === null) return '';
     const side = view.winner === view.viewer ? view.scoreboard.you : view.scoreboard.opponent;
-    return winningMoveLine(game.history, view.winner, session.names, side.points, side.threshold);
+    return winningMoveLine(history, view.winner, names, side.points, side.threshold);
   }
+
+  // Review F4 (R18): the online result screen's Rematch is a safe point
+  // too. With an update waiting (and this seat's request not already out),
+  // the page reloads onto the new build instead of sending the rematch; the
+  // reloaded page resumes the saved seat and sends it (`resumeForRematch`).
+  // Only the room code and the game number cross the reload.
+  function handleOnlineRematch(): void {
+    const code = getOnlineActions().savedSeat()?.code;
+    const safe = code !== undefined && !onlineGame.rematchPending && !onlineGame.pending;
+    if (safe && applyUpdateAtOnlineRematch({ code, game: onlineGame.game })) return;
+    void onlineGame.newGame();
+  }
+
+  /** After the update reload: resume the same room's seat, then ask for the rematch once its finished state arrives. */
+  function resumeForRematch(pending: PendingOnlineRematch): void {
+    const actions = getOnlineActions();
+    if (actions.savedSeat()?.code !== pending.code) return;
+    actions.resume();
+    if (onlineGame.attached) onlineGame.rematchWhenResumed(pending.game);
+  }
+
+  // Two-phone W12: the online result reads the online store only: its own
+  // envelope, the room's names and the room's tally (by seat, from the
+  // server's `state`). Rematch asks the server (once; the store gates it),
+  // and the pass-and-play session tally is never touched.
+  const onlineView = $derived(onlineGame.envelope?.state ?? null);
+  const onlineTally = $derived<Record<0 | 1, number>>({ 0: onlineGame.tally[0], 1: onlineGame.tally[1] });
+  const rematchLine = $derived.by(() => {
+    const seat = onlineGame.seat;
+    const by = onlineGame.rematchRequestedBy;
+    if (seat === null) return '';
+    const other = onlineGame.names[seat === 0 ? 1 : 0];
+    if (onlineGame.rematchPending) return `Waiting for ${other}…`;
+    if (by !== null && by !== seat) return `${other} wants a rematch.`;
+    return '';
+  });
 </script>
 
 <main data-testid="app-shell">
@@ -270,6 +350,24 @@
     <HomeScreen />
   {:else if screen === 'online'}
     <OnlineFlow />
+  {:else if screen === 'online-game'}
+    <!-- W12: the online table. A separate branch from pass-and-play's, so
+         GameScreen's fixed `source` never changes under it. -->
+    <GameScreen source={onlineGame} />
+  {:else if screen === 'online-result' && onlineView}
+    <ResultScreen
+      state={{ winner: onlineView.winner, stalemate: onlineView.stalemate }}
+      names={onlineGame.names}
+      tally={onlineTally}
+      scores={finalScores(onlineView)}
+      onRematch={handleOnlineRematch}
+      onHome={() => onlineGame.goHome()}
+      winningMove={winningMove(onlineView, onlineGame.history, onlineGame.names)}
+    />
+    {#if rematchLine !== ''}
+      <!-- Placeholder text; W13b draws the rematch state properly. -->
+      <p class="status-screen__rematch" data-testid="online-rematch-status" role="status">{rematchLine}</p>
+    {/if}
   {:else if screen === 'result' && game.view}
     <ResultScreen
       state={{ winner: game.view.winner, stalemate: game.view.stalemate }}
@@ -312,6 +410,24 @@
     color: var(--cu-muted);
     font-size: var(--cu-text-sm);
     font-variant-numeric: tabular-nums;
+  }
+
+  .status-screen__rematch {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--cu-safe-bottom, 0px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    margin: 0;
+    padding: 0 var(--cu-gutter-sheet);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-family: var(--cu-font-ui);
+    text-align: center;
   }
 
   .status-screen__confirm {

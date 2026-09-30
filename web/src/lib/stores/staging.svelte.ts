@@ -27,6 +27,7 @@ import type { Card, Move } from '../bridge/schema';
 import { MoveKind } from '../enums';
 import { discardStagingText, scrapPickStagingText, scrapTakeStagingText } from '../recap';
 import type { TargetKey } from '../targetKey';
+import { MoveNotSent } from './tableSource';
 
 export type StagingState = 'idle' | 'selected' | 'staged' | 'applying';
 
@@ -354,10 +355,19 @@ export class StagingStore {
     this.state = 'applying';
     try {
       await this.#applyFn(index);
-    } finally {
+    } catch (err) {
+      // Two-phone W12: nothing was sent (the online source is disconnected),
+      // so the move stays staged for another Confirm (plan §7).
+      if (err instanceof MoveNotSent && this.state === 'applying' && this.stagedIndex === index) {
+        this.state = 'staged';
+        return;
+      }
       this.#clearToIdle();
       this.#prime(false);
+      throw err;
     }
+    this.#clearToIdle();
+    this.#prime(false);
   }
 
   /** SPEC §6.1 — "Cancel is always available while staged"; the AmbiguityChooser also carries its own Cancel (§6.4). A no-op anywhere else (e.g. merely `selected`, no chooser open — that's what a non-highlighted tap is for, SPEC §6.1). */

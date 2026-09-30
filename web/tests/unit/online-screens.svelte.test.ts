@@ -296,6 +296,90 @@ describe('JoinRoomScreen', () => {
   });
 });
 
+// Review F3: a join link (or a create) never silently replaces a saved seat.
+describe('a saved online seat asks before it is replaced', () => {
+  const saved = { code: 'WXYZ', opponentName: 'Blake' };
+
+  it('join: asks first, names the opponent, and joins only after "Leave it"', async () => {
+    const actions = createFakeOnlineActions({ saved });
+    const onJoined = vi.fn();
+    const el = render(JoinRoomScreen, { actions, onJoined, onBack: vi.fn(), initialCode: 'K7QX' });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'join-screen'));
+    await settle();
+    expect(actions.calls.join).toEqual([]);
+    expect(el.textContent).toContain('You have a game with Blake in progress. Leave it and join this one?');
+    q(el, 'replace-seat-leave').click();
+    await settle();
+    expect(actions.calls.leave).toBe(1);
+    expect(actions.savedSeat()).toBeNull();
+    expect(actions.calls.join).toEqual([{ code: 'K7QX', name: 'Alice' }]);
+    expect(onJoined).toHaveBeenCalledWith('Alice');
+  });
+
+  it('join: "Keep my game" joins nothing, keeps the seat and goes back', async () => {
+    const actions = createFakeOnlineActions({ saved });
+    const onBack = vi.fn();
+    const el = render(JoinRoomScreen, { actions, onJoined: vi.fn(), onBack, initialCode: 'K7QX' });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'join-screen'));
+    await settle();
+    q(el, 'replace-seat-keep').click();
+    await settle();
+    expect(actions.calls.join).toEqual([]);
+    expect(actions.calls.leave).toBe(0);
+    expect(actions.savedSeat()).toEqual(saved);
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('join: a link to the saved seat’s own room resumes it instead of joining again', async () => {
+    const actions = createFakeOnlineActions({ saved });
+    const onJoined = vi.fn();
+    const el = render(JoinRoomScreen, { actions, onJoined, onBack: vi.fn(), initialCode: 'WXYZ' });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'join-screen'));
+    await settle();
+    expect(actions.calls.join).toEqual([]);
+    expect(actions.calls.resume).toBe(1);
+    expect(onJoined).toHaveBeenCalledWith('Blake');
+  });
+
+  it('join: with no saved seat nothing is asked', async () => {
+    const actions = createFakeOnlineActions();
+    const el = render(JoinRoomScreen, { actions, onJoined: vi.fn(), onBack: vi.fn(), initialCode: 'K7QX' });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'join-screen'));
+    await settle();
+    expect(el.querySelector('[data-testid="replace-seat-leave"]')).toBeNull();
+    expect(actions.calls.join).toHaveLength(1);
+  });
+
+  it('join: an unnamed opponent still gets a plain question', async () => {
+    const actions = createFakeOnlineActions({ saved: { code: 'WXYZ', opponentName: null } });
+    const el = render(JoinRoomScreen, { actions, onJoined: vi.fn(), onBack: vi.fn(), initialCode: 'K7QX' });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'join-screen'));
+    await settle();
+    expect(el.textContent).toContain('You have an online game in progress. Leave it and join this one?');
+  });
+
+  it('create: asks first, and creates only after "Leave it"', async () => {
+    const actions = createFakeOnlineActions({ saved, code: 'K7QX' });
+    const onCreated = vi.fn();
+    const el = render(CreateRoomScreen, { actions, onCreated, onBack: vi.fn() });
+    type(q(el, 'online-name-input'), 'Alice');
+    submit(q(el, 'create-screen'));
+    await settle();
+    expect(actions.calls.create).toEqual([]);
+    expect(el.textContent).toContain('You have a game with Blake in progress. Leave it and start a new one?');
+    q(el, 'replace-seat-leave').click();
+    await settle();
+    expect(actions.calls.leave).toBe(1);
+    expect(actions.calls.create).toEqual(['Alice']);
+    expect(onCreated).toHaveBeenCalledWith('K7QX');
+  });
+});
+
 describe('OnlineFlow', () => {
   it('walks create -> waiting -> connected', async () => {
     const actions = createFakeOnlineActions({ code: 'K7QX' });

@@ -63,6 +63,19 @@
   font-size: var(--cu-text-md);
 }
 
+/* Review F3: "Leave it and join this one?" before a saved seat is replaced. */
+.ol-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cu-space-3);
+  padding: var(--cu-space-3);
+  border-radius: var(--cu-radius-well);
+  border: 1px solid var(--cu-ochre);
+  background: var(--cu-ink-raised);
+  color: var(--cu-pearl);
+  font-size: var(--cu-text-md);
+}
+
 .ol-actions {
   display: flex;
   flex-direction: column;

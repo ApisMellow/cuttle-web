@@ -55,7 +55,7 @@
   import { session } from '../stores/session.svelte';
   import { settings } from '../stores/settings.svelte';
   import { StagingStore, type StagingEnv } from '../stores/staging.svelte';
-  import type { TableSource } from '../stores/tableSource';
+  import { MoveNotSent, type TableSource } from '../stores/tableSource';
   import { resolveBoardTap, type TargetKey } from '../targetKey';
   import { DragGesture, dropKeyAt, dropTarget, targetKeyFromTestId, testIdForKey, type HandDrag } from '../dragDrop';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
@@ -82,6 +82,11 @@
   let { source }: GameScreenProps = $props();
 
   const theme = $derived(getTheme(settings.themeId));
+
+  // Two-phone W12: an online source brings the room's names, a status line
+  // and the response hold; pass-and-play (no `online`) is exactly as before.
+  const online = $derived(source.online ?? null);
+  const names = $derived<[string, string]>(online?.names ?? session.names);
 
   /**
    * W10: the single path from this screen to `source.apply`. Refuses while a
@@ -112,7 +117,8 @@
     void source.viewer;
     return untrack(() => settings.tableMode);
   });
-  const rotated = $derived(screenRotated(tableLatched, source.curtain, source.viewer));
+  // W12: each online player has their own phone, so nothing ever turns.
+  const rotated = $derived(online === null && screenRotated(tableLatched, source.curtain, source.viewer));
 
   /** The board's envelope: only at curtain `none` (never merely because one is held). */
   function boardEnvelope(): Envelope | null {
@@ -157,10 +163,24 @@
   // cleared by the next tap and on the same boundaries as staging, so it
   // never survives a curtain.
   let notice = $state<string | null>(null);
+  // Review F2: online, the reset keys off the position (game, seq, viewer,
+  // curtain kind and `to`) as a primitive, never the curtain object's
+  // identity, so a reconnect that resends the same state keeps a staged
+  // move (MoveNotSent keeps it staged). Pass-and-play keeps its old keys
+  // exactly, curtain identity included.
+  const isOnline = $derived(source.online != null);
+  const onlineResetKey = $derived.by(() => {
+    const c = source.curtain;
+    return `${source.game ?? 0}|${source.seq}|${source.viewer}|${c.kind}|${'to' in c ? c.to : ''}`;
+  });
   $effect(() => {
-    void source.viewer;
-    void source.seq;
-    void source.curtain.kind;
+    if (isOnline) {
+      void onlineResetKey;
+    } else {
+      void source.viewer;
+      void source.seq;
+      void source.curtain.kind;
+    }
     untrack(() => {
       endDrag();
       staging.reset();
@@ -228,10 +248,10 @@
   const lastMoveText = $derived.by(() => {
     if (board === null) return '';
     if (staging.discard !== null) {
-      const prompt = discardPromptLine(source.history, session.names, staging.discard.need);
+      const prompt = discardPromptLine(source.history, names, staging.discard.need);
       if (prompt !== '') return prompt;
     }
-    return lastMoveLine(source.history, board.state.viewer, session.names);
+    return lastMoveLine(source.history, board.state.viewer, names);
   });
 
   // Plain text for one of the viewer's own options (SPEC §4.6, §6.4). A 9
@@ -581,6 +601,9 @@
   }
 
   function report(err: unknown): void {
+    // W12: a move the online source could not send is not a fault; its
+    // notice is already on screen and the staged move is kept.
+    if (err instanceof MoveNotSent) return;
     console.error(err);
   }
 
@@ -643,10 +666,12 @@
   }
 
   // R4.3: only after GameMenu's confirm, which names the game.
-  // TODO(W12): online, New game means leave/rematch; gate it while
-  // `source.pending`. Ungated for now (the local store is never pending).
+  // W12: never while a move is in flight. Online the menu doesn't offer New
+  // game at all (review F5): a rematch exists only at game over, where the
+  // result screen's Rematch asks for it.
   function menuNewGame(): void {
     menuOpen = false;
+    if (source.pending) return;
     source.newGame().catch(report);
   }
 
@@ -681,13 +706,13 @@
   data-table-rotated={rotated ? 'true' : 'false'}
   bind:this={screenEl}
 >
-  <h1 class="game-screen__sr-only">{session.names[0]} vs {session.names[1]}</h1>
+  <h1 class="game-screen__sr-only">{names[0]} vs {names[1]}</h1>
 
   {#if withheld}
     <Curtain
       history={source.history}
       curtain={source.curtain}
-      names={session.names}
+      {names}
       revealPreference={settings.revealPreference}
       recapEntries={source.curtain.kind === 'recap' ? source.curtain.entries : []}
       viewer={source.curtain.kind === 'recap' ? source.curtain.to : null}
@@ -708,13 +733,20 @@
     <CounterPrompt
       entries={ackEntries}
       viewer={ackTo}
-      names={session.names}
+      {names}
       options={counterOptions}
       onresolve={resolveAck}
       oncounter={applyCounter}
       disabled={source.pending}
       {theme}
     />
+  {:else if online?.respondingName}
+    <!-- W12: the response hold (SPEC §2.12.5). The envelope on show is the
+         pre-move one, so the board stays down until the state arrives.
+         Placeholder text; W13b draws the real panel. -->
+    <div class="game-screen__online-panel" data-testid="online-responding" role="status">
+      <p>{online.respondingName} is responding…</p>
+    </div>
   {:else if board !== null}
     {#if theme.Table}
       <!-- A-6: the theme's playmat, behind the board only (never behind a
@@ -723,7 +755,7 @@
     {/if}
     <Board
       view={board.state}
-      names={session.names}
+      {names}
       highlighted={staging.highlighted}
       staged={staging.staged}
       dimmedHand={staging.dimmedHand}
@@ -817,6 +849,32 @@
     {#if inspectCard !== null}
       <CardDetailPopover card={inspectCard} reason={inspectReason} onclose={() => (staging.inspect = null)} {theme} />
     {/if}
+  {:else if online !== null}
+    <!-- W12: an online source with no state yet (connecting, or the deal
+         not in). Placeholder text; W13b styles it. -->
+    <div class="game-screen__online-panel" data-testid="online-waiting" role="status">
+      <p>Waiting for the game…</p>
+    </div>
+  {/if}
+
+  {#if online !== null && (online.statusText !== null || online.notice !== null)}
+    <!-- W12: the connection status line and the last move's notice, as plain
+         text (W13b makes them pretty). Fixed strings and room names only. -->
+    <div class="game-screen__online-status">
+      {#if online.statusText !== null}
+        <p data-testid="online-status" role="status">
+          {online.statusText}
+          {#if online.statusAction !== null}
+            <button type="button" class="game-screen__online-retry" data-testid="online-retry" onclick={() => online.runStatusAction()}>
+              {online.statusAction}
+            </button>
+          {/if}
+        </p>
+      {/if}
+      {#if online.notice !== null}
+        <p data-testid="online-notice" role="status">{online.notice}</p>
+      {/if}
+    </div>
   {/if}
 
   {#if board === null || drawReveal !== null}
@@ -828,10 +886,11 @@
   <GameMenu
     open={menuOpen}
     anchor={board === null || drawReveal !== null ? 'screen' : 'column'}
-    names={session.names}
+    {names}
     onclose={closeMenu}
     onhome={menuHome}
     onnewgame={menuNewGame}
+    newGame={!isOnline}
   />
 </div>
 
@@ -1010,6 +1069,54 @@
     background: var(--cu-ochre, #f0b54a);
     color: var(--cu-on-accent, #241c2b);
     font-size: var(--cu-text-md, 16px);
+    cursor: pointer;
+  }
+
+  /* W12 placeholders (W13b restyles): plain text, every testid box at
+     least 44 px tall (SPEC §5.1). */
+  .game-screen__online-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--cu-tap-min, 44px);
+    padding: 0 var(--cu-space-4, 16px);
+    text-align: center;
+    font-size: var(--cu-text-md, 16px);
+  }
+
+  .game-screen__online-status {
+    flex: none;
+    width: 100%;
+    max-width: var(--cu-board-max, 560px);
+    margin: 0 auto;
+    font-size: var(--cu-text-sm, 14px);
+  }
+
+  .game-screen__online-status p {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cu-space-3, 12px);
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min, 44px);
+    margin: 0;
+    padding: 0 var(--cu-space-4, 16px);
+    text-align: center;
+  }
+
+  .game-screen__online-retry {
+    box-sizing: border-box;
+    min-width: var(--cu-tap-min, 44px);
+    min-height: var(--cu-tap-min, 44px);
+    padding: 0 var(--cu-space-4, 16px);
+    border: none;
+    border-radius: var(--cu-radius-control, 999px);
+    background: var(--cu-ochre, #f0b54a);
+    color: var(--cu-on-accent, #241c2b);
+    font-size: var(--cu-text-sm, 14px);
+    font-weight: var(--cu-weight-bold, 700);
     cursor: pointer;
   }
 
