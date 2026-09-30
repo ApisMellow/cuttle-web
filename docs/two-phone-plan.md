@@ -15,7 +15,7 @@
 | W6 | WebSocket play, presence, rematch | open #60 (review fixes pending) |
 | W7 | Response hold | open #60 (built with W6) |
 | W8 | Janitor and nightly backup | janitor merged #55; nightly `VACUUM INTO` backup done, pending review |
-| W9 | Wire privacy sweep | todo |
+| W9 | Wire privacy sweep | built on `feat/two-phone-w9-privacy-sweep` (PR to open) |
 | W10 | `TableSource` seam | merged #46 |
 | W11 | Client connection | merged #52, #57 |
 | W12 | `OnlineGameStore` and app wiring | merged #58 |

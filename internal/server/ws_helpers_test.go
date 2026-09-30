@@ -489,6 +489,76 @@ func (tr truthAt) hidden(seat game.Seat) map[cardKey]bool {
 
 type coverage struct {
 	glasses, sevenReveal, counterWindow, noWindowOneOff, gameOver int
+	// Engine transitions, counted from the truth before and after each move.
+	threeFromScrap, nineToHand, fiveDraw, jackControl, counterChain2, fourDiscard, deadSeven, glassesGone int
+}
+
+// transition counts the edge cases one applied move produced, read from
+// the engine truth: mv is the mover's MoveView, drawn the history entry's
+// drawn count.
+func (c *coverage) transition(mv game.MoveView, before, after engine.GameState, drawn *int) {
+	inHand := map[cardKey]bool{}
+	for _, p := range after.Players {
+		for _, h := range p.Hand {
+			inHand[cardKey{int(h.Rank), int(h.Suit)}] = true
+		}
+	}
+	key := func(k card.Card) cardKey { return cardKey{int(k.Rank), int(k.Suit)} }
+	for _, sc := range before.Scrap {
+		if inHand[key(sc)] {
+			c.threeFromScrap++ // a 3 took a scrap card into a hand
+			break
+		}
+	}
+	controller := func(st engine.GameState) map[cardKey]engine.PlayerID {
+		m := map[cardKey]engine.PlayerID{}
+		for _, p := range st.Players {
+			for _, pe := range p.Points {
+				m[key(pe.Card)] = pe.Controller()
+			}
+		}
+		return m
+	}
+	was := controller(before)
+	returned := false
+	for k, ctl := range controller(after) {
+		if prev, ok := was[k]; ok && prev != ctl {
+			c.jackControl++
+			break
+		}
+	}
+	for k := range was {
+		returned = returned || inHand[k]
+	}
+	glassesGone := false
+	for s, p := range before.Players {
+		stays := map[cardKey]bool{}
+		for _, pc := range after.Players[s].Permanents {
+			stays[key(pc)] = true
+		}
+		for _, pc := range p.Permanents {
+			returned = returned || inHand[key(pc)]
+			glassesGone = glassesGone || (pc.Rank == card.Eight && !stays[key(pc)])
+		}
+	}
+	if returned {
+		c.nineToHand++ // a board card went back to a hand
+	}
+	if glassesGone {
+		c.glassesGone++ // a player's glasses left play
+	}
+	if drawn != nil && *drawn > 0 {
+		c.fiveDraw++
+	}
+	if after.Pending != nil && len(after.Pending.CounterChain) >= 2 {
+		c.counterChain2++
+	}
+	switch {
+	case mv.Kind == engine.MoveDiscardPair:
+		c.fourDiscard++
+	case mv.Kind == engine.MoveSevenPick && mv.SubMove == nil:
+		c.deadSeven++
+	}
 }
 
 type duo struct {
@@ -523,23 +593,50 @@ type duo struct {
 // opening frames.
 func newDuo(t *testing.T, e *playEnv, seed uint64) *duo {
 	t.Helper()
+	return newObservedDuo(t, e, seed, nil)
+}
+
+// newObservedDuo is newDuo with an observer that sees every frame from the
+// first one, the opening welcomes and states included.
+func newObservedDuo(t *testing.T, e *playEnv, seed uint64, observe func(*duo, game.Seat, frameIn)) *duo {
+	t.Helper()
+	d := &duo{t: t, e: e, rng: rand.New(rand.NewPCG(seed, 7)), hold: e.cfg.RespondMin}
+	if observe != nil {
+		d.onFrame = func(seat game.Seat, f frameIn) { observe(d, seat, f) }
+	}
+	welcome := func(w *wsc, c claimBody) welcomeIn {
+		t.Helper()
+		w.token, w.seat = c.Token, game.Seat(c.Seat)
+		w.hello(c.Code, c.Token)
+		f := w.expect("welcome")
+		d.after(w.seat, f)
+		return decodeFrame[welcomeIn](t, f)
+	}
 	c0 := e.create(t, "Alice")
-	a, w := e.connect(t, c0)
-	if w.Status != "waiting" {
+	a, _, err := e.dial(t, testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := welcome(a, c0); w.Status != "waiting" {
 		t.Fatalf("welcome status %q", w.Status)
 	}
 	c1 := e.join(t, c0.Code, "Blake")
-	d := &duo{t: t, e: e, code: c0.Code, rng: rand.New(rand.NewPCG(seed, 7)), hold: e.cfg.RespondMin}
+	d.code = c0.Code
 	d.p[0] = a
 	// A hears about the join: welcome, then state.
-	w = decodeFrame[welcomeIn](t, a.expect("welcome"))
+	f := a.expect("welcome")
+	d.after(0, f)
+	w := decodeFrame[welcomeIn](t, f)
 	if w.Status != "playing" || w.Names[1] == nil || *w.Names[1] != "Blake" {
 		t.Fatalf("join welcome %+v", w)
 	}
 	d.startGame(t)
 	d.absorb(0, a.expect("state"))
-	b, w := e.connect(t, c1)
-	if w.Seat != 1 || w.Status != "playing" {
+	b, _, err := e.dial(t, testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := welcome(b, c1); w.Seat != 1 || w.Status != "playing" {
 		t.Fatalf("B welcome %+v", w)
 	}
 	d.p[1] = b
@@ -676,7 +773,9 @@ func walkCards(v any, fn func(cardKey)) {
 func (d *duo) absorb(seat game.Seat, f frameIn) {
 	t := d.t
 	t.Helper()
-	if d.expectR[seat] {
+	// A presence change (the other seat dropping or rejoining) may reach the
+	// mover before its responding; every other frame may not.
+	if d.expectR[seat] && f.T != "presence" {
 		if f.T != "responding" {
 			t.Fatalf("seat %d: after a counterable move got %s, want responding first", seat, f.raw)
 		}
@@ -804,6 +903,15 @@ func (d *duo) move(seat game.Seat, index int) {
 	}
 	after := d.st()
 	d.truths = append(d.truths, d.snapshotTruth(t))
+	n := len(d.truths)
+	var drawn *int
+	if lm, ok := d.truths[n-1].view[0].(map[string]any)["lastMove"].(map[string]any); ok {
+		if v, ok := lm["drawn"].(float64); ok {
+			k := int(v)
+			drawn = &k
+		}
+	}
+	d.cov.transition(mv, d.truths[n-2].st, d.truths[n-1].st, drawn)
 	if isCounterableView(mv) {
 		d.expectR[seat], d.heldFrom[seat] = true, time.Now()
 		if mv.Kind == engine.MoveOneOff || mv.Kind == engine.MoveSevenPick {
