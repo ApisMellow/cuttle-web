@@ -824,17 +824,17 @@ func TestSPEC2_9_CommitRequiresActorEnvelope(t *testing.T) {
 	}()
 	actorOf := decodeGeneric(t, snap)["state"].(map[string]any)["Active"].(float64)
 
-	orig := renderEnvelope
-	defer func() { renderEnvelope = orig }()
-	renderEnvelope = func(st engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
+	// The renderer is per-Bridge (two-phone W2), so the swap touches no
+	// other bridge or session.
+	b.render = func(st engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
 		if viewer == st.Active {
 			panic("actor envelope failed")
 		}
-		return orig(st, h, viewer)
+		return buildEnvelope(st, h, viewer)
 	}
 	errCode(t, b.Restore(snap, 1-actorOf), "INTERNAL") // restore as non-actor
 	errCode(t, b.Apply(0.0), "INTERNAL")               // apply returns the mover's view; actor's must render too
-	renderEnvelope = orig
+	b.render = nil
 	if b.Snapshot() != before {
 		t.Fatal("held state committed although the actor's envelope failed")
 	}

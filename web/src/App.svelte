@@ -26,16 +26,20 @@
 
   import GameScreen from './lib/components/GameScreen.svelte';
   import HomeScreen from './lib/components/HomeScreen.svelte';
+  import OnlineFlow from './lib/components/OnlineFlow.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
+  import { onlineAvailable } from './lib/online/provider';
   import { applyUpdateAtRematch, reportScreen, takePendingRematch } from './lib/pwa/register';
   import { winningMoveLine } from './lib/recap';
   import { game } from './lib/stores/game.svelte';
+  import { online } from './lib/stores/online.svelte';
   import { session } from './lib/stores/session.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { ensureThemeLoaded, loadThemeCatalog } from './lib/theme';
   import { SNAPSHOT_KEY, decodeSnapshot } from './lib/stores/snapshot';
   import './lib/styles/tokens.css';
+  import './lib/styles/online.css';
 
   type EngineStatus = 'loading' | 'ready' | 'failed';
 
@@ -55,6 +59,23 @@
     untrack(() => void ensureThemeLoaded(id));
   });
 
+  // Two-phone play: `#/join/CODE` opens the join screen with the code filled
+  // in. Read on load and on `hashchange`, then cleared so a reload doesn't
+  // reopen it. A link is ignored (but still cleared) while a game is showing
+  // or when online play isn't available in this build.
+  function readJoinLink(): void {
+    const hash = location.hash;
+    if (!hash.startsWith('#/join/')) return;
+    if (onlineAvailable() && game.screen === 'home') online.applyHash(hash);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  onMount(() => {
+    readJoinLink();
+    window.addEventListener('hashchange', readJoinLink);
+    return () => window.removeEventListener('hashchange', readJoinLink);
+  });
+
   onMount(() => {
     ensureEngine()
       .then(() => {
@@ -72,7 +93,7 @@
       });
   });
 
-  type Screen = 'loading' | 'boot-failed' | 'error' | 'home' | 'result' | 'game';
+  type Screen = 'loading' | 'boot-failed' | 'error' | 'home' | 'online' | 'result' | 'game';
 
   const screen = $derived<Screen>(
     engineStatus === 'loading'
@@ -82,7 +103,9 @@
         : game.error !== null
           ? 'error'
           : game.screen === 'home'
-            ? 'home'
+            ? online.view === 'none'
+              ? 'home'
+              : 'online'
             : game.curtain.kind === 'result'
               ? 'result'
               : 'game',
@@ -90,8 +113,15 @@
 
   // R18 (SPEC §5.8): a new build waits for a safe screen (home, loading,
   // boot failure) before it takes over. Never mid-game.
+  // Two-phone screens: a room waiting for its guest (or a live connection)
+  // must not be reloaded away, so those count as in-game; the create and join
+  // forms are as safe as Home.
   $effect(() => {
-    reportScreen(screen);
+    if (screen === 'online') {
+      reportScreen(online.view === 'waiting' || online.view === 'connected' ? 'game' : 'home');
+    } else {
+      reportScreen(screen);
+    }
   });
 
   // R2.3/R3: the app layer's job, not ResultScreen's (which is a pure
@@ -238,6 +268,8 @@
     </div>
   {:else if screen === 'home'}
     <HomeScreen />
+  {:else if screen === 'online'}
+    <OnlineFlow />
   {:else if screen === 'result' && game.view}
     <ResultScreen
       state={{ winner: game.view.winner, stalemate: game.view.stalemate }}
