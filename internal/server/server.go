@@ -22,6 +22,13 @@ type BuildInfo struct {
 // here so recovery, CORS and logging wrap them. The rate limiters' pruner
 // runs until ctx is done.
 func Handler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) http.Handler {
+	h, _ := newHandler(ctx, cfg, info, log, rooms)
+	return h
+}
+
+// newHandler is Handler, also returning the play side (tests reach its
+// holds through it).
+func newHandler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) (http.Handler, *play) {
 	createRate, joinRate := cfg.CreatePerHour, cfg.JoinPerHour
 	if createRate <= 0 {
 		createRate = DefaultCreatePerHour
@@ -37,12 +44,16 @@ func Handler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, 
 		trusted: newTrustedSet(cfg.TrustedProxies),
 		now:     rooms.now,
 	}
-	startPruner(ctx, a.create, a.join)
+	// The WebSocket play route (W6). Its sockets close when ctx is done.
+	p := newPlay(cfg, log, rooms)
+	context.AfterFunc(ctx, p.closeAll)
+	startPruner(ctx, a.create, a.join, p.failed)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(info, rooms))
 	mux.HandleFunc("POST /api/rooms", a.handleCreate)
 	mux.HandleFunc("POST /api/rooms/{code}/join", a.handleJoin)
-	return RequestLog(log, Recover(log, CORS(NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev), mux)))
+	mux.HandleFunc("GET /api/play", p.handle)
+	return RequestLog(log, Recover(log, CORS(NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev), mux))), p
 }
 
 // Recover turns a handler panic into a 500 INTERNAL with a fixed message.

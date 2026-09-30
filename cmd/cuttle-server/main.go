@@ -32,9 +32,11 @@ func main() {
 	cfg, err := server.ParseConfig(os.Args[1:], os.Getenv)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			log.Info("flags: -addr, -origins, -dev, -data-dir, -trusted-proxy, -create-per-hour, -join-per-hour, -max-rooms; " +
+			log.Info("flags: -addr, -origins, -dev, -data-dir, -trusted-proxy, -create-per-hour, -join-per-hour, -max-rooms, " +
+				"-respond-min-ms, -max-sockets, -max-sockets-per-client; " +
 				"env: CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS, CUTTLE_DATA_DIR, CUTTLE_TRUSTED_PROXY, " +
-				"CUTTLE_CREATE_PER_HOUR, CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS")
+				"CUTTLE_CREATE_PER_HOUR, CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS, CUTTLE_RESPOND_MIN_MS, " +
+				"CUTTLE_MAX_SOCKETS, CUTTLE_MAX_SOCKETS_PER_CLIENT")
 			return
 		}
 		log.Error("invalid configuration", "err", err)
@@ -67,7 +69,8 @@ func main() {
 	defer stop()
 
 	log.Info("starting", "version", version, "commit", commit, "dev", cfg.Dev,
-		"trusted_proxies", len(cfg.TrustedProxies), "max_rooms", cfg.MaxRooms)
+		"trusted_proxies", len(cfg.TrustedProxies), "max_rooms", cfg.MaxRooms,
+		"max_sockets", cfg.MaxSockets, "max_sockets_per_client", cfg.MaxSocketsPerClient)
 	rooms := server.NewRooms(st, server.RoomsOptions{MaxRooms: cfg.MaxRooms, Log: log})
 	var janitor sync.WaitGroup
 	janitor.Add(1)
@@ -80,6 +83,12 @@ func main() {
 	runErr := server.Run(ctx, server.NewHTTPServer(cfg, h, log), ln, 10*time.Second, log)
 	stop()
 	janitor.Wait()
+	// Shutdown doesn't wait for WebSocket (hijacked) connections; their
+	// handlers were told to close when ctx ended. Let them finish before the
+	// store closes under them.
+	if !rooms.WaitSockets(5 * time.Second) {
+		log.Warn("play sockets still open at shutdown")
+	}
 	if runErr != nil {
 		log.Error("server error", "err", runErr)
 		st.Close()
