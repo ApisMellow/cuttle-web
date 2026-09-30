@@ -24,6 +24,7 @@
   import type { OnlineActions } from '../online/actions';
   import { browserEnvironment, type ConnectionEnvironment } from '../online/connection';
   import { getOnlineActions, onlineAvailable } from '../online/provider';
+  import { GALLERY_LABEL, galleryHref } from '../gallery';
   import { game } from '../stores/game.svelte';
   import { online } from '../stores/online.svelte';
   import { session } from '../stores/session.svelte';
@@ -268,6 +269,7 @@
         {/each}
       </div>
     </fieldset>
+    <a class="home-screen__gallery" data-testid="home-gallery" href={galleryHref()}>{GALLERY_LABEL}</a>
   {/if}
 
   <div class="home-screen__actions">
@@ -426,6 +428,25 @@
   .home-screen__theme-option input {
     accent-color: var(--cu-ochre);
     margin: 0;
+  }
+
+  /* A quiet text link under the picker, padded to a 44 px tap target. */
+  .home-screen__gallery {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    margin-top: calc(-1 * var(--cu-space-2));
+    padding: 0 var(--cu-space-1);
+    color: var(--cu-pearl);
+    font-size: var(--cu-text-md);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .home-screen__gallery:focus-visible {
+    outline: 2px solid var(--cu-iris);
+    outline-offset: 2px;
   }
 
   .home-screen__toggle {
