@@ -38,6 +38,8 @@ The engine code that builds views (`viewFor`, `redactHistory`, `buildEnvelope`, 
 
 ## 3. Wire protocol (v1)
 
+> **2026-09-29: SPEC §2.12 is now the binding protocol.** This section is kept as the original sketch; where it differs, the SPEC wins. Changes made there: `GAME_OVER` joins `NOT_YOUR_TURN` and `STALE` as errors followed by a fresh `state`; `SEAT_MISMATCH` is a client-side terminal condition; a terminal condition is always an `error` frame before close, and a bare close is retryable; a `hello` from the mover during a hold gets `responding`, not `state`, and a room still `waiting` gets no `state` until the join; `welcome` is re-sent when the opponent joins; `lastSeq` is advisory and ignored by a v1 server; the client pings every 15 s and the server only answers (§8 amended); the failed-hello limit counts only `UNAUTHORIZED` and `ROOM_GONE` answers (§9 amended); a new `hello` for a seat replaces the old socket (`REPLACED`, SPEC §2.12.8 question 1).
+
 HTTP, JSON bodies, served from the configured server origin:
 
 | Call | Body | Reply |
@@ -90,7 +92,7 @@ Server to client:
 One binary, `cmd/cuttle-server`, with no embedded frontend (Pages serves the app). Packages:
 
 - `internal/game`: the moved bridge logic plus a typed Go API: `New(seed, dealer, names)`, `Apply(seat, index) (Envelope, error)`, `View(seat) Envelope`, `Snapshot() []byte`, `Restore([]byte)`. `Apply` refuses a seat that isn't `state.Active`. The wasm `Bridge` becomes a wrapper that keeps today's JSON behaviour byte for byte.
-- `internal/server/store`: SQLite through `modernc.org/sqlite` (no cgo, so it cross-compiles). WAL mode, one writer connection.
+- `internal/store`: SQLite through `modernc.org/sqlite` (no cgo, so it cross-compiles). WAL mode, one writer connection.
 - `internal/server/rooms`: code generation, join, per-room mutex, in-memory cache of live `game.Session`s loaded from the store on demand, the response hold (§6), and rematch.
 - `internal/server/httpapi`: HTTP handlers, WebSocket (`github.com/coder/websocket`), origin checks, rate limits, health.
 
@@ -149,8 +151,8 @@ Because the server enforces the hold, raw frames show nothing early either. One 
 
 ## 8. Presence and reconnect
 
-- The server pings every 20 s; 45 s of silence means a dead connection, and the other seat gets `presence {opponentOnline: false}`.
-- The client reconnects with backoff (0.5, 1, 2, 4, then every 8 s) and sends `hello`. The server always answers with a full `state`, which also settles a move that was in flight.
+- ~~The server pings every 20 s~~ *(amended 2026-09-29, SPEC §2.12.5)*: the client sends `ping` every 15 s and expects a frame within 10 s; the server answers each with `pong`. 45 s with no inbound frame means a dead connection, and the other seat gets `presence {opponentOnline: false}`.
+- The client reconnects with backoff (0.5, 1, 2, 4, then every 8 s) and sends `hello`. After `RATE_LIMITED` on `hello` it waits at least 60 s; after about 10 failures it stops at "tap to reconnect" (SPEC §2.12.3). The server always answers with a full `state`, which also settles a move that was in flight.
 - **iOS in the background:** Safari suspends the page and the socket dies within a minute. On `visibilitychange` to visible, and on `online`, the client reconnects at once. Meanwhile the opponent sees "offline", which is true.
 
 **Turn notifications** are out of v1; a player sees whose turn it is on opening the app. Web Push (installed home-screen apps, iOS 16.4+) is the later option: a VAPID key pair, one subscription per seat, and a notice that says only "Your turn".
@@ -159,7 +161,7 @@ Because the server enforces the hold, raw frames show nothing early either. One 
 
 - **Seat tokens:** 32 bytes from `crypto/rand`, base64url, stored hashed, sent only in `hello` and the create/join reply (`Cache-Control: no-store`), never logged.
 - **Codes aren't secrets.** The token authorizes play. A code grants one thing, the empty seat 1, once.
-- **Rate limits** per IP (`X-Forwarded-For` trusted only from the local Caddy): create 10/hour, join and failed hello 30/hour, 10 frames/second per socket. Frames ≤ 1 KB, names ≤ 20 characters with control characters stripped, at most 500 live rooms.
+- **Rate limits** per IP (`X-Forwarded-For` trusted only from the local Caddy): create 10/hour, join and failed hello 30/hour, 10 frames/second per socket. *(Amended 2026-09-29, SPEC §2.12.6: a failed hello is one answered `UNAUTHORIZED` or `ROOM_GONE`; frames allow a burst of 20.)* Frames ≤ 1 KB, names ≤ 20 characters with control characters stripped, at most 500 live rooms.
 - **Origins:** CORS on `/api/rooms*` and the WebSocket `Origin` check allow only `CUTTLE_ALLOWED_ORIGINS`. `http://localhost:5173` only by a dev flag.
 - **No accounts,** no email, no analytics.
 - **The full state never leaves the server.** The only outbound game data is `buildEnvelope(state, history, seat)` for the token's own seat. No endpoint serves a snapshot. Logs carry code, seat and event, never cards or tokens.
@@ -259,4 +261,4 @@ Each question has a default the work proceeds on unless the product owner says o
 3. **One online game per phone.** **Default:** yes for v1. Starting a second one asks first and forgets the first seat.
 4. **sslip.io certificates** share Let's Encrypt limits with every other sslip.io user. **Default:** Caddy's built-in ZeroSSL fallback covers it. Move to a real subdomain when one is chosen.
 5. **Hold length.** **Default:** 1.5 s, configurable. Tune it after the first family games.
-6. **SPEC text.** SPEC §2.4, §3.1, §5.4 and OQ-9 still describe the transport swap. **Default:** the orchestrator adds a SPEC section for the protocol when W6 starts, and this plan stays the source until then.
+6. **SPEC text.** ~~SPEC §2.4, §3.1, §5.4 and OQ-9 still describe the transport swap.~~ **Resolved 2026-09-29:** SPEC §2.12 holds the protocol, and §2.4, §3.1, §5.4 and OQ-9 now point to it and to the `TableSource` seam. Remaining protocol questions are in SPEC §2.12.8.

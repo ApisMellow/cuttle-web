@@ -184,7 +184,7 @@ All functions take and return **JSON strings** (A2). None take or return objects
 | `__cuttleSnapshot()` | — | `SnapshotJson` (full, unredacted) | no |
 | `__cuttleRestore(snapshotJson, viewerId)` | `SnapshotJson, 0 \| 1` | `Envelope` | yes |
 
-**Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). This is what makes the v2 transport swap a swap: in v2 the same envelope arrives over a WebSocket from the server's copy of exactly this code.
+**Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). In two-phone play the same envelope arrives over a WebSocket from the server's copy of exactly this code (`internal/game`, §2.11). *(Amended 2026-09-29.)* That is not a pure transport swap: the online store is async and receives pushed states, so online play gets its own store behind the `TableSource` seam (W10, `web/src/lib/stores/tableSource.ts`), and the wire protocol around the envelope is §2.12.
 
 `__cuttleApply` takes an **index into the legal-move list of the current state** (A3). The bridge recomputes `engine.LegalMoves(state)` and bounds-checks the index. An out-of-range index is an error, not a panic. Illegal moves are unrepresentable because the client can only name a position in a list the engine produced.
 
@@ -550,6 +550,263 @@ Two smaller contract notes for the same reason:
 
 **Concurrency.** A `Session` is not safe for concurrent use; the server serializes calls per room. Distinct sessions share no mutable state: the envelope renderer that tests swap is a per-instance field on `Session` and `Bridge`, not a package variable (`TestW2_ParallelSessionsShareNoState`, run under `-race`).
 
+### 2.12 Two-phone wire protocol (v1) *(added 2026-09-29; decisions by the product owner)*
+
+This section is the binding contract between a phone running the Pages app and `cmd/cuttle-server`. It replaces `docs/two-phone-plan.md` §3 as the source of truth; where the plan and this section differ, this section wins. The server side is W5 (HTTP), W6 (WebSocket), W7 (hold); the client side is W11 (`web/src/lib/online/`) and W12 (`OnlineGameStore`).
+
+The envelope inside a `state` frame is exactly the §2.7 `Envelope` for one seat, validated on the phone by the same `schema.ts` tripwire as the local bridge. Everything else in this section is room metadata around it.
+
+#### 2.12.1 HTTP: create and join
+
+Both calls are `POST` with a JSON body, sent to the configured server origin (`VITE_CUTTLE_SERVER`) with `credentials: 'omit'` and `cache: 'no-store'`.
+
+| Call | Body | Success | Reply |
+|---|---|---|---|
+| `POST /api/rooms` | `{name}` | `201` | `{code, seat: 0, token}` |
+| `POST /api/rooms/{code}/join` | `{name}` | `200` | `{code, seat: 1, token}` |
+| `GET /healthz` | — | `200` (`503` if the database is down) | `{ok, status, rooms, version, commit}` |
+
+- **`code`** is the canonical room code: 4 upper-case Crockford base32 characters (`0-9A-Z` without `I L O U`). Clients fold input before sending (upper-case, `O`→`0`, `I`/`L`→`1`, separators dropped) and the server folds again (`store.NormalizeCode`).
+- **`token`** is base64url of 32 bytes from `crypto/rand` (43 characters). It is returned once, in this reply, and never again. The server stores only its SHA-256.
+- **Request bodies are strict.** `Content-Type: application/json`, at most 1 KB, exactly one object, unknown fields rejected. Any violation is `400 BAD_REQUEST`.
+- **Names:** control and bidi-override characters stripped, then trimmed, then 1–20 runes. Other format characters (the ZWJ inside an emoji) stay. Names are rendered as text only, never as HTML.
+- **Headers.** Every response, success or error, carries `Cache-Control: no-store`. CORS echoes the exact allowed origin (`CUTTLE_ALLOWED_ORIGINS`, the Pages origin; `http://localhost:5173` only by a dev flag), never `*`, never `Access-Control-Allow-Credentials`.
+- **Join deals.** A successful join deals game 1 under the room lock (seed and first dealer from `crypto/rand`) and saves it as `(game 1, seq 0)` before replying. If seat 0 is connected, it is told at once (§2.12.4, "Create, join, deal").
+
+**HTTP errors.** Every error body is `{code, message}`. `message` is a fixed human string: never a token, never an `err` text, never card data. The client renders it as text only.
+
+| `code` | Status | When | Client does |
+|---|---|---|---|
+| `BAD_REQUEST` | 400 | Malformed code, bad name, oversize body, wrong content type, unknown field | Show the message; stay on the form |
+| `UNAUTHORIZED` | 401 | Reserved; no v1 HTTP call takes a token | — |
+| `FORBIDDEN` | 403 | `Origin` not allowed | "This app can't reach the game server." (a deploy bug) |
+| `ROOM_GONE` | 404 | Unknown, malformed or expired code (the store can't tell them apart, so `410` is not used) | "That game doesn't exist or has ended." |
+| `ROOM_FULL` | 409 | Join when seat 1 is taken | "That game already has two players." |
+| `UPGRADE_REQUIRED` | 426 | Reserved for a server that has dropped this client's version (§2.12.7) | "Refresh to update." |
+| `RATE_LIMITED` | 429 + `Retry-After` | Per-client limit hit (§2.12.6) | "Too many tries, wait a minute." |
+| `INTERNAL` | 500 | Anything else | Generic failure, retry allowed |
+| `SERVER_FULL` | 503 + `Retry-After: 600` | Create at the live-room cap | "The server is busy, try again later." |
+
+A client that gets a non-JSON error body derives the code from the status (W11 `statusCode()`); `503` without a body reads as `INTERNAL`.
+
+#### 2.12.2 WebSocket: `/api/play`
+
+`wss://<server origin>/api/play`. JSON text frames, one object per frame, each with a type field `t`. The server checks `Origin` on the upgrade and refuses a disallowed one with a `403` before any frame (the browser sees a failed connection). **The token is never in the URL**, so it never reaches an access log; it travels only in `hello`.
+
+**Client → server**
+
+| `t` | Fields | Meaning |
+|---|---|---|
+| `hello` | `v: 1, code, token, lastSeq` | Authenticate. Must be the first frame, on every (re)connect. `lastSeq` is advisory (below). |
+| `move` | `game, seq, index` | Apply legal move `index` of the envelope whose history length is `seq`, in game `game`. |
+| `rematch` | `game` | Ask for a rematch of finished game `game`. |
+| `ping` | — | Keepalive. The server answers every `ping` with `pong`. |
+
+**Server → client**
+
+| `t` | Fields | Meaning |
+|---|---|---|
+| `welcome` | `seat, names: [string\|null, string\|null], status` | Hello accepted. `seat` is the seat bound to the token. `names[1]` is `null` until someone joins. `status` is `waiting` (no opponent yet), `playing` or `over` (game over, no rematch dealt yet). |
+| `state` | `game, envelope, opponentOnline, tally: [n0, n1]` | This seat's full redacted envelope (§2.7). Never a diff. `envelope.state.viewer` equals the connection's seat. |
+| `responding` | `by` | The mover's neutral hold after a counterable move (§2.12.5). `by` is the other seat. |
+| `presence` | `opponentOnline` | The other seat connected or dropped. |
+| `rematch` | `requestedBy` | A rematch request is pending from `requestedBy` (either seat, including the receiver's own). |
+| `error` | `code, message, seq?` | §2.12.3. `seq` echoes the rejected `move`'s `seq`, when there was one. |
+| `pong` | — | Reply to `ping`. |
+
+Field rules:
+
+- `game` is ≥ 1 and counts games in the room across rematches (the store's `Game`). `seq` is ≥ 0 and equals `envelope.seq`, the history length of that game. A deal or rematch bumps `game` and restarts `seq` at 0.
+- `seat`, `by` and `requestedBy` are `0` or `1`. `tally[s]` is seat `s`'s wins in this room; a stalemate counts for neither. The tally changes in the same `state` that shows the game over.
+- **No client frame names a seat.** The server takes the seat from the token authenticated in `hello` and never from a frame. It calls `Session.Apply(seat, seq, index)` with that seat (§2.11). A client frame's unknown fields are ignored; an unknown `t` is `BAD_REQUEST`.
+- The client ignores a server frame whose `t` it doesn't know and extra fields on known frames (forward compatibility, §2.12.7). A known frame with a bad shape is a protocol error: reported, not delivered, connection kept (W11).
+- `welcome` is sent after every accepted `hello`, and again, unprompted, when the names or status change under a live connection (the join; §2.12.4). A repeat `welcome` never changes the seat.
+
+**What answers a `hello`.** `welcome`, then exactly one of:
+
+1. `state`, the full current envelope for this seat (the normal case, including `status: over`);
+2. `responding {by}`, if this seat is the mover under a hold (§2.12.5); its `state` follows when the hold ends;
+3. nothing more, if `status` is `waiting` (no game has been dealt); `state` follows the join.
+
+After that, if a rematch request is pending, the server sends `rematch {requestedBy}`. The server never answers a `hello` with a diff or with anything that depends on `lastSeq`.
+
+**`lastSeq`** is the `envelope.seq` of the last `state` this phone accepted, in whatever game that was (0 if none). It is advisory. `hello` carries no `game`, so the server can't tell whether `lastSeq` belongs to the current game; a v1 server therefore ignores it for every decision (it may log it). Across a rematch it refers to the game the phone last saw, and the server ignores it when that game is not the current one, which in v1 means always. The phone does the comparison itself: on a `state` whose `game` differs from the last one it saw, it starts that game fresh (no recap across games); on the same `game` with `seq` more than one past the last one, it shows the missed-moves recap (plan §7).
+
+**Seq rules.** A `move` must carry the current `game` and `seq`. The client never resends a move on its own and never queues one while not connected (W11 refuses `sendMove` unless `open`). After a reconnect, the fresh `state` shows whether an in-flight move landed; if it didn't, the player confirms again.
+
+#### 2.12.3 Errors on the socket
+
+**Terminal errors.** After these the phone stops reconnecting and forgets the saved seat (`cuttle.online.v1`), except as noted:
+
+| `code` | Sent when | Client does |
+|---|---|---|
+| `ROOM_GONE` | `hello` for an unknown or expired code, or the room expires under a live socket | "This game has ended." Forget the seat, go Home. |
+| `UNAUTHORIZED` | `hello` with a token that doesn't match a seat of that room | Forget the seat, go Home. |
+| `UPGRADE_REQUIRED` | `hello.v` is not a version this server speaks | "Refresh to update." Keep the seat: the refreshed app can resume. |
+| `SEAT_MISMATCH` | **Client-side only; never on the wire.** `welcome.seat`, or a `state`'s `envelope.state.viewer`, is not the saved seat | Close the socket, forget the seat, go Home ("This game couldn't be resumed."). |
+
+**Framing rule.** A terminal condition is always sent as an `error` frame before the server closes the socket. A close with no preceding terminal `error` (network loss, server restart, idle timeout, oversize frame, handshake timeout, `BAD_REQUEST` on `hello`) is retryable, and the phone reconnects with backoff.
+
+**Non-terminal errors.** The session is unchanged in every case.
+
+| `code` | Sent when | Followed by | Client does |
+|---|---|---|---|
+| `NOT_YOUR_TURN` | `move` from a seat that isn't `Active` | fresh `state` | Resync from it |
+| `STALE` | `move` (or `rematch`) whose `game` or `seq` isn't current | fresh `state` | Resync; the player confirms again if still legal |
+| `GAME_OVER` | `move` after the game ended | fresh `state` | Resync (shows the result) |
+| `ILLEGAL_MOVE` | engine rejected an offered move (§2.9) | nothing | Stuck-state screen (§2.10) |
+| `NO_LEGAL_MOVES` | engine offered nothing outside game over (§2.10) | nothing | Stuck-state screen |
+| `INDEX_OUT_OF_RANGE` | `index` outside the legal-move list | nothing | Client bug: keep the current state, clear `sending` |
+| `BAD_REQUEST` | malformed frame, unknown `t`, `rematch` before the game is over; before `welcome`, the socket is then closed | nothing | Clear `sending`; show a generic failure |
+| `RATE_LIMITED` | frame rate over the limit (§2.12.6), or `hello` over the failed-hello limit | nothing (on `hello`: close) | On `hello`: wait at least 60 s before the next attempt. Otherwise continue. |
+| `INTERNAL` | recovered panic, or a failed save (§2.12.5) | fresh `state` if the session could be reloaded | Clear `sending`; resync |
+
+"Followed by a fresh `state`" means the server sends this seat's current envelope right after the error, **unless this seat is the mover under a hold**, in which case it sends `responding {by}` instead and the `state` waits for the hold to end (otherwise a stray stale move would open the hold early).
+
+**Reconnect policy (client).** Backoff 0.5, 1, 2, 4, then every 8 s, ±20% jitter; no ordinary wait may exceed ~30 s; a `welcome` resets it; `online` resets it and retries at once; `visibilitychange` to visible retries at once without resetting. After a `RATE_LIMITED` on `hello` the next attempt waits at least 60 s. After about 10 consecutive failures without a `welcome`, the phone stops and shows "stalled: tap to reconnect"; a tap resets the backoff and tries once. The phone goes to `offline` (no retries) while `navigator.onLine` is false.
+
+#### 2.12.4 Sequences
+
+Arrows are frames or HTTP calls; `A` holds seat 0, `B` seat 1, `S` is the server.
+
+**Create, join, deal.**
+
+```
+A → S  POST /api/rooms {name:"Alice"}
+S → A  201 {code:"K7QX", seat:0, token:tA}
+A → S  WS hello {v:1, code:"K7QX", token:tA, lastSeq:0}
+S → A  welcome {seat:0, names:["Alice",null], status:"waiting"}
+          (no state: nothing is dealt yet)
+B → S  POST /api/rooms/K7QX/join {name:"Blake"}
+          S, under the room lock: claim seat 1, NewSession(seed, dealer),
+          store.Save(game 1, seq 0)
+S → B  200 {code:"K7QX", seat:1, token:tB}
+S → A  welcome {seat:0, names:["Alice","Blake"], status:"playing"}
+S → A  state {game:1, envelope:<seat 0, seq 0>, opponentOnline:false, tally:[0,0]}
+B → S  WS hello {v:1, code:"K7QX", token:tB, lastSeq:0}
+S → B  welcome {seat:1, names:["Alice","Blake"], status:"playing"}
+S → B  state {game:1, envelope:<seat 1, seq 0>, opponentOnline:true, tally:[0,0]}
+S → A  presence {opponentOnline:true}
+```
+
+**A move** (not counterable).
+
+```
+A → S  move {game:1, seq:4, index:2}
+          S, under the room lock: up := Session.Apply(0, 4, 2)
+                                  store.Save(game 1, seq 4 → 5)
+S → A  state {game:1, envelope:up.For(0) /* seq 5 */, ...}
+S → B  state {game:1, envelope:up.For(1) /* seq 5 */, ...}
+```
+
+**A counter window with the hold.** A plays a one-off. Whether or not B holds a 2, A's frames are identical in type and order.
+
+```
+A → S  move {game:1, seq:9, index:0}          (a OneOff; t0 = apply time)
+          S: Apply, Save(seq 10)
+S → A  responding {by:1}                      (at once; A's state is withheld)
+S → B  state {seq 10}                         (at once: counter prompt if B holds a 2,
+                                               else the resolved board)
+    ... case B holds a 2: B answers ...
+B → S  move {game:1, seq:10, index:k}         (Decline or Counter)
+          S: Apply, Save(seq 11)
+S → B  state {seq 11}                         (if B countered: responding {by:0} instead,
+                                               B is now the mover under a hold)
+S → A  state {seq 11}                         at max(answer time, t0 + 1.5 s)
+    ... case B has no 2: no window opened, the answer is "in" at t0 ...
+S → A  state {current seq}                    at t0 + 1.5 s
+```
+
+**Reconnect.**
+
+```
+          (A's socket dies; S notices after 45 s of silence, or at once on close)
+S → B  presence {opponentOnline:false}
+A → S  WS hello {v:1, code, token:tA, lastSeq:12}
+S → A  welcome {seat:0, names, status:"playing"}
+S → A  state {game:1, envelope:<seat 0, current seq>, opponentOnline:true, tally}
+          (or responding {by:1}, if A is the mover under a hold)
+S → A  rematch {requestedBy:1}                (only if a request is pending)
+S → B  presence {opponentOnline:true}
+```
+
+**Rematch.**
+
+```
+          (game 1 is over; the last state carried the updated tally)
+A → S  rematch {game:1}
+S → A  rematch {requestedBy:0}                ("Waiting for Blake")
+S → B  rematch {requestedBy:0}                ("Alice wants a rematch")
+B → S  rematch {game:1}
+          S, under the room lock: NewSession(seed, other dealer), Save(game 2, seq 0)
+S → A  state {game:2, envelope:<seat 0, seq 0>, ..., tally}
+S → B  state {game:2, envelope:<seat 1, seq 0>, ..., tally}
+```
+
+A repeat `rematch` from the seat that already asked is a no-op (the server re-sends `rematch {requestedBy}`). `rematch` with a `game` other than the current one is `STALE` plus `state`; while the current game isn't over it's `BAD_REQUEST`. The server owns dealer alternation (R1, R3): game `n+1` is dealt by the player who didn't deal game `n` (§2.6's client-driven `dealer` doesn't apply online).
+
+#### 2.12.5 Server obligations
+
+**Privacy.** The only game data the server sends is `Update.For(seat)` or `Session.View(seat)`, both `game.Envelope`, the one type that satisfies `game.ClientSafe` (§2.11). The frame writer takes `game.ClientSafe`, so a `ServerSnapshot` or an `Update` can't be passed to it. No frame carries a seed, the deck, a snapshot, or any token (the socket never sends one at all). Logs carry code, seat and event, never cards, names or tokens.
+
+**Seat binding.** The seat comes from the connection, fixed at `hello` by `store.Authenticate(code, token)`. `Session.Apply(seat, seq, index)` rejects any seat but engine `Active` with `NOT_YOUR_TURN`. The server first checks `move.game` against the current game (`STALE` if different), then lets `Apply` check the rest in its §2.11 order.
+
+**Persistence ordering.** Every move is handled under the room lock, in this order:
+
+1. `up, err := Session.Apply(seat, seq, index)`. On error: send the §2.12.3 error (and `state` where the table says so). Nothing else happens.
+2. `store.Save` with the optimistic `(game, seq)` check, writing the snapshot (`ServerSnapshot.PersistBytes()`), the new `seq`, `updated_at`, and on a game over the status and tally.
+3. Only after the save succeeds: send `up.For(s)` to each connected seat `s`, subject to the hold.
+
+If the save fails, the server reloads the room with `RestoreSession` from the stored snapshot, discards the `Update`, and sends no envelope of the unsaved state. It tells the mover `error {code: INTERNAL, seq}` followed by the reloaded (unchanged) `state`, so the phone clears `sending`. If the reload fails too, it closes both sockets without an error frame (retryable) and drops the room from memory; the next `hello` loads it from the store.
+
+**The counter hold (§4.3, plan §6).** A *counterable move* is a `MoveOneOff`, a `MoveSevenPick` whose `SubMove` is a one-off, or a `MoveCounter`. After one is applied and saved:
+
+- The mover gets `responding {by: other}` at once and **no `state`** until both (a) the answer is in, meaning the engine no longer waits on the other seat's counter decision (not `phase == PhaseAwaitingCounter && active == other`; true immediately when no window opened), and (b) at least `CUTTLE_RESPOND_MIN_MS` (default 1500) has passed since the move was applied.
+- When both hold, the mover gets the **current** `state`, which may already include later moves (a quick answer and a quick next move); the phone's recap covers the gap.
+- The other seat gets its `state` at once, as for any move.
+- A `hello` from the mover during the hold is answered with `welcome` and `responding` (§2.12.2), never with the withheld state. So is any error that would otherwise be followed by `state`.
+- The hold is enforced by the server, so raw frames reveal nothing early. It lives in memory; a server restart ends it, and the next `hello` gets the current `state` (accepted: a restart takes seconds and says nothing about the hand).
+
+**Presence and liveness.** The client sends `ping` every 15 s and treats a socket as dead if no frame arrives within 10 s of a ping (5 s for the probe on becoming visible). The server answers every `ping` with `pong` and sends no app-level pings of its own. It treats a socket with no inbound frame for 45 s as dead, closes it (bare, retryable) and sends the other seat `presence {opponentOnline:false}`. It must receive `hello` within 10 s of the upgrade or close. **One socket per seat:** a new accepted `hello` for a seat replaces the old socket, which the server closes with `error {code: "REPLACED"}` first (open question 1).
+
+#### 2.12.6 Limits
+
+| Limit | Value | Breach |
+|---|---|---|
+| Create | 10/hour per client, burst 10 | `429 RATE_LIMITED` + `Retry-After` |
+| Join | 30/hour per client, burst 30; every attempt counts, code guesses included | `429 RATE_LIMITED` + `Retry-After` |
+| Failed `hello` | 30/hour per client. **Counted:** hellos answered `UNAUTHORIZED` or `ROOM_GONE` (token or code guessing). **Not counted:** accepted hellos, `UPGRADE_REQUIRED`, `BAD_REQUEST`, handshake timeouts, closes. A legitimate phone's reconnect storm never trips it. | `error RATE_LIMITED`, then close |
+| Frames per socket | 10/s sustained, burst 20 (token bucket). Pings at 1 per 15 s and human-rate moves sit far below it. | Frame dropped with `error RATE_LIMITED` (at most one per second); over the limit for 5 s straight, bare close |
+| Inbound frame size | 1 KB | Close (1009), retryable |
+| HTTP body | 1 KB, JSON only, no unknown fields | `400 BAD_REQUEST` |
+| Names | 1–20 runes after stripping and trimming | `400 BAD_REQUEST` |
+| Live rooms | 500 | `503 SERVER_FULL` + `Retry-After: 600` |
+| Room idle expiry | 24 h since `updated_at` (`CUTTLE_IDLE_TTL`), joined or not | `ROOM_GONE` |
+| `hello` deadline | 10 s after upgrade | bare close |
+| Idle socket | 45 s with no inbound frame | bare close |
+
+"Per client" is the peer IP, with IPv6 grouped by /64. `X-Forwarded-For` is read only when the peer is a configured `-trusted-proxy` address (the local Caddy), and then only its rightmost entry. Outbound frames have no size cap; an envelope is a few KB.
+
+#### 2.12.7 Versioning
+
+- The protocol version is the integer `v` in `hello`. This document is `v: 1`.
+- **A `v` bump means `UPGRADE_REQUIRED` for old clients.** A server speaks the versions it lists (v1: only `1`). A `hello` with any other `v` gets `error {code: UPGRADE_REQUIRED}` and a close. The phone shows "Refresh to update" and keeps its seat, so the refreshed app resumes the game if the room is still alive.
+- **Bump `v` for** any change an existing client would misread: a removed or renamed frame or field, a changed meaning, a new required client field, or an envelope change that the shipped `schema.ts` rejects (a new required `Envelope` field is one, §2.3's engine-token note).
+- **Don't bump for** additive changes: a new server frame type (old clients ignore it), a new optional field on a server frame, a new error code (old clients keep an unknown code as non-terminal), or a new optional client field.
+- HTTP v1 bodies carry no version; `426 UPGRADE_REQUIRED` is reserved. A later version that changes the HTTP bodies adds an optional `v` to them, where absent means 1.
+- Pages and the server deploy separately and the service worker keeps old app builds alive, so a bump is deployed server first, and the new app must ship in the same release.
+
+#### 2.12.8 Open protocol questions
+
+Each has the default the work proceeds on until the product owner decides otherwise.
+
+1. **Two sockets for one seat** (two tabs, or a phone that reconnected before its old socket timed out). **Default:** newest `hello` wins; the old socket gets `error {code: "REPLACED"}` and a close. The phone treats `REPLACED` as "stalled" (no auto-reconnect, keep the seat, "This game is open somewhere else. Tap to play here."). Without this, two tabs would take the seat from each other forever. W11 today treats an unknown code as non-terminal and would reconnect, so W11/W12 need the case.
+2. **Pending rematch requests across a server restart.** **Default:** memory only. A restart drops the request, and the player taps Rematch again. The room's `status` stays `over`, so nothing else is lost.
+3. **`game` in `hello`.** v1 has none, so the server can't use `lastSeq`. **Default:** leave it out; the server always sends the full `state` anyway. Adding an optional `hello.game` later is additive and needs no bump.
+4. **Deploy skew.** A bump needs the server and the Pages app to move together. **Default:** a server speaks one version; bumps are rare and ship server first, with the app build in the same release. Revisit (speak N and N−1) if a bump ever lands mid family game.
+5. **The hold across a restart** (§2.12.5). **Default:** accept losing it. Persisting the hold's start time would need a schema change for a gap of a few seconds.
+6. **`Decline` entries in raw history** (plan §14, question 1). **Default:** accept, as R14 already accepts it and the recap hides them.
+
 ---
 
 ## 3. Redacted-view rules (R7)
@@ -558,7 +815,7 @@ Two smaller contract notes for the same reason:
 
 **Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
 
-This is not defense-in-depth for its own sake. PRD §7 makes it a v1 obligation to v2: *"the UI consumes only the envelope + redacted views (never reaches into full state for opponent info)."* If redaction lives in TypeScript, v2 has to write it a second time in Go and the two will drift. Writing it once, Go-side, means the v2 server calls the identical `viewFor(state, viewerId)` and ships its output over the WebSocket. The transport becomes a swap, exactly as G4 requires.
+This is not defense-in-depth for its own sake. PRD §7 makes it a v1 obligation to v2: *"the UI consumes only the envelope + redacted views (never reaches into full state for opponent info)."* If redaction lives in TypeScript, v2 has to write it a second time in Go and the two will drift. Writing it once, Go-side, means the v2 server calls the identical `viewFor(state, viewerId)` and ships its output over the WebSocket. *(Amended 2026-09-29.)* The redaction and the envelope carry over unchanged, which is the part of G4 that holds. The rest of the "transport swap" doesn't: the server only ever sends per-seat envelopes (`game.ClientSafe`, §2.12.5), and the phone reads them through `OnlineGameStore` behind the `TableSource` seam (W10), not through `lib/bridge/engine.ts`.
 
 It also makes the privacy property structural rather than disciplinary. A developer agent cannot accidentally render the opponent's hand, because the bytes are not present in the browser's JS heap.
 
@@ -972,7 +1229,7 @@ lib/bridge/
   schema.ts      # dev/test-only runtime validation of envelope shape.
 ```
 
-`engine.ts` is the seam A2 exists to create. In v2 its implementation is replaced with a WebSocket client speaking the identical `Envelope`; **no store and no component changes.** That property is a review criterion: any bridge-shaped logic that leaks upward into a store or a component breaks it.
+`engine.ts` is the seam A2 exists to create. ~~In v2 its implementation is replaced with a WebSocket client speaking the identical `Envelope`; no store and no component changes.~~ *(Superseded 2026-09-29, two-phone plan §2.)* `engine.ts` stays the local-play bridge. It can't simply be swapped for a socket: `GameStore.apply` is synchronous, the server pushes moves the store never asked for, and the curtain machine means nothing when each player has a phone. Online play instead adds `web/src/lib/online/` (connection, frames, HTTP; W11) and `OnlineGameStore` (W12), and `GameScreen` reads either store through the `TableSource` interface (W10, `lib/stores/tableSource.ts`). The wire contract is §2.12. What survives as a review criterion: the envelope is the only game data either store holds, both validate it with `schema.ts`, and no bridge-shaped or rule logic leaks into a component.
 
 `schema.ts` validates envelopes against the §2.7 shape in dev and test builds and is tree-shaken from production. It is the tripwire for the §2.8 normalization bugs — particularly `JackOwners`, which typechecks as an array while being a base64 string at runtime and would otherwise surface as a rendering oddity in the rare Jack-chain case rather than as a loud failure.
 
@@ -1457,7 +1714,7 @@ Each carries a recommendation. Items marked **needs ApisMellow** are outside the
 **OQ-8 — Stalemates are 2.5% of random games**, so the smoke corpus will hit them but no single seed reliably does.
 **Recommendation:** the scripted `stalemate` scenario (§7.3) is the R2 evidence; the smoke test's role is only to confirm both terminal states occur across the corpus.
 
-**OQ-9 — RESOLVED 2026-09-26 (accepted for v1).** `localStorage` holds the full unredacted state (§3.4, §5.7); the threat model is a shoulder-glance, not devtools, and both players share the device. Revisit for v2, where the client should hold only its own redacted view plus `{roomCode, playerToken, seq}` per PRD §7.
+**OQ-9 — RESOLVED 2026-09-26 (accepted for v1).** `localStorage` holds the full unredacted state (§3.4, §5.7); the threat model is a shoulder-glance, not devtools, and both players share the device. ~~Revisit for v2, where the client should hold only its own redacted view plus `{roomCode, playerToken, seq}` per PRD §7.~~ *(Closed for online play 2026-09-29.)* An online phone stores no game state at all: `localStorage` holds only `{v, server, code, seat, token, names}` under `cuttle.online.v1` (W11 `seat.ts`), and the redacted envelope lives in memory, refetched from the server on every `hello` (§2.12.2). The full state never leaves the server. Pass-and-play keeps the accepted v1 behaviour above.
 
 **OQ-10 — Workbox's 2 MiB default would silently exclude the WASM binary** from precache and break R18 offline with no build error (§2.2, §5.8).
 **Recommendation:** set `maximumFileSizeToCacheInBytes` to 5 MiB **and** add the precache-manifest assertion to the mechanical gate (§7.6). Config alone is too easy to lose in a refactor.
