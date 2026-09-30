@@ -8,7 +8,11 @@ export type OnlineErrorCode =
   | 'full'
   | 'expired'
   | 'network'
-  | 'rate-limited';
+  | 'rate-limited'
+  /** W12: the server is at its room cap (SERVER_FULL). */
+  | 'busy'
+  /** W12: the server refused the request (BAD_REQUEST, e.g. a name it won't take). */
+  | 'bad-request';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: OnlineErrorCode };
 
@@ -49,6 +53,8 @@ export const ERROR_TEXT: Record<OnlineErrorCode, string> = {
   expired: 'That room has expired. Ask your friend to start a new one.',
   network: 'Couldn’t reach the server. Check your connection and try again.',
   'rate-limited': 'Too many tries. Wait a little and try again.',
+  busy: 'The game server is busy. Try again in a few minutes.',
+  'bad-request': 'The game server didn’t accept that. Check your name and try again.',
 };
 
 export interface FakeOptions {

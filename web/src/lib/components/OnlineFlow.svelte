@@ -32,7 +32,9 @@
     onBack={() => online.close()}
   />
 {:else if online.view === 'connected'}
-  <!-- W12 replaces this: it hands the connection to OnlineGameStore and shows the table. -->
+  <!-- W12: with the real actions the online store is attached by now, and
+       App shows the table (GameScreen on `onlineGame`) instead of this flow.
+       This placeholder is what the dev build's fake actions reach. -->
   <div class="ol-screen" data-testid="online-connected">
     <h1>Connected</h1>
     <p>You’re in a room with {online.opponentName}.</p>

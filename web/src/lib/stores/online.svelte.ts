@@ -14,12 +14,16 @@ class OnlineUi {
   roomCode = $state('');
   /** Who we're connected with, once a game is about to start. */
   opponentName = $state('');
+  /** W12: why the online game ended ("This game has ended."), shown on Home. Fixed text only. */
+  notice = $state<string | null>(null);
 
   openCreate(): void {
+    this.notice = null;
     this.view = 'create';
   }
 
   openJoin(code = '', badLink = false): void {
+    this.notice = null;
     this.joinCode = code;
     this.badLink = badLink;
     this.view = 'join';
@@ -31,8 +35,16 @@ class OnlineUi {
   }
 
   connected(opponentName: string): void {
+    this.notice = null;
     this.opponentName = opponentName;
     this.view = 'connected';
+  }
+
+  /** W12: the online game is over for this phone (Home, or a terminal error); back to Home with an optional notice. */
+  leave(notice: string | null): void {
+    this.close();
+    this.opponentName = '';
+    this.notice = notice;
   }
 
   close(): void {

@@ -154,6 +154,10 @@
   {#if game.notice}
     <p class="home-screen__notice" role="status">{game.notice}</p>
   {/if}
+  {#if online.notice}
+    <!-- W12: why an online game ended (fixed text from the online store). -->
+    <p class="home-screen__notice" role="status">{online.notice}</p>
+  {/if}
 
   <!-- Mode 1 and 2: one phone. Table mode stays a switch under Pass and play,
        because it only changes how that one phone is held. -->
