@@ -459,7 +459,7 @@ func (m *Rooms) Sweep(ctx context.Context) (deleted, dropped int, err error) {
 }
 
 // RunJanitor sweeps every interval until ctx is done. The nightly backup
-// is W8's.
+// is a separate loop (RunBackups), so a slow copy never delays a sweep.
 func (m *Rooms) RunJanitor(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
