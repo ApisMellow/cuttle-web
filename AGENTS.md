@@ -304,6 +304,32 @@ that makes your list complete.
 - **Panics:** `game.SetPanicHook` receives recovered panic values; Session
   errors carry a fixed message. main logs only the panic's type.
 
+### Online client connection (two-phone W11)
+
+- `web/src/lib/online/` is framework-light TypeScript with no Svelte and no
+  game state: `protocol.ts` (typed frames, plan §3), `connection.ts`
+  (socket, hello, backoff, heartbeat), `http.ts` (create/join), `seat.ts`
+  (the one saved seat), `config.ts` (server origin). The online store (W12)
+  builds on it; components never touch it directly.
+- **The seat token travels only in the `hello` frame and the create/join
+  reply body.** Never in a URL, query, log line, status or error message.
+  Nothing in `lib/online/` calls `console`; a test spies on it.
+- Every inbound `state` envelope goes through `parseBridgeResult`
+  (schema.ts) and must carry `viewer === seat`. Unknown frame types decode
+  to `null` and are ignored; malformed known frames throw.
+- The client never queues or resends a move: `sendMove` returns false
+  unless the connection is `open` (after `welcome`).
+- `ROOM_GONE`, `UNAUTHORIZED` and `UPGRADE_REQUIRED` are terminal; add a
+  code to `TERMINAL_ERROR_CODES` only with a plan or SPEC change.
+- Seat storage is one key, `cuttle.online.v1`, holding only
+  `{v, server, code, seat, token, names}`.
+- The server origin comes from `VITE_CUTTLE_SERVER`; a dev build may
+  override it with localStorage `cuttle.online.devServer`. Never hard-code a
+  host. The service worker must never get a `runtimeCaching` route
+  (`online-sw-guard.test.ts`).
+- Connection tests inject a fake socket factory, a fake environment
+  (`online-fakes.ts`) and `random`, and drive time with `vi.useFakeTimers`.
+
 ### Svelte 5 conventions
 
 - Runes only: `$state`, `$derived`, `$props`, `$effect`. No `export let`,
