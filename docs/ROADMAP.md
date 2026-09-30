@@ -10,6 +10,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 - **Clearer recaps.** Every recap says what actually happened: which cards were drawn, and what a one-off did.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.
 - **Table mode (shipped 2026-09-29).** A Home toggle for play with the phone flat between two players: the board stays fixed and player 2's screens turn to face them.
+- **Menu-first settings.** Move options (card style, table mode, rules) behind the hamburger menu instead of selectors on the front screen, with a toolbar for common actions. See `docs/design-refs/`.
 
 ## Themes
 
@@ -18,7 +19,8 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 - **Mythic (first):** a full 52-card painted deck in the spirit of classic fantasy card games. Colour follows what each rank does: the Ace wipes the board, the 2 counters, the Jack steals. Sideways goggles mark a glasses 8.
 - **Card gallery (shipped).** Every Mythic painting, uncropped, one card at a time at https://apismellow.github.io/cuttle-web/gallery/. A standalone page in `gallery/` (see `gallery/README.md`).
 - **New Classic card back:** the standard vector deck gets a new back design, replacing the current plain back.
-- **Clearer spades and clubs (Classic).** The vector ♠ and ♣ read too alike at phone size. Redraw them, and check them against each other, so the suits are easy to tell apart at a glance.
+- **Clearer spades and clubs (Classic).** The vector ♠ and ♣ read too alike at phone size. Redraw them, and check them against each other, so the suits are easy to tell apart at a glance. See `docs/design-refs/`.
+- **Classic card redesign.** Rework the standard deck for legibility: a real card's proportion (about 5:7), a large serif corner index with the suit beside it, one big centre pip, plain white faces with a thin edge. Paired with a textured felt table. See `docs/design-refs/`.
 - **Stained glass:** a hand-drawn vector deck. It's a candidate to become the standard look.
 - **Webb table:** playmats and card backs from James Webb Space Telescope imagery (IC 348), which pair with any theme.
 - **Cathedral (later):** palette-knife painting, gold light against violet shadow. It may become a full theme, or a suit style paired with stained glass.
