@@ -93,7 +93,7 @@ async function start(env: Envelope): Promise<HTMLDivElement> {
   await startGameMocked(game, bridge, env, { seed: '1' });
   host = document.createElement('div');
   document.body.append(host);
-  instance = mount(GameScreen, { target: host });
+  instance = mount(GameScreen, { target: host, props: { source: game } });
   flushSync();
   return host;
 }

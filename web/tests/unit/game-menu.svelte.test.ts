@@ -79,7 +79,7 @@ let instance: ReturnType<typeof mount> | undefined;
 function render(): HTMLDivElement {
   host = document.createElement('div');
   document.body.append(host);
-  instance = mount(GameScreen, { target: host });
+  instance = mount(GameScreen, { target: host, props: { source: game } });
   flushSync();
   return host;
 }

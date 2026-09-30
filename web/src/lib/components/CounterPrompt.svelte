@@ -43,10 +43,12 @@
     options: ChooserCandidate[];
     onresolve: () => void;
     oncounter: (index: number) => void;
+    /** True while a move is in flight: every button is disabled and taps do nothing. */
+    disabled?: boolean;
     theme?: CardTheme;
   }
 
-  let { entries, viewer, names, options, onresolve, oncounter, theme = getTheme(DEFAULT_THEME_ID) }: CounterPromptProps =
+  let { entries, viewer, names, options, onresolve, oncounter, disabled = false, theme = getTheme(DEFAULT_THEME_ID) }: CounterPromptProps =
     $props();
 
   // Playtest 2026-09-29: each 2 names what it stops ("to stop your 5♥"),
@@ -60,20 +62,20 @@
   let acted = false;
 
   function resolve(): void {
-    if (acted || staged !== null) return; // W25: a staged counter locks it
+    if (disabled || acted || staged !== null) return; // W25: a staged counter locks it
     acted = true;
     onresolve();
   }
 
 
   function stage(option: ChooserCandidate): void {
-    if (acted) return;
+    if (disabled || acted) return;
     staged = option;
     focusSoon('[data-testid="staging-confirm"]');
   }
 
   function confirmCounter(): void {
-    if (acted || staged === null) return;
+    if (disabled || acted || staged === null) return;
     acted = true;
     oncounter(staged.index);
   }
@@ -138,13 +140,14 @@
     {#if staged !== null}
       <!-- r16 re-review B2 (R12): focus moves to Confirm when a counter is
            staged, so a held Enter's auto-repeats must not confirm it. -->
-      <StagingBar description={plainMoveText(staged.description)} onconfirm={guarded(confirmCounter)} oncancel={guarded(cancelCounter)} />
+      <StagingBar description={plainMoveText(staged.description)} {disabled} onconfirm={guarded(confirmCounter)} oncancel={guarded(cancelCounter)} />
     {:else}
       {#each options as option (option.index)}
         <button
           type="button"
           class="counter-prompt__option"
           data-testid={`counter-option-${option.index}`}
+          {disabled}
           onclick={guarded(() => stage(option))}
         >
           {plainMoveText(option.description)}
@@ -160,7 +163,7 @@
       type="button"
       class="counter-prompt__resolve"
       data-testid="counter-resolve"
-      disabled={staged !== null}
+      disabled={disabled || staged !== null}
       onclick={guarded(resolve)}
     >
       Let it resolve
@@ -261,6 +264,11 @@
     flex-direction: column;
     align-items: center;
     padding: var(--cu-space-3, 12px) 0 calc(18vh - 24px);
+  }
+
+  .counter-prompt__option:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   .counter-prompt__resolve {

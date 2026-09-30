@@ -63,6 +63,7 @@ import {
 } from './curtain.svelte';
 import { session as defaultSession, type SessionStore } from './session.svelte';
 import { SNAPSHOT_KEY, SNAPSHOT_VERSION, type Snapshot, decodeSnapshot, encodeSnapshot } from './snapshot';
+import type { TableSource } from './tableSource';
 
 /**
  * The bridge calls this store needs, shaped so a test can inject a fake
@@ -119,7 +120,14 @@ interface PersistFields {
   curtain: CurtainState;
 }
 
-export class GameStore {
+/**
+ * Two-phone W10: this store is the pass-and-play `TableSource`
+ * (`lib/stores/tableSource.ts`). Nothing about it changed for the seam: its
+ * `apply` still does all its work in the calling task (no `await` before
+ * the last state write), so the returned promise only settles what already
+ * happened, and it is never `pending`.
+ */
+export class GameStore implements TableSource {
   readonly #engine: GameEngine;
   readonly #storage: StorageLike | undefined;
   readonly #session: SessionStore;
@@ -161,6 +169,9 @@ export class GameStore {
   notice = $state<string | null>(null);
   /** SPEC §4.7: the 5's draw reveal on the drawer's own board, or null. Memory only, never saved. */
   drawReveal = $state<DrawReveal | null>(null);
+
+  /** W10 (TableSource): a local apply finishes in the calling task, so no move is ever in flight. */
+  readonly pending = false;
 
   view = $derived(this.envelope?.state ?? null);
   legalMoves = $derived(this.envelope?.legalMoves ?? []);

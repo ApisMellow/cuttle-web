@@ -160,7 +160,7 @@ async function start(state: PlayerView = p0View(), moves: Move[] = P0_MOVES, des
   await startGameMocked(game, bridge, envelope({ state, legalMoves: moves, descriptions }), { seed: '1' });
   host = document.createElement('div');
   document.body.append(host);
-  instance = mount(GameScreen, { target: host });
+  instance = mount(GameScreen, { target: host, props: { source: game } });
   flushSync();
   return host;
 }

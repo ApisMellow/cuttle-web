@@ -38,7 +38,7 @@ function mountScreen(): HTMLDivElement {
   unmountScreen();
   host = document.createElement('div');
   document.body.append(host);
-  instance = mount(GameScreen, { target: host });
+  instance = mount(GameScreen, { target: host, props: { source: game } });
   flushSync();
   return host;
 }
