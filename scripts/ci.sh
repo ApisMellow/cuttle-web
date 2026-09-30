@@ -82,8 +82,10 @@ run_step "GOOS=js GOARCH=wasm go build -o /dev/null ./internal/wasm" \
 run_step "go vet ./..." \
   go vet ./...
 
+# -short only thins the W9 privacy sweep to every 7th seed (its sole
+# testing.Short use). Full sweep by hand: go test ./internal/server/ -run TestW9_WirePrivacySweep
 run_step "go test ./..." \
-  go test ./...
+  go test -short ./...
 
 # Prerequisite for the npm steps below (not one of the SPEC §7.6 nine gate
 # commands, so it gets no PASS/FAIL row of its own): two unit tests need
