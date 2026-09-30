@@ -26,6 +26,10 @@ const (
 	// DefaultRespondMin is the counter hold's minimum (SPEC §2.12.5,
 	// CUTTLE_RESPOND_MIN_MS).
 	DefaultRespondMin = 1500 * time.Millisecond
+	// DefaultMaxSockets and DefaultMaxSocketsPerClient cap open play
+	// sockets server-wide and per client key.
+	DefaultMaxSockets          = 500
+	DefaultMaxSocketsPerClient = 8
 	// maxRespondMin bounds the configurable hold.
 	maxRespondMin = time.Minute
 )
@@ -45,6 +49,10 @@ type Config struct {
 	// RespondMin is the least time the mover of a counterable move waits
 	// for its next state (SPEC §2.12.5). 0 in a literal = default.
 	RespondMin time.Duration
+	// MaxSockets caps open play sockets server-wide, MaxSocketsPerClient
+	// per client key (identify). 0 in a literal = default.
+	MaxSockets          int
+	MaxSocketsPerClient int
 
 	// tune holds the socket timings and limits; the zero value is SPEC
 	// §2.12.6. Tests shorten them.
@@ -54,8 +62,8 @@ type Config struct {
 // ParseConfig reads flags from args, falling back to environment values from
 // getenv (CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS comma-separated, CUTTLE_DATA_DIR,
 // CUTTLE_TRUSTED_PROXY comma-separated, CUTTLE_CREATE_PER_HOUR,
-// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS, CUTTLE_RESPOND_MIN_MS), then to
-// defaults. Flags win over the environment.
+// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS, CUTTLE_RESPOND_MIN_MS,
+// CUTTLE_MAX_SOCKETS, CUTTLE_MAX_SOCKETS_PER_CLIENT), then to defaults. Flags win over the environment.
 func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -101,6 +109,16 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	socksDef, err := envInt("CUTTLE_MAX_SOCKETS", DefaultMaxSockets)
+	if err != nil {
+		return Config{}, err
+	}
+	perClientDef, err := envInt("CUTTLE_MAX_SOCKETS_PER_CLIENT", DefaultMaxSocketsPerClient)
+	if err != nil {
+		return Config{}, err
+	}
+	maxSockets := fs.Int("max-sockets", socksDef, "most open play sockets")
+	maxSocketsPerClient := fs.Int("max-sockets-per-client", perClientDef, "most open play sockets per client address")
 	respondMS := fs.Int("respond-min-ms", respondDef, "least milliseconds a counterable move's mover waits for its next state")
 	createRate := fs.Int("create-per-hour", createDef, "room creates per client per hour")
 	joinRate := fs.Int("join-per-hour", joinDef, "room joins per client per hour")
@@ -114,7 +132,8 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 
 	cfg := Config{Addr: *addr, Dev: *dev, DataDir: *dataDir,
 		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms,
-		RespondMin: time.Duration(*respondMS) * time.Millisecond}
+		RespondMin: time.Duration(*respondMS) * time.Millisecond,
+		MaxSockets: *maxSockets, MaxSocketsPerClient: *maxSocketsPerClient}
 	for _, p := range strings.Split(*proxies, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
@@ -162,6 +181,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxRooms < 1 {
 		return fmt.Errorf("max rooms must be at least 1")
+	}
+	if c.MaxSockets < 1 || c.MaxSocketsPerClient < 1 {
+		return fmt.Errorf("socket caps must be at least 1")
 	}
 	if c.RespondMin < time.Millisecond || c.RespondMin > maxRespondMin {
 		return fmt.Errorf("respond-min-ms must be between 1 and %d", maxRespondMin.Milliseconds())

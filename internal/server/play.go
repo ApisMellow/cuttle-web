@@ -131,6 +131,23 @@ func sendStateLocked(r *room, c *conn) {
 	c.enqueue(newStateFrame(r, c.seat, env))
 }
 
+// heldLocked reports whether c's seat is the mover under a hold.
+func heldLocked(r *room, c *conn) bool { return r.live.holds[c.seat].active }
+
+// refuseHeldLocked answers any move or rematch from a held mover with a
+// fixed STALE (no seq echo) and responding. Nothing is applied and no
+// request is recorded, so the answer is the same whether or not the
+// other seat has answered or the game has ended: frames can't probe the
+// hold (SPEC §2.12.5). It reports whether c was held.
+func refuseHeldLocked(r *room, c *conn) bool {
+	if !heldLocked(r, c) {
+		return false
+	}
+	c.enqueue(newErrorFrame(CodeStale, nil))
+	c.enqueue(newRespondingFrame(c.seat.Other()))
+	return true
+}
+
 // resyncLocked is the "fresh state" after a resync error (SPEC §2.12.3):
 // the current state, or responding while c's seat is the mover under a
 // hold, so a stray frame can't open the hold early.
@@ -153,7 +170,9 @@ type play struct {
 	tune    playTuning
 	// holdMin is the counter hold's minimum (Config.RespondMin).
 	holdMin time.Duration
-	closed  atomic.Bool
+	// Socket caps (Config.MaxSockets, Config.MaxSocketsPerClient).
+	maxSockets, maxSocketsPerClient int
+	closed                          atomic.Bool
 }
 
 func newPlay(cfg Config, log *slog.Logger, rooms *Rooms) *play {
@@ -162,9 +181,16 @@ func newPlay(cfg Config, log *slog.Logger, rooms *Rooms) *play {
 	if hold <= 0 {
 		hold = DefaultRespondMin
 	}
+	maxSocks, perClient := cfg.MaxSockets, cfg.MaxSocketsPerClient
+	if maxSocks <= 0 {
+		maxSocks = DefaultMaxSockets
+	}
+	if perClient <= 0 {
+		perClient = DefaultMaxSocketsPerClient
+	}
 	return &play{rooms: rooms, log: log, origins: NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev),
 		trusted: newTrustedSet(cfg.TrustedProxies), failed: newLimiter(tune.failedHelloPerHour, rooms.now),
-		tune: tune, holdMin: hold}
+		tune: tune, holdMin: hold, maxSockets: maxSocks, maxSocketsPerClient: perClient}
 }
 
 // registerLocked binds c to its seat in r and answers the hello: welcome,
@@ -185,7 +211,9 @@ func (p *play) registerLocked(r *room, c *conn) error {
 	if r.sess != nil {
 		resyncLocked(r, c)
 	}
-	if by, ok := lv.pendingRematch(r); ok {
+	// A held mover hears a pending rematch only when its hold ends (a
+	// request implies the game is over).
+	if by, ok := lv.pendingRematch(r); ok && !heldLocked(r, c) {
 		c.enqueue(newRematchFrame(by))
 	}
 	if oc := lv.conns[c.seat.Other()]; oc != nil && old == nil {
@@ -239,6 +267,8 @@ func (p *play) closeAll() {
 		r.live.closeLocked(nil)
 		r.mu.Unlock()
 	}
+	// Sockets not bound to a room yet (before or during hello) too.
+	p.rooms.sockets.killAll()
 }
 
 // storeCtx bounds one frame's store work. It is not the socket's context:
@@ -276,6 +306,9 @@ func (p *play) inRoom(c *conn, fn func(ctx context.Context, r *room)) {
 // Save → send, all under the room lock.
 func (p *play) move(c *conn, gameNo, seq, index int) {
 	p.inRoom(c, func(ctx context.Context, r *room) {
+		if refuseHeldLocked(r, c) {
+			return
+		}
 		if r.sess == nil {
 			c.enqueue(newErrorFrame(CodeBadRequest, &seq))
 			return
@@ -427,6 +460,10 @@ func (p *play) checkHoldsLocked(r *room, now time.Time) {
 		h.clear()
 		if c := r.live.conns[seat]; c != nil {
 			sendStateLocked(r, c)
+			// A request made while this seat was held reaches it now.
+			if by, ok := r.live.pendingRematch(r); ok {
+				c.enqueue(newRematchFrame(by))
+			}
 		}
 	}
 }
@@ -436,6 +473,9 @@ func (p *play) checkHoldsLocked(r *room, now time.Time) {
 // second seat's request deals the next game with the other dealer.
 func (p *play) rematch(c *conn, gameNo int) {
 	p.inRoom(c, func(ctx context.Context, r *room) {
+		if refuseHeldLocked(r, c) {
+			return
+		}
 		if r.sess == nil {
 			c.enqueue(newErrorFrame(CodeBadRequest, nil))
 			return
@@ -467,8 +507,9 @@ func (p *play) rematch(c *conn, gameNo int) {
 			p.log.Info("rematch dealt", "code", r.code, "game", r.meta.Game)
 		default:
 			lv.rematch[c.seat] = true
-			for _, oc := range lv.conns {
-				if oc != nil {
+			// A held seat hears it when its hold ends (checkHoldsLocked).
+			for s, oc := range lv.conns {
+				if oc != nil && !lv.holds[s].active {
 					oc.enqueue(newRematchFrame(c.seat))
 				}
 			}

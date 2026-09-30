@@ -150,9 +150,10 @@ func TestWS_FailedHelloLimitCountsOnlyGuesses(t *testing.T) {
 	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess1"}, "UNAUTHORIZED")
 	try(map[string]any{"t": "hello", "v": 1, "code": "ZZZZ", "token": "guess2"}, "ROOM_GONE")
 	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess3"}, "UNAUTHORIZED")
-	// Over the limit: even a right token is refused before it is checked.
-	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": c1.Token}, "RATE_LIMITED")
+	// Over the limit: guesses get no verdict, but a right token still works.
+	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": c1.Token}, "welcome")
 	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess4"}, "RATE_LIMITED")
+	try(map[string]any{"t": "hello", "v": 1, "code": "ZZZZ", "token": "guess5"}, "RATE_LIMITED")
 	// A wrong version is still answered as such: it isn't a guess.
 	try(map[string]any{"t": "hello", "v": 9, "code": c0.Code, "token": "x"}, "UPGRADE_REQUIRED")
 }

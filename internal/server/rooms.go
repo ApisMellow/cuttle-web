@@ -70,6 +70,10 @@ type Rooms struct {
 	// taking Rooms.mu (drop), never the reverse.
 	mu    sync.Mutex
 	rooms map[string]*room
+
+	// sockets tracks the running play handlers (ws.go): the socket caps
+	// and WaitSockets.
+	sockets socketTracker
 }
 
 // room is one cached room. Every field is guarded by mu.
@@ -364,25 +368,30 @@ func (m *Rooms) withRoom(ctx context.Context, rawCode string, fn func(*room) err
 			m.rooms[code] = r
 		}
 		m.mu.Unlock()
-
-		r.mu.Lock()
-		if r.gone {
-			r.mu.Unlock()
-			continue
+		if retry, err := m.runLocked(ctx, r, fn); !retry {
+			return err
 		}
-		if !r.loaded {
-			if err := m.loadLocked(ctx, r); err != nil {
-				// Keep nothing half-loaded; the next call starts fresh.
-				m.dropLocked(r)
-				r.mu.Unlock()
-				return err
-			}
-		}
-		r.lastUsed = m.now()
-		err := fn(r)
-		r.mu.Unlock()
-		return err
 	}
+}
+
+// runLocked is one withRoom attempt: it locks r (released by defer, so a
+// panicking fn can't wedge the room), loads it if needed and runs fn.
+// retry reports that r was dropped before the lock was won.
+func (m *Rooms) runLocked(ctx context.Context, r *room, fn func(*room) error) (retry bool, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.gone {
+		return true, nil
+	}
+	if !r.loaded {
+		if err := m.loadLocked(ctx, r); err != nil {
+			// Keep nothing half-loaded; the next call starts fresh.
+			m.dropLocked(r)
+			return false, err
+		}
+	}
+	r.lastUsed = m.now()
+	return false, fn(r)
 }
 
 // dropLocked removes r from the map. r.mu must be held.
@@ -396,6 +405,12 @@ func (m *Rooms) dropLocked(r *room) {
 	}
 	m.mu.Unlock()
 }
+
+// WaitSockets waits up to timeout for every play socket handler to
+// finish and reports whether they all did. net/http's Shutdown doesn't
+// wait for hijacked (WebSocket) connections, so the caller runs this after
+// it and before closing the store the handlers use.
+func (m *Rooms) WaitSockets(timeout time.Duration) bool { return m.sockets.wait(timeout) }
 
 // Count is the number of stored rooms; it doubles as the health check's
 // database query.

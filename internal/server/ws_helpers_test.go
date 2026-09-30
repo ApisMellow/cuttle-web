@@ -43,6 +43,7 @@ type playEnv struct {
 	st     *store.SQLite
 	fs     *flakyStore
 	rooms  *Rooms
+	play   *play
 	cancel context.CancelFunc // ends the handler's context: closes every socket
 	srv    *httptest.Server
 	logs   *syncBuffer
@@ -84,8 +85,8 @@ func newPlayEnv(t *testing.T, o playOpts) *playEnv {
 		o.cfg(&cfg)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	h := Handler(ctx, cfg, BuildInfo{}, log, rooms)
-	e := &playEnv{t: t, clk: clk, dbPath: path, st: st, fs: fs, rooms: rooms, cancel: cancel,
+	h, p := newHandler(ctx, cfg, BuildInfo{}, log, rooms)
+	e := &playEnv{t: t, clk: clk, dbPath: path, st: st, fs: fs, rooms: rooms, play: p, cancel: cancel,
 		srv: httptest.NewServer(h), logs: logs, cfg: cfg}
 	t.Cleanup(e.stop)
 	return e

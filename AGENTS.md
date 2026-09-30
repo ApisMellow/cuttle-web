@@ -360,10 +360,17 @@ that makes your list complete.
   not a window opened) the mover gets `responding`, and gets the
   *current* state only once the engine isn't waiting on the other seat's
   counter decision AND `RespondMin` (`-respond-min-ms`,
-  `CUTTLE_RESPOND_MIN_MS`, 1500) has passed. Both seats can be held at
-  once (a counter holds the counterer). Any resync (a hello, or an error
-  followed by state) answers `responding` while held. Holds and rematch
-  requests are memory only; a timer checks `gen` so a stale one is a
+  `CUTTLE_RESPOND_MIN_MS`, 1500, 1–60000) has passed. Both seats can be
+  held at once (a counter holds the counterer). Any resync (a hello, or
+  an error followed by state) answers `responding` while held. **A held
+  mover learns nothing from its own frames:** every `move` or `rematch`
+  from it gets the fixed `error STALE` (no `seq` echo) plus `responding`,
+  without touching `Apply` or the rematch requests (`refuseHeldLocked`),
+  so the bytes are the same whether or not the answer is in or the game
+  ended. Its `welcome` says `playing` (never `over`), and a rematch
+  request is neither broadcast nor replayed to it until the hold releases
+  (`checkHoldsLocked` then sends state, then the pending request). Holds
+  and rematch requests are memory only; a timer checks `gen` so a stale one is a
   no-op; drop, deal and shutdown stop them.
 - **Room lifetime:** `Sweep` never memory-drops a room with a live
   socket; a room the store expired gets `ROOM_GONE` then close. `Handler`'s
@@ -373,9 +380,24 @@ that makes your list complete.
   45 s, frames ≤ 1 KB (1009), 10 frames/s burst 20 per socket (one
   `RATE_LIMITED` per second; 5 s of denials with no second's break closes),
   failed hellos 30/h per client counting only `UNAUTHORIZED` and
-  `ROOM_GONE`, checked with `limiter.exhausted` (no spend) before the
-  token is looked at. Tests shorten these through `Config.tune`.
-- **Tests** (`ws_test.go`, `ws_helpers_test.go`) use a real httptest
+  `ROOM_GONE`. Each hello `reserve`s a token under the limiter lock
+  *before* `Authenticate` and `refund`s it unless the hello failed as a
+  guess, so N parallel guesses spend N tokens and only the budget's worth
+  get a verdict. Auth is always checked: an exhausted client's guesses
+  get `RATE_LIMITED` (no verdict), but a valid token still gets in. Tests
+  shorten these through `Config.tune`.
+- **Socket caps:** `-max-sockets` / `CUTTLE_MAX_SOCKETS` (500) in total
+  and `-max-sockets-per-client` / `CUTTLE_MAX_SOCKETS_PER_CLIENT` (8) per
+  `identify()` key. Over either, the upgrade is refused with `503
+  SERVER_FULL` + `Retry-After: 30` before any goroutine exists.
+  `Rooms.sockets` (`socketTracker`) counts running play handlers; a
+  handler frees its slot only after its writer goroutine has exited.
+- **Shutdown:** `http.Server.Shutdown` doesn't wait for hijacked sockets.
+  `closeAll` kills bound *and* not-yet-bound sockets, and `main` calls
+  `rooms.WaitSockets(5s)` after `Run` and before the store closes.
+- **`withRoom` unlocks by `defer`** (`runLocked`), so a panicking callback
+  can't wedge the room.
+- **Tests** (`ws_test.go`, `ws_hold_limits_test.go`, `ws_helpers_test.go`) use a real httptest
   server, a file store and real sockets. The `duo` driver replays every
   move on a local `Session` and checks each state frame equals that
   seat's own `View` at that seq and carries no hidden card outside

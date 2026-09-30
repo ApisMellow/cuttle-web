@@ -229,27 +229,91 @@ func (b *frameBucket) take(now time.Time, limit time.Duration) (ok, notify, over
 	return false, notify, now.Sub(b.limitedSince) >= limit
 }
 
-// exhausted reports, without spending, whether c has no token left: its
-// own bucket or its IPv6 group is empty. It creates no bucket.
-func (l *limiter) exhausted(c clientID) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := l.now()
-	for _, look := range []struct {
-		m   map[string]*bucket
-		key string
-	}{{l.groups, c.group}, {l.keys, c.key}} {
-		if look.key == "" {
-			continue
-		}
-		if b := look.m[look.key]; b != nil {
-			l.refill(b, now)
-			if b.tokens < 1 {
-				return true
-			}
-		}
+// socketTracker counts the play handlers that are running (each one owns
+// a hijacked connection net/http no longer tracks), per client key and in
+// total, for the socket caps and for shutdown. The zero value is ready.
+type socketTracker struct {
+	mu     sync.Mutex
+	n      int
+	perKey map[string]int
+	conns  map[*conn]struct{}
+	idle   []chan struct{}
+}
+
+// acquire claims a slot for key unless the total or key's count is at its
+// cap.
+func (t *socketTracker) acquire(key string, max, maxPerKey int) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.n >= max || t.perKey[key] >= maxPerKey {
+		return false
 	}
-	return false
+	if t.perKey == nil {
+		t.perKey = map[string]int{}
+	}
+	t.n++
+	t.perKey[key]++
+	return true
+}
+
+// track records c so killAll can reach it before it is bound to a room.
+func (t *socketTracker) track(c *conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conns == nil {
+		t.conns = map[*conn]struct{}{}
+	}
+	t.conns[c] = struct{}{}
+}
+
+// release frees key's slot (and c's entry, if tracked) once its handler
+// is done with the socket.
+func (t *socketTracker) release(key string, c *conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.n--
+	if t.perKey[key]--; t.perKey[key] <= 0 {
+		delete(t.perKey, key)
+	}
+	if c != nil {
+		delete(t.conns, c)
+	}
+	if t.n == 0 {
+		for _, ch := range t.idle {
+			close(ch)
+		}
+		t.idle = nil
+	}
+}
+
+// killAll drops every tracked socket (bare close), bound or not.
+func (t *socketTracker) killAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for c := range t.conns {
+		c.kill()
+	}
+}
+
+// wait blocks until no handler is running or timeout passes, and reports
+// whether none is.
+func (t *socketTracker) wait(timeout time.Duration) bool {
+	t.mu.Lock()
+	if t.n == 0 {
+		t.mu.Unlock()
+		return true
+	}
+	ch := make(chan struct{})
+	t.idle = append(t.idle, ch)
+	t.mu.Unlock()
+	tm := time.NewTimer(timeout)
+	defer tm.Stop()
+	select {
+	case <-ch:
+		return true
+	case <-tm.C:
+		return false
+	}
 }
 
 // handle upgrades GET /api/play. The Origin must be allowed (CORS has
@@ -266,6 +330,17 @@ func (p *play) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := identify(r, p.trusted)
+	// Socket caps: over either one the upgrade is refused before any
+	// goroutine or socket exists. The client key is not logged.
+	socks := &p.rooms.sockets
+	if !socks.acquire(client.key, p.maxSockets, p.maxSocketsPerClient) {
+		p.log.Warn("socket cap reached; upgrade refused")
+		w.Header().Set("Retry-After", "30")
+		writeError(w, http.StatusServiceUnavailable, CodeServerFull, "too many connections; try again later")
+		return
+	}
+	var c *conn
+	defer func() { socks.release(client.key, c) }()
 	// The Origin was checked above against the exact policy, so the
 	// library's own same-host check is skipped.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true,
@@ -274,7 +349,13 @@ func (p *play) handle(w http.ResponseWriter, r *http.Request) {
 		return // Accept has answered the request
 	}
 	ws.SetReadLimit(maxFrameBytes)
-	c := newConn(ws, "", 0, p.tune, p.log)
+	c = newConn(ws, "", 0, p.tune, p.log)
+	socks.track(c)
+	// closeAll sets closed before it kills the tracked sockets, so a
+	// socket tracked after that sweep sees closed here.
+	if p.closed.Load() {
+		c.kill()
+	}
 	go c.writeLoop()
 	p.serve(c, ws, client)
 }
@@ -358,18 +439,24 @@ func (p *play) hello(c *conn, typ websocket.MessageType, data []byte, client cli
 	if *f.V != protocolVersion {
 		return refuse(CodeUpgradeRequired, "version")
 	}
-	if p.failed.exhausted(client) {
-		return refuse(CodeRateLimited, "failed-hello limit")
-	}
+	// A token is reserved before the lookup and refunded unless the hello
+	// fails as a guess, so parallel guesses can't all slip past one check.
+	// The token is always looked at: an exhausted budget refuses only the
+	// guesses (with no verdict), never a seat's real token.
+	res, reserved := p.failed.reserve(client)
 	ctx, cancel := storeCtx()
 	defer cancel()
 	seat, err := p.rooms.st.Authenticate(ctx, *f.Code, *f.Token)
+	guess := errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrUnauthorized)
+	if reserved && !guess {
+		p.failed.refund(res)
+	}
 	switch {
+	case guess && !reserved:
+		return refuse(CodeRateLimited, "failed-hello limit")
 	case errors.Is(err, store.ErrNotFound):
-		p.failed.allow(client)
 		return refuse(CodeRoomGone, "room gone")
 	case errors.Is(err, store.ErrUnauthorized):
-		p.failed.allow(client)
 		return refuse(CodeUnauthorized, "bad token")
 	case err != nil:
 		p.log.Error("hello: authenticate failed", "err", err)

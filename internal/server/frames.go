@@ -112,7 +112,7 @@ const (
 
 // newWelcomeFrame describes r to seat. r.mu must be held.
 func newWelcomeFrame(r *room, seat game.Seat) welcomeFrame {
-	f := welcomeFrame{T: "welcome", Seat: int(seat), Status: roomStatusLocked(r)}
+	f := welcomeFrame{T: "welcome", Seat: int(seat), Status: roomStatusLocked(r, seat)}
 	n0 := r.meta.Names[0]
 	f.Names[0] = &n0
 	if r.meta.Joined {
@@ -122,12 +122,16 @@ func newWelcomeFrame(r *room, seat game.Seat) welcomeFrame {
 	return f
 }
 
-// roomStatusLocked is welcome's status: waiting before the join, over while
-// a finished game waits for a rematch, else playing.
-func roomStatusLocked(r *room) string {
+// roomStatusLocked is welcome's status for seat: waiting before the join,
+// over while a finished game waits for a rematch, else playing. A seat
+// that is the mover under a hold is told playing: over would reveal the
+// withheld outcome (SPEC §2.12.5).
+func roomStatusLocked(r *room, seat game.Seat) string {
 	switch {
 	case !r.meta.Joined:
 		return statusWaiting
+	case r.live.holds[seat].active:
+		return statusPlaying
 	case r.sess != nil:
 		if st, err := r.sess.Status(); err == nil && st.Over {
 			return statusOver
