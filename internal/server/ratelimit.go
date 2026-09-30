@@ -90,6 +90,40 @@ func newLimiter(n int, now func() time.Time) *limiter {
 func (l *limiter) allow(c clientID) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	_, wait, ok := l.takeLocked(c)
+	return ok, wait
+}
+
+// reservation is a token taken by reserve, for refund to give back.
+type reservation struct {
+	own, group *bucket // group is nil for IPv4, or when it is own (overflow)
+}
+
+// reserve takes one token for c like allow, remembering where it came
+// from so refund can return it. Taking before the outcome is known, and
+// under the lock, is what caps concurrent attempts at the budget.
+func (l *limiter) reserve(c clientID) (reservation, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	res, _, ok := l.takeLocked(c)
+	return res, ok
+}
+
+// refund returns a reserve'd token (the attempt turned out not to count).
+// A bucket pruned in between is simply forgotten: a new one starts full.
+func (l *limiter) refund(res reservation) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, b := range []*bucket{res.own, res.group} {
+		if b != nil {
+			b.tokens = math.Min(b.rate.burst, b.tokens+1)
+		}
+	}
+}
+
+// takeLocked spends one token from c's group (IPv6) and own bucket, or
+// reports the wait. l.mu must be held.
+func (l *limiter) takeLocked(c clientID) (reservation, time.Duration, bool) {
 	now := l.now()
 	var g *bucket
 	if c.group != "" {
@@ -98,19 +132,21 @@ func (l *limiter) allow(c clientID) (bool, time.Duration) {
 		// A throttled group creates no per-client bucket: cycling /64s
 		// inside one /48 can't grow the client table.
 		if g.tokens < 1 {
-			return false, l.wait(g)
+			return reservation{}, l.wait(g), false
 		}
 	}
 	b := l.lookup(l.keys, c.key, &l.client, now)
 	l.refill(b, now)
 	if b.tokens < 1 {
-		return false, l.wait(b)
+		return reservation{}, l.wait(b), false
 	}
 	b.tokens--
+	res := reservation{own: b}
 	if g != nil && g != b {
 		g.tokens--
+		res.group = g
 	}
-	return true, 0
+	return res, 0, true
 }
 
 // lookup returns key's bucket in m, making it if the table has room, or

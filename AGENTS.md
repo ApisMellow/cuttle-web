@@ -324,6 +324,86 @@ that makes your list complete.
   `ErrorLog` so net/http's own "panic serving" line is replaced by a
   fixed one.
 
+### WebSocket play (two-phone W6 + W7)
+
+- **`GET /api/play`** (`ws.go`, `play.go`, `frames.go`; library
+  `github.com/coder/websocket` v1.8.15, which declares `go 1.23`, so the
+  toolchain pin is untouched). SPEC §2.12 is the contract; this is how
+  the code keeps it.
+- **Origin** is checked with `OriginPolicy` before `websocket.Accept`
+  (403, no upgrade); a missing Origin is refused too. `Accept` runs with
+  `InsecureSkipVerify` only because that check already happened.
+- **Goroutines per socket:** the net/http handler goroutine reads (hello,
+  then frames); one writer goroutine drains `conn.out`. Hold timers are
+  `time.AfterFunc` callbacks. Nothing else.
+- **Never write to a socket under a lock.** Room code calls
+  `conn.enqueue`, which never blocks: a full queue (`sendBuffer`, 32)
+  kills the connection as a slow consumer. `conn.terminal` queues a last
+  frame and a close. `conn.kill` closes `dead` and cancels the conn's
+  context, which aborts in-flight reads and writes.
+- **The seat comes from `store.Authenticate` at hello** and is fixed on
+  the conn; no frame is read for a seat. One socket per seat: a newer
+  hello replaces the old one (`REPLACED`, then close), with no presence
+  flicker. A conn found no longer bound to its seat is killed
+  (`errDetached`).
+- **Send path privacy:** `enqueue` takes the sealed `frame` interface. The
+  only game-data field is `stateFrame.Envelope game.ClientSafe`, filled
+  from `Update.For(seat)` or `Session.View(seat)`.
+  `TestWS_FramesCarryOnlyClientSafeData` pins every frame field's type.
+  Logs carry code, seat, seq and event: never a token, name or envelope.
+- **Moves** run `Rooms.moveLocked` (Apply → Save, reload on failure) and
+  the fan-out in one room-lock section. A failed save answers `INTERNAL`
+  plus the reloaded state; if the reload fails, the room is dropped and
+  both sockets close bare.
+- **The counter hold** (`hold`, `checkHoldsLocked`): after a counterable
+  move (OneOff, Counter, SevenPick whose SubMove is a OneOff, whether or
+  not a window opened) the mover gets `responding`, and gets the
+  *current* state only once the engine isn't waiting on the other seat's
+  counter decision AND `RespondMin` (`-respond-min-ms`,
+  `CUTTLE_RESPOND_MIN_MS`, 1500, 1–60000) has passed. Both seats can be
+  held at once (a counter holds the counterer). Any resync (a hello, or
+  an error followed by state) answers `responding` while held. **A held
+  mover learns nothing from its own frames:** every well-formed `move` or `rematch`
+  from it gets the fixed `error STALE` (no `seq` echo) plus `responding`,
+  without touching `Apply` or the rematch requests (`refuseHeldLocked`),
+  so the bytes are the same whether or not the answer is in or the game
+  ended. Its `welcome` says `playing` (never `over`), and a rematch
+  request is neither broadcast nor replayed to it until the hold releases
+  (`checkHoldsLocked` then sends state, then the pending request). Holds
+  and rematch requests are memory only; a timer checks `gen` so a stale one is a
+  no-op; drop, deal and shutdown stop them.
+- **Room lifetime:** `Sweep` never memory-drops a room with a live
+  socket; a room the store expired gets `ROOM_GONE` then close. `Handler`'s
+  ctx ending closes every socket bare (`play.closeAll`) and refuses new
+  upgrades with 503.
+- **Limits** (`playTuning`, zero = SPEC §2.12.6): hello within 10 s, idle
+  45 s, frames ≤ 1 KB (1009), 10 frames/s burst 20 per socket (one
+  `RATE_LIMITED` per second; 5 s of denials with no second's break closes),
+  failed hellos 30/h per client counting only `UNAUTHORIZED` and
+  `ROOM_GONE`. Each hello `reserve`s a token under the limiter lock
+  *before* `Authenticate` and `refund`s it unless the hello failed as a
+  guess, so N parallel guesses spend N tokens and only the budget's worth
+  get a verdict. Auth is always checked: an exhausted client's guesses
+  get `RATE_LIMITED` (no verdict), but a valid token still gets in. Tests
+  shorten these through `Config.tune`.
+- **Socket caps:** `-max-sockets` / `CUTTLE_MAX_SOCKETS` (500) in total
+  and `-max-sockets-per-client` / `CUTTLE_MAX_SOCKETS_PER_CLIENT` (8) per
+  `identify()` key. Over either, the upgrade is refused with `503
+  SERVER_FULL` + `Retry-After: 30` before any goroutine exists.
+  `Rooms.sockets` (`socketTracker`) counts running play handlers; a
+  handler frees its slot only after its writer goroutine has exited.
+- **Shutdown:** `http.Server.Shutdown` doesn't wait for hijacked sockets.
+  `closeAll` kills bound *and* not-yet-bound sockets, and `main` calls
+  `rooms.WaitSockets(5s)` after `Run` and before the store closes.
+- **`withRoom` unlocks by `defer`** (`runLocked`), so a panicking callback
+  can't wedge the room.
+- **Tests** (`ws_test.go`, `ws_hold_limits_test.go`, `ws_helpers_test.go`) use a real httptest
+  server, a file store and real sockets. The `duo` driver replays every
+  move on a local `Session` and checks each state frame equals that
+  seat's own `View` at that seq and carries no hidden card outside
+  history. It plays at machine speed, so the harness raises the frame
+  rate; `TestWS_FrameRateLimit` pins the SPEC rate.
+
 ### Online client connection (two-phone W11)
 
 - `web/src/lib/online/` is framework-light TypeScript with no Svelte and no

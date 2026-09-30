@@ -44,6 +44,15 @@ type flakyStore struct {
 	store.Store
 	failSaves atomic.Int32
 	saves     atomic.Int32
+	// authGate, when set, runs at the start of every Authenticate.
+	authGate atomic.Pointer[func()]
+}
+
+func (f *flakyStore) Authenticate(ctx context.Context, code, token string) (store.Seat, error) {
+	if g := f.authGate.Load(); g != nil {
+		(*g)()
+	}
+	return f.Store.Authenticate(ctx, code, token)
 }
 
 var errInjected = errors.New("injected save failure")
