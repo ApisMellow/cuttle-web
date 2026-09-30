@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ApisMellow/cuttle-web/internal/store"
 )
 
 const prodOrigin = "https://apismellow.github.io"
@@ -22,7 +24,13 @@ func testHandler(t *testing.T, dev bool) (http.Handler, *bytes.Buffer) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&buf, nil))
 	cfg := Config{Addr: DefaultAddr, AllowedOrigins: []string{prodOrigin}, Dev: dev}
-	return Handler(cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, log), &buf
+	st, err := store.OpenMemory(store.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	rooms := NewRooms(st, RoomsOptions{Log: log})
+	return Handler(t.Context(), cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, log, rooms), &buf
 }
 
 func do(h http.Handler, method, target string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -44,11 +52,11 @@ func TestHealthz(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("content-type %q", ct)
 	}
-	var got map[string]string
+	var got map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["status"] != "ok" || got["version"] != "v1.2.3" || got["commit"] != "abc1234" {
+	if got["status"] != "ok" || got["version"] != "v1.2.3" || got["commit"] != "abc1234" || got["rooms"] != float64(0) {
 		t.Errorf("body %v", got)
 	}
 }
@@ -152,7 +160,7 @@ func TestDevFlagAllowsLocalOrigins(t *testing.T) {
 		}
 	}
 	for _, o := range []string{
-		"https://localhost:5173",       // https not admitted
+		"https://localhost:5173",        // https not admitted
 		"http://localhost.evil.example", // suffix trick
 		"http://evil.example:5173",
 		"http://127.0.0.1.evil.example",
@@ -244,7 +252,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := NewHTTPServer(Config{Addr: ln.Addr().String()}, h)
+	srv := NewHTTPServer(Config{Addr: ln.Addr().String()}, h, slog.New(slog.DiscardHandler))
 	if srv.ReadHeaderTimeout == 0 || srv.MaxHeaderBytes == 0 || srv.WriteTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Errorf("missing limits: %+v", srv)
 	}
