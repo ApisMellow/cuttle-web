@@ -2,7 +2,7 @@
   // Two-phone play, host side, step 1: your name, then a room.
   import { onMount } from 'svelte';
 
-  import { ERROR_TEXT, type OnlineActions, type OnlineErrorCode } from '../online/actions';
+  import { ERROR_TEXT, replaceSeatQuestion, type OnlineActions, type OnlineErrorCode } from '../online/actions';
   import { settings } from '../stores/settings.svelte';
 
   interface Props {
@@ -16,6 +16,8 @@
   let name = $state(remembered === 'Player 1' ? '' : remembered);
   let busy = $state(false);
   let error = $state<string | null>(null);
+  /** Review F3: the create waiting on "Leave it", while a saved seat would be replaced. */
+  let replacing = $state<{ question: string; name: string } | null>(null);
   let nameInput: HTMLInputElement | undefined;
 
   onMount(() => nameInput?.focus());
@@ -28,12 +30,30 @@
       error = 'Enter your name first.';
       return;
     }
-    busy = true;
     error = null;
+    // Review F3: one online game per phone; ask before replacing the saved one.
+    const saved = actions.savedSeat();
+    if (saved !== null) {
+      replacing = { question: replaceSeatQuestion(saved, 'create'), name: trimmed };
+      return;
+    }
+    await create(trimmed);
+  }
+
+  async function create(trimmed: string): Promise<void> {
+    busy = true;
     const result = await actions.createRoom(trimmed);
     busy = false;
     if (result.ok) onCreated(result.value.code);
     else error = ERROR_TEXT[result.error as OnlineErrorCode];
+  }
+
+  async function leaveAndCreate(): Promise<void> {
+    const pending = replacing;
+    if (pending === null || busy) return;
+    replacing = null;
+    actions.leaveSavedSeat();
+    await create(pending.name);
   }
 </script>
 
@@ -58,10 +78,22 @@
     <p class="ol-error" role="alert" data-testid="online-error">{error}</p>
   {/if}
 
-  <div class="ol-actions">
-    <button type="submit" class="ol-button ol-button--primary" data-testid="create-room" disabled={busy}>
-      {busy ? 'Creating…' : 'Create room'}
-    </button>
-    <button type="button" class="ol-button" data-testid="online-back" onclick={onBack}>Back</button>
-  </div>
+  {#if replacing}
+    <div class="ol-confirm" role="alertdialog" aria-labelledby="create-replace-question">
+      <p id="create-replace-question">{replacing.question}</p>
+      <div class="ol-actions">
+        <button type="button" class="ol-button ol-button--primary" data-testid="replace-seat-leave" onclick={leaveAndCreate}>
+          Leave it
+        </button>
+        <button type="button" class="ol-button" data-testid="replace-seat-keep" onclick={onBack}>Keep my game</button>
+      </div>
+    </div>
+  {:else}
+    <div class="ol-actions">
+      <button type="submit" class="ol-button ol-button--primary" data-testid="create-room" disabled={busy}>
+        {busy ? 'Creating…' : 'Create room'}
+      </button>
+      <button type="button" class="ol-button" data-testid="online-back" onclick={onBack}>Back</button>
+    </div>
+  {/if}
 </form>

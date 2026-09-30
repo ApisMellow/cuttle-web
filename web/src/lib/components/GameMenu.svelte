@@ -5,7 +5,8 @@
   // sheet the panel can open.
   //
   // Items: Rules, Card style (only when there is more than one), Home, New
-  // game (behind a confirm that names the game), Close.
+  // game (behind a confirm that names the game; not offered online, where
+  // the result screen's Rematch is the only new game), Close.
   //
   // Privacy: the panel renders no game state, only the players' names, and
   // those only in the New game confirm. It reads the settings store and
@@ -32,9 +33,11 @@
     onclose: () => void;
     onhome: () => void;
     onnewgame: () => void;
+    /** Review F5: false hides New game (online mid-game, where it can't do anything). */
+    newGame?: boolean;
   }
 
-  let { open, anchor = 'column', names, onclose, onhome, onnewgame }: GameMenuProps = $props();
+  let { open, anchor = 'column', names, onclose, onhome, onnewgame, newGame = true }: GameMenuProps = $props();
 
   let rulesOpen = $state(false);
   let confirming = $state(false);
@@ -157,9 +160,11 @@
       {/if}
 
       <button type="button" class="game-menu__item" data-testid="menu-home" onclick={onhome}>Home</button>
-      <button type="button" class="game-menu__item" data-testid="menu-new-game" onclick={() => (confirming = true)}>
-        New game
-      </button>
+      {#if newGame}
+        <button type="button" class="game-menu__item" data-testid="menu-new-game" onclick={() => (confirming = true)}>
+          New game
+        </button>
+      {/if}
       <button type="button" class="game-menu__item game-menu__item--quiet" data-testid="menu-close" onclick={close}>
         Close
       </button>

@@ -26,7 +26,42 @@ import type { AppliedMove, Envelope, PlayerId } from '../bridge/schema';
 import type { DrawReveal } from '../drawReveal';
 import type { CurtainState } from './curtain.svelte';
 
+/**
+ * Two-phone W12: `apply` rejects with this when it sent nothing (the
+ * connection is down). The staged move is still wanted, so the staging
+ * pipeline goes back to `staged` instead of clearing (plan §7: "Staging
+ * survives a failed send"). Its message is fixed text.
+ */
+export class MoveNotSent extends Error {
+  constructor() {
+    super('The move was not sent: no connection to the game server.');
+    this.name = 'MoveNotSent';
+  }
+}
+
+/**
+ * Two-phone W12: what an online source adds for the board. Absent (the
+ * local store) means pass-and-play: session names, table mode, no status.
+ * Every string here is public room data or fixed text, never card data.
+ */
+export interface OnlineTableInfo {
+  /** Seat names, by seat, from the server's `welcome`. */
+  readonly names: [string, string];
+  /** The connection status line ("Reconnecting…", "You're offline…"), or null when all is well. */
+  readonly statusText: string | null;
+  /** The button that goes with the status line ("Tap to reconnect", "Play here"), or null. */
+  readonly statusAction: string | null;
+  /** Name of the seat answering a counterable move while this seat waits (the hold, SPEC §2.12.5), or null. */
+  readonly respondingName: string | null;
+  /** A one-line notice about the last move or error ("Your move wasn't sent…"), or null. */
+  readonly notice: string | null;
+  /** The status line's button: `retry()` on the connection. */
+  runStatusAction(): void;
+}
+
 export interface TableSource {
+  /** Two-phone W12: set only by an online source. */
+  readonly online?: OnlineTableInfo | null;
   /** The only full view in memory; null whenever nobody's view is safe to show. */
   readonly envelope: Envelope | null;
   /**
@@ -37,9 +72,20 @@ export interface TableSource {
   readonly history: readonly AppliedMove[];
   /** History length of the position on show. A change resets staging. */
   readonly seq: number;
+  /**
+   * Two-phone W12: the room's game number (1, 2, … across rematches), set
+   * only by an online source. With `seq` it names the position; a change
+   * resets staging.
+   */
+  readonly game?: number;
   /** Whose view `envelope` holds, or null. */
   readonly viewer: PlayerId | null;
-  /** The pass-and-play curtain. A source with no curtain reports `none` (or `result` at game over). */
+  /**
+   * The pass-and-play curtain. A source with no curtain reports `none` (or
+   * `result` at game over). The online store also reports `ack` for its own
+   * counter window, so GameScreen mounts the counter prompt (W12): the
+   * envelope stays exposed there, exactly as the local store's at `ack`.
+   */
   readonly curtain: CurtainState;
   /** SPEC §4.7 draw reveal (hand indices only), or null. */
   readonly drawReveal: DrawReveal | null;
