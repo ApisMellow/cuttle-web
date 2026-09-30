@@ -7,7 +7,7 @@
 // `settle: 'on-state'` the promise itself waits for `respond()` or `fail()`.
 // `push()` is an unrequested "opponent moved" state.
 
-import type { AppliedMove, EngineError, Envelope, PlayerId } from '../../src/lib/bridge/schema';
+import type { AppliedMove, Envelope, PlayerId } from '../../src/lib/bridge/schema';
 import type { DrawReveal } from '../../src/lib/drawReveal';
 import type { CurtainState } from '../../src/lib/stores/curtain.svelte';
 import type { TableSource } from '../../src/lib/stores/tableSource';
@@ -19,7 +19,6 @@ export class FakeTableSource implements TableSource {
   viewer = $state<PlayerId | null>(null);
   curtain = $state<CurtainState>({ kind: 'none' });
   drawReveal = $state<DrawReveal | null>(null);
-  error = $state<EngineError | null>(null);
   pending = $state(false);
 
   /** Every index passed to apply, in order. */

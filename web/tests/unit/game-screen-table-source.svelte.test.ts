@@ -213,6 +213,92 @@ describe('W10: pending apply', () => {
   });
 });
 
+describe('W10: pending and Pass, the counter prompt, the recap history', () => {
+  function passOnly(): Envelope {
+    return envelope({
+      state: aliceView({ you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
+      legalMoves: [mv({ Kind: Kind.Pass })],
+      descriptions: ['pass'],
+    });
+  }
+
+  function counterWindow(): FakeTableSource {
+    const source = sourceAt(
+      envelope({
+        state: aliceView({ active: 0, phase: Phase.AwaitingCounter, you: { hand: [TWO], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
+        legalMoves: [mv({ Kind: Kind.Counter, HandIndex: 0, Card: TWO }), mv({ Kind: Kind.Decline })],
+        descriptions: ['counter with two', 'decline'],
+        history: [appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: FOUR, description: 'play 4♣ as one-off' })],
+      }),
+    );
+    source.curtain = { kind: 'ack', to: 0 };
+    return source;
+  }
+
+  it('Pass stages when idle', async () => {
+    render(sourceAt(passOnly()));
+    await click('pass');
+    expect(q('staging-confirm')).not.toBeNull();
+  });
+
+  it('Pass cannot be staged while the source is pending', async () => {
+    const source = sourceAt(passOnly());
+    source.pending = true;
+    render(source);
+    const pass = q('pass') as HTMLButtonElement;
+    expect(pass.disabled).toBe(true);
+    await click('pass');
+    expect(q('staging-confirm')).toBeNull();
+    expect(source.applied).toEqual([]);
+
+    source.pending = false;
+    await settle();
+    expect((q('pass') as HTMLButtonElement).disabled).toBe(false);
+    await click('pass');
+    expect(q('staging-confirm')).not.toBeNull();
+  });
+
+  it('the counter prompt buttons are disabled while the source is pending', async () => {
+    const source = counterWindow();
+    render(source);
+    expect((q('counter-resolve') as HTMLButtonElement).disabled).toBe(false);
+    expect((q('counter-option-0') as HTMLButtonElement).disabled).toBe(false);
+
+    source.pending = true;
+    await settle();
+    expect((q('counter-resolve') as HTMLButtonElement).disabled).toBe(true);
+    expect((q('counter-option-0') as HTMLButtonElement).disabled).toBe(true);
+
+    source.pending = false;
+    await settle();
+    expect((q('counter-resolve') as HTMLButtonElement).disabled).toBe(false);
+    expect((q('counter-option-0') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('a recap names an older one-off through the Curtain to RecapPanel history wiring', async () => {
+    // The recap shows only the Counter; the 4 it stops is older, so its name
+    // can only come from the history GameScreen hands Curtain.
+    const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: FOUR, description: 'play 4♣ as one-off' });
+    const counter = appliedMove({ by: 0, kind: Kind.Counter, seq: 2, card: TWO, description: 'counter with 2♣' });
+    const source = sourceAt(envelope({ state: aliceView({ active: 1 }), legalMoves: [], descriptions: [], history: [oneOff, counter] }));
+    source.curtain = { kind: 'recap', to: 1, entries: [counter] };
+    render(source);
+    expect(q('recap')).not.toBeNull();
+    expect(q('recap')?.textContent).toContain('to stop your 4♣');
+  });
+
+  it('uses the history the source gives as-is (the source owns redaction)', async () => {
+    // Contract (tableSource.ts): `history` arrives already redacted for the
+    // viewer. GameScreen neither filters nor rewrites it, so what the source
+    // hands over is exactly what the recap line reads.
+    const marker = appliedMove({ by: 1, kind: Kind.PlayPoint, seq: 1, card: SEVEN, description: 'play 7♦ as point card' });
+    const source = sourceAt(envelope({ state: aliceView(), history: [marker] }));
+    render(source);
+    expect(source.history).toEqual([marker]);
+    expect(host?.textContent).toContain(lastMoveLine([marker], 0, session.names));
+  });
+});
+
 describe('W10: pending blocks the 7 tray too', () => {
   // The 7's revealed cards call GameScreen's tap handler directly, not
   // through Board's inert wrapper, so this reaches the handler's own guard.

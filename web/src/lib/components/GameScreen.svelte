@@ -643,6 +643,8 @@
   }
 
   // R4.3: only after GameMenu's confirm, which names the game.
+  // TODO(W12): online, New game means leave/rematch; gate it while
+  // `source.pending`. Ungated for now (the local store is never pending).
   function menuNewGame(): void {
     menuOpen = false;
     source.newGame().catch(report);
@@ -710,6 +712,7 @@
       options={counterOptions}
       onresolve={resolveAck}
       oncounter={applyCounter}
+      disabled={source.pending}
       {theme}
     />
   {:else if board !== null}
@@ -783,7 +786,13 @@
           <span class="game-screen__hint-effect" data-card-label="effect">{hint.effect}</span>
         </p>
       {:else if staging.passAvailable}
-        <button type="button" class="game-screen__pass" data-testid="pass" onclick={fresh(() => staging.tap('pass'))}>
+        <button type="button" class="game-screen__pass" data-testid="pass"
+          disabled={boardInert}
+          onclick={fresh(() => {
+            if (boardInert) return;
+            staging.tap('pass');
+          })}
+        >
           Pass
         </button>
       {:else if notice !== null}
@@ -1002,5 +1011,10 @@
     color: var(--cu-on-accent, #241c2b);
     font-size: var(--cu-text-md, 16px);
     cursor: pointer;
+  }
+
+  .game-screen__pass:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 </style>

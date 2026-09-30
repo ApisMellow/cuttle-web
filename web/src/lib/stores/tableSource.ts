@@ -15,15 +15,25 @@
 // currently willing to show. A source that has a curtain keeps `envelope`
 // and `viewer` null behind it, exactly as GameStore does; one that has no
 // curtain reports `curtain.kind === 'none'` (or `result`) always.
+//
+// `history` is the exception to "whatever is on show": it must ALWAYS be
+// redacted for `viewer`, curtain or not. No mover-only `index` and no
+// hidden-card detail from the other seat's moves. An online source never
+// raises a curtain, so nothing else stands between the wire and the screen;
+// GameScreen renders `history` as given and does not redact it again.
 
-import type { AppliedMove, EngineError, Envelope, PlayerId } from '../bridge/schema';
+import type { AppliedMove, Envelope, PlayerId } from '../bridge/schema';
 import type { DrawReveal } from '../drawReveal';
 import type { CurtainState } from './curtain.svelte';
 
 export interface TableSource {
   /** The only full view in memory; null whenever nobody's view is safe to show. */
   readonly envelope: Envelope | null;
-  /** Move history, public entries only behind a curtain (no mover-only `index`). */
+  /**
+   * Move history, ALWAYS redacted for `viewer` (no mover-only `index`, no
+   * hidden-card detail from the other seat's moves), with or without a
+   * curtain. Consumers use it as-is.
+   */
   readonly history: readonly AppliedMove[];
   /** History length of the position on show. A change resets staging. */
   readonly seq: number;
@@ -33,7 +43,6 @@ export interface TableSource {
   readonly curtain: CurtainState;
   /** SPEC §4.7 draw reveal (hand indices only), or null. */
   readonly drawReveal: DrawReveal | null;
-  readonly error: EngineError | null;
   /** True while an apply is in flight (sent, result not yet in). The local store is never pending. */
   readonly pending: boolean;
 
