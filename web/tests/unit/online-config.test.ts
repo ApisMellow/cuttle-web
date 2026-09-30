@@ -2,7 +2,7 @@
 // origin comes from VITE_CUTTLE_SERVER at build time, never a hard-coded
 // host. A dev build may override it from localStorage. W14 wires the
 // full setting.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEV_SERVER_OVERRIDE_KEY,
@@ -10,6 +10,7 @@ import {
   resolveServerOrigin,
   webSocketUrl,
 } from '../../src/lib/online/config';
+import { onlineAvailable } from '../../src/lib/online/provider';
 import { fakeStorage } from './game-test-support';
 
 describe('parseServerOrigin', () => {
@@ -87,5 +88,28 @@ describe('webSocketUrl', () => {
   it('maps https to wss and http to ws, at /api/play with no query', () => {
     expect(webSocketUrl('https://cuttle.example.com')).toBe('wss://cuttle.example.com/api/play');
     expect(webSocketUrl('http://127.0.0.1:8080')).toBe('ws://127.0.0.1:8080/api/play');
+  });
+});
+
+describe('onlineAvailable', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('derives from serverOrigin() in a production build', () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_CUTTLE_SERVER', 'https://cuttle.example.com');
+    expect(onlineAvailable()).toBe(true);
+    // Not an origin serverOrigin() accepts: hidden, not merely non-empty.
+    vi.stubEnv('VITE_CUTTLE_SERVER', 'http://cuttle.example.com');
+    expect(onlineAvailable()).toBe(false);
+    vi.stubEnv('VITE_CUTTLE_SERVER', '');
+    expect(onlineAvailable()).toBe(false);
+  });
+
+  it('always shows the mode in a dev build (the fake backs it)', () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_CUTTLE_SERVER', '');
+    expect(onlineAvailable()).toBe(true);
   });
 });

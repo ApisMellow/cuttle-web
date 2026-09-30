@@ -9,9 +9,11 @@ import {
   BACKOFF_MS,
   HANDSHAKE_TIMEOUT_MS,
   JITTER_RATIO,
+  MAX_FAILED_ATTEMPTS,
   PING_INTERVAL_MS,
   PONG_TIMEOUT_MS,
   PROBE_TIMEOUT_MS,
+  RATE_LIMIT_FLOOR_MS,
   createConnection,
   type ConnectionOptions,
   type ConnectionStatus,
@@ -168,7 +170,7 @@ describe('frames', () => {
     expect(h.conn.status).toEqual({ kind: 'open' });
   });
 
-  it("rejects a state addressed to the other seat's viewer", () => {
+  it("treats a state addressed to the other seat's viewer as terminal SEAT_MISMATCH", () => {
     const h = harness();
     h.conn.start();
     const s = h.sockets.last;
@@ -177,17 +179,57 @@ describe('frames', () => {
     s.serverSend(stateFrame({ viewer: 1 }));
     expect(h.frames.map((f) => f.t)).toEqual(['welcome']);
     expect(h.protocolErrors).toHaveLength(1);
+    expect(h.conn.status).toEqual({ kind: 'closed-by-server', code: 'SEAT_MISMATCH' });
+    expect(s.closedWith).not.toBeNull();
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(h.sockets.sockets).toHaveLength(1);
   });
 
-  it('rejects a welcome for a different seat and never opens', () => {
+  it('drops state and non-terminal error frames that arrive before welcome', () => {
+    const h = harness();
+    h.conn.start();
+    const s = h.sockets.last;
+    s.serverOpen();
+    s.serverSend(stateFrame({ seq: 3 }));
+    s.serverSend({ t: 'error', code: 'STALE', message: 'x' });
+    expect(h.frames).toEqual([]);
+    expect(h.conn.status).toEqual({ kind: 'connecting' });
+    s.serverSend(welcomeFrame(0));
+    s.serverSend(stateFrame({ seq: 1 }));
+    expect(h.frames.map((f) => f.t)).toEqual(['welcome', 'state']);
+    // The pre-welcome state did not move lastSeq.
+    s.serverClose();
+    vi.advanceTimersByTime(500);
+    h.sockets.last.serverOpen();
+    expect(h.sockets.last.frames()[0]).toMatchObject({ t: 'hello', lastSeq: 1 });
+  });
+
+  it('still closes on a terminal error that arrives before welcome', () => {
+    const h = harness();
+    h.conn.start();
+    const s = h.sockets.last;
+    s.serverOpen();
+    s.serverSend({ t: 'error', code: 'UNAUTHORIZED', message: 'no' });
+    expect(h.conn.status).toEqual({ kind: 'closed-by-server', code: 'UNAUTHORIZED' });
+    expect(h.frames.map((f) => f.t)).toEqual(['error']);
+  });
+
+  it('treats a welcome for a different seat as terminal SEAT_MISMATCH', () => {
     const h = harness();
     h.conn.start();
     const s = h.sockets.last;
     s.serverOpen();
     s.serverSend(welcomeFrame(1));
-    expect(h.conn.status).toEqual({ kind: 'connecting' });
+    expect(h.conn.status).toEqual({ kind: 'closed-by-server', code: 'SEAT_MISMATCH' });
+    expect(s.closedWith).not.toBeNull();
     expect(h.frames).toEqual([]);
     expect(h.protocolErrors).toHaveLength(1);
+    // No reconnect loop: nothing retries, whatever the page does.
+    vi.advanceTimersByTime(10 * 60_000);
+    h.env.show();
+    h.env.goOnline();
+    expect(h.sockets.sockets).toHaveLength(1);
+    expect(h.env.listenerCount()).toBe(0);
   });
 
   it('ignores unknown frame types and binary data safely', () => {
@@ -221,11 +263,11 @@ describe('frames', () => {
 });
 
 describe('reconnect backoff', () => {
-  it('retries at 0.5, 1, 2, 4, then every 8 seconds', () => {
-    expect(BACKOFF_MS).toEqual([500, 1000, 2000, 4000, 8000]);
+  it('retries at 0.5, 1, 2, 4, 8, 16, then every 30 seconds', () => {
+    expect(BACKOFF_MS).toEqual([500, 1000, 2000, 4000, 8000, 16000, 30000]);
     const h = harness();
     h.conn.start();
-    const expected = [500, 1000, 2000, 4000, 8000, 8000, 8000];
+    const expected = [500, 1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000];
     for (const [i, delay] of expected.entries()) {
       h.sockets.last.serverClose();
       expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: i + 1, retryInMs: delay });
@@ -246,15 +288,15 @@ describe('reconnect backoff', () => {
 
     const high = harness({ random: () => 0.999999 });
     high.conn.start();
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       high.sockets.last.serverClose();
       vi.runOnlyPendingTimers();
     }
     high.sockets.last.serverClose();
-    // The cap holds with jitter: 8 s + 20% at most.
+    // The cap holds with jitter: 30 s + 20% at most.
     const s = high.conn.status as { retryInMs: number };
-    expect(s.retryInMs).toBeGreaterThan(9500);
-    expect(s.retryInMs).toBeLessThanOrEqual(9600);
+    expect(s.retryInMs).toBeGreaterThan(35_900);
+    expect(s.retryInMs).toBeLessThanOrEqual(36_000);
   });
 
   it('treats a socket error the same as a close, once', () => {
@@ -277,6 +319,324 @@ describe('reconnect backoff', () => {
     vi.advanceTimersByTime(1);
     expect(h.sockets.sockets[0].closedWith).not.toBeNull();
     expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: 500 });
+  });
+});
+
+describe('socket factory that throws', () => {
+  it('does not throw out of start(); it schedules a retry instead', () => {
+    let calls = 0;
+    const sockets = socketFactory();
+    const h = harness({
+      socketFactory: (url) => {
+        calls += 1;
+        if (calls === 1) throw new DOMException('blocked', 'SecurityError');
+        return sockets.factory(url);
+      },
+    });
+    expect(() => h.conn.start()).not.toThrow();
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: 500 });
+    vi.advanceTimersByTime(500);
+    expect(sockets.sockets).toHaveLength(1);
+    sockets.last.serverOpen();
+    sockets.last.serverSend(welcomeFrame(0));
+    expect(h.conn.status).toEqual({ kind: 'open' });
+  });
+
+  it('treats a throw from a reconnect timer as a drop and keeps backing off', () => {
+    let fail = false;
+    const sockets = socketFactory();
+    const h = harness({
+      socketFactory: (url) => {
+        if (fail) throw new SyntaxError('bad url');
+        return sockets.factory(url);
+      },
+    });
+    h.conn.start();
+    handshake(sockets.last);
+    fail = true;
+    sockets.last.serverClose();
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: 500 });
+    expect(() => vi.advanceTimersByTime(500)).not.toThrow();
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 2, retryInMs: 1000 });
+    fail = false;
+    vi.advanceTimersByTime(1000);
+    expect(sockets.sockets).toHaveLength(2);
+    handshake(sockets.last);
+    expect(h.conn.status).toEqual({ kind: 'open' });
+  });
+});
+
+describe('rate limiting and stalling', () => {
+  function rateLimited(h: ReturnType<typeof harness>) {
+    const s = h.sockets.last;
+    s.serverOpen();
+    s.serverSend({ t: 'error', code: 'RATE_LIMITED', message: 'slow down' });
+    s.serverClose(1008);
+  }
+
+  it(`waits at least ${RATE_LIMIT_FLOOR_MS / 1000} s after RATE_LIMITED, even on online or visible`, () => {
+    const h = harness();
+    h.conn.start();
+    rateLimited(h);
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: RATE_LIMIT_FLOOR_MS });
+    h.env.goOnline();
+    h.env.hide();
+    h.env.show();
+    vi.advanceTimersByTime(RATE_LIMIT_FLOOR_MS - 1);
+    expect(h.sockets.sockets).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(h.sockets.sockets).toHaveLength(2);
+  });
+
+  it('holds the floor across offline and back online', () => {
+    const h = harness();
+    h.conn.start();
+    rateLimited(h);
+    h.env.goOffline();
+    vi.advanceTimersByTime(1000);
+    h.env.goOnline();
+    expect(h.sockets.sockets).toHaveLength(1);
+    expect(h.conn.status).toMatchObject({ kind: 'reconnecting', retryInMs: RATE_LIMIT_FLOOR_MS - 1000 });
+    vi.advanceTimersByTime(RATE_LIMIT_FLOOR_MS - 1001);
+    expect(h.sockets.sockets).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(h.sockets.sockets).toHaveLength(2);
+  });
+
+  it('lets online and visible retry at once again after the floor has passed', () => {
+    const h = harness();
+    h.conn.start();
+    rateLimited(h);
+    vi.advanceTimersByTime(RATE_LIMIT_FLOOR_MS);
+    h.sockets.last.serverClose();
+    const before = h.sockets.sockets.length;
+    h.env.show();
+    expect(h.sockets.sockets).toHaveLength(before + 1);
+  });
+
+  it(`stalls after ${MAX_FAILED_ATTEMPTS} failed attempts without a welcome`, () => {
+    expect(MAX_FAILED_ATTEMPTS).toBe(10);
+    const h = harness();
+    h.conn.start();
+    for (let i = 1; i < MAX_FAILED_ATTEMPTS; i++) {
+      h.sockets.last.serverClose();
+      expect(h.conn.status).toMatchObject({ kind: 'reconnecting', attempt: i });
+      vi.runOnlyPendingTimers();
+    }
+    expect(h.sockets.sockets).toHaveLength(MAX_FAILED_ATTEMPTS);
+    h.sockets.last.serverClose();
+    expect(h.conn.status).toEqual({ kind: 'stalled', attempt: MAX_FAILED_ATTEMPTS });
+    vi.advanceTimersByTime(10 * 60_000);
+    h.env.show();
+    h.env.goOnline();
+    h.env.goOffline();
+    h.env.goOnline();
+    expect(h.sockets.sockets).toHaveLength(MAX_FAILED_ATTEMPTS);
+    expect(h.conn.status).toEqual({ kind: 'stalled', attempt: MAX_FAILED_ATTEMPTS });
+  });
+
+  it('retry() restarts from a clean backoff', () => {
+    const h = harness();
+    h.conn.start();
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
+      h.sockets.last.serverClose();
+      vi.runOnlyPendingTimers();
+    }
+    expect(h.conn.status.kind).toBe('stalled');
+    const before = h.sockets.sockets.length;
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(before + 1);
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 0, retryInMs: null });
+    h.sockets.last.serverClose();
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: 500 });
+    vi.advanceTimersByTime(500);
+    handshake(h.sockets.last);
+    expect(h.conn.status).toEqual({ kind: 'open' });
+  });
+
+  it('retry() does nothing while open, idle or closed', () => {
+    const h = harness();
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(0);
+    h.conn.start();
+    handshake(h.sockets.last);
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(1);
+    h.conn.close();
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(1);
+    expect(h.conn.status).toEqual({ kind: 'closed' });
+  });
+
+  it('a welcome clears the failure count so stalling needs a fresh run', () => {
+    const h = harness();
+    h.conn.start();
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS - 1; i++) {
+      h.sockets.last.serverClose();
+      vi.runOnlyPendingTimers();
+    }
+    handshake(h.sockets.last);
+    h.sockets.last.serverClose();
+    expect(h.conn.status).toEqual({ kind: 'reconnecting', attempt: 1, retryInMs: 500 });
+  });
+});
+
+describe('lastSeq', () => {
+  function helloSeqAfterDrop(h: ReturnType<typeof harness>): unknown {
+    h.sockets.last.serverClose();
+    vi.runOnlyPendingTimers();
+    h.sockets.last.serverOpen();
+    return h.sockets.last.frames()[0].lastSeq;
+  }
+
+  it('never goes backwards within a game', () => {
+    const h = harness();
+    h.conn.start();
+    handshake(h.sockets.last, { seq: 5 });
+    h.sockets.last.serverSend(stateFrame({ seq: 3 }));
+    expect(helloSeqAfterDrop(h)).toBe(5);
+  });
+
+  it('resets when a new game starts', () => {
+    const h = harness();
+    h.conn.start();
+    handshake(h.sockets.last, { seq: 9 });
+    h.sockets.last.serverSend(stateFrame({ seq: 0, game: 2 }));
+    expect(helloSeqAfterDrop(h)).toBe(0);
+    h.sockets.last.serverSend(welcomeFrame(0));
+    // A late frame from the old game does not move it.
+    h.sockets.last.serverSend(stateFrame({ seq: 9, game: 1 }));
+    expect(helloSeqAfterDrop(h)).toBe(0);
+  });
+
+  it('holds lastSeq from options against a lower seq in the same known game', () => {
+    const h = harness({ lastSeq: 7, lastGame: 1 });
+    h.conn.start();
+    handshake(h.sockets.last, { seq: 4 });
+    expect(helloSeqAfterDrop(h)).toBe(7);
+  });
+});
+
+describe('listener isolation', () => {
+  it('a throwing frame listener does not stop the others, and is reported without frame contents', () => {
+    const h = harness();
+    const spies = (['log', 'info', 'warn', 'error', 'debug', 'trace'] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
+    const seen: string[] = [];
+    h.conn.onFrame(() => {
+      throw new Error(`boom ${TOKEN} Alice`);
+    });
+    h.conn.onFrame((f) => seen.push(f.t));
+    h.conn.start();
+    handshake(h.sockets.last);
+    expect(seen).toEqual(['welcome', 'state']);
+    expect(h.conn.status).toEqual({ kind: 'open' });
+    expect(h.protocolErrors.length).toBe(2);
+    for (const e of h.protocolErrors) {
+      expect(`${e.message} ${e.stack}`).not.toContain(TOKEN);
+      expect(`${e.message} ${e.stack}`).not.toContain('Alice');
+    }
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a throwing status or error listener does not stop the others or the connection', () => {
+    const h = harness();
+    const seen: string[] = [];
+    h.conn.subscribe(() => {
+      throw new Error('status boom');
+    });
+    h.conn.subscribe((s) => seen.push(s.kind));
+    h.conn.onProtocolError(() => {
+      throw new Error('error boom');
+    });
+    const errors: Error[] = [];
+    h.conn.onProtocolError((e) => errors.push(e));
+    expect(() => h.conn.start()).not.toThrow();
+    expect(() => handshake(h.sockets.last)).not.toThrow();
+    expect(() => h.sockets.last.serverSend('garbage{')).not.toThrow();
+    expect(seen).toEqual(['idle', 'connecting', 'open']);
+    expect(h.conn.status).toEqual({ kind: 'open' });
+    expect(errors.some((e) => e.name === 'ProtocolError')).toBe(true);
+  });
+});
+
+describe('replaced by a newer hello (SPEC §2.12)', () => {
+  it('stops reconnecting on REPLACED, keeps the seat, and retry() resumes', () => {
+    const h = harness();
+    h.conn.start();
+    const s = h.sockets.last;
+    handshake(s);
+    s.serverSend({ t: 'error', code: 'REPLACED', message: 'Playing on another device.' });
+    expect(h.conn.status).toEqual({ kind: 'replaced' });
+    expect(s.closedWith).not.toBeNull();
+    // Delivered, so the UI can say why; not closed-by-server, so W12 keeps the seat.
+    expect(h.frames.at(-1)).toMatchObject({ t: 'error', code: 'REPLACED' });
+    s.serverClose(1000);
+    vi.advanceTimersByTime(10 * 60_000);
+    h.env.hide();
+    h.env.show();
+    h.env.goOffline();
+    h.env.goOnline();
+    expect(h.sockets.sockets).toHaveLength(1);
+    expect(h.conn.status).toEqual({ kind: 'replaced' });
+    expect(h.conn.sendMove(1, 0, 0)).toBe(false);
+
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(2);
+    h.sockets.last.serverOpen();
+    expect(h.sockets.last.frames()[0]).toMatchObject({ t: 'hello', token: TOKEN });
+    h.sockets.last.serverSend(welcomeFrame(0));
+    expect(h.conn.status).toEqual({ kind: 'open' });
+  });
+
+  it('honours REPLACED even before welcome', () => {
+    const h = harness();
+    h.conn.start();
+    const s = h.sockets.last;
+    s.serverOpen();
+    s.serverSend({ t: 'error', code: 'REPLACED', message: 'x' });
+    expect(h.conn.status).toEqual({ kind: 'replaced' });
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(h.sockets.sockets).toHaveLength(1);
+  });
+
+  it('close() still ends a replaced connection for good', () => {
+    const h = harness();
+    h.conn.start();
+    handshake(h.sockets.last);
+    h.sockets.last.serverSend({ t: 'error', code: 'REPLACED', message: 'x' });
+    h.conn.close();
+    expect(h.conn.status).toEqual({ kind: 'closed' });
+    expect(h.env.listenerCount()).toBe(0);
+    h.conn.retry();
+    expect(h.sockets.sockets).toHaveLength(1);
+  });
+});
+
+describe('waiting room (SPEC §2.12)', () => {
+  it('stays open on a welcome with no state, then takes a second welcome and the first state', () => {
+    const h = harness();
+    h.conn.start();
+    const s = h.sockets.last;
+    s.serverOpen();
+    s.serverSend({ t: 'welcome', seat: 0, names: ['Alice', null], status: 'waiting' });
+    expect(h.conn.status).toEqual({ kind: 'open' });
+    // Well past the handshake deadline, with the heartbeat answered.
+    expect(PING_INTERVAL_MS).toBeGreaterThan(HANDSHAKE_TIMEOUT_MS);
+    vi.advanceTimersByTime(PING_INTERVAL_MS);
+    s.serverSend({ t: 'pong' });
+    expect(h.conn.status).toEqual({ kind: 'open' });
+
+    s.serverSend({ t: 'welcome', seat: 0, names: ['Alice', 'Blake'], status: 'playing' });
+    s.serverSend(stateFrame({ seq: 0 }));
+    expect(h.protocolErrors).toEqual([]);
+    expect(h.conn.status).toEqual({ kind: 'open' });
+    expect(h.statuses.filter((st) => st.kind === 'open')).toHaveLength(1);
+    expect(h.frames.map((f) => f.t)).toEqual(['welcome', 'welcome', 'state']);
+    const second = h.frames[1];
+    expect(second.t === 'welcome' && second.names).toEqual(['Alice', 'Blake']);
+    expect(h.sockets.sockets).toHaveLength(1);
   });
 });
 
@@ -357,14 +717,14 @@ describe('visibility', () => {
       vi.runOnlyPendingTimers();
     }
     h.sockets.last.serverClose();
-    expect(h.conn.status).toMatchObject({ kind: 'reconnecting', retryInMs: 8000 });
+    expect(h.conn.status).toMatchObject({ kind: 'reconnecting', retryInMs: 16000 });
     const before = h.sockets.sockets.length;
     h.env.hide();
     expect(h.sockets.sockets).toHaveLength(before);
     h.env.show();
     expect(h.sockets.sockets).toHaveLength(before + 1);
     // The cancelled backoff timer does not fire a second socket.
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(16000);
     expect(h.sockets.sockets).toHaveLength(before + 1);
   });
 

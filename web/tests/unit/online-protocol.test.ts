@@ -141,7 +141,7 @@ describe('terminal error codes', () => {
   it('are exactly ROOM_GONE, UNAUTHORIZED and UPGRADE_REQUIRED', () => {
     expect([...TERMINAL_ERROR_CODES].sort()).toEqual(['ROOM_GONE', 'UNAUTHORIZED', 'UPGRADE_REQUIRED']);
     for (const code of TERMINAL_ERROR_CODES) expect(isTerminalErrorCode(code)).toBe(true);
-    for (const code of ['STALE', 'NOT_YOUR_TURN', 'RATE_LIMITED', 'ILLEGAL_MOVE', 'ROOM_FULL', 'INTERNAL', 'SOMETHING_NEW']) {
+    for (const code of ['STALE', 'NOT_YOUR_TURN', 'RATE_LIMITED', 'SERVER_FULL', 'GAME_OVER', 'FORBIDDEN', 'REPLACED', 'ILLEGAL_MOVE', 'ROOM_FULL', 'INTERNAL', 'SOMETHING_NEW']) {
       expect(isTerminalErrorCode(code)).toBe(false);
     }
   });
