@@ -11,11 +11,11 @@ import (
 
 func TestFrontendHandlerServesSPAAndWASM(t *testing.T) {
 	assets := fstest.MapFS{
-		"index.html":       {Data: []byte("<main>Cuttle</main>")},
-		"assets/app.js":    {Data: []byte("console.log('cuttle')")},
-		"cuttle.wasm":      {Data: []byte("raw-wasm")},
-		"cuttle.wasm.gz":   {Data: []byte("gzipped-wasm")},
-		"wasm_exec.js":     {Data: []byte("globalThis.Go = class Go {}")},
+		"index.html":     {Data: []byte("<main>Cuttle</main>")},
+		"assets/app.js":  {Data: []byte("console.log('cuttle')")},
+		"cuttle.wasm":    {Data: []byte("raw-wasm")},
+		"cuttle.wasm.gz": {Data: []byte("gzipped-wasm")},
+		"wasm_exec.js":   {Data: []byte("globalThis.Go = class Go {}")},
 	}
 	handler := newFrontendHandler(assets)
 
