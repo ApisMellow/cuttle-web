@@ -313,7 +313,8 @@ that makes your list complete.
 - **Janitor:** `RunJanitor` every `JanitorInterval` (10 min) calls
   `Sweep`: `store.DeleteExpired`, then drops cached rooms the store no
   longer has or that sat unused for `MemIdle`. It stops with the server's
-  context. The nightly backup is W8.
+  context. The nightly backup is a separate loop, `RunBackups` (`backup.go`),
+  on when `-backup-dir` is set; see SPEC §2.12.6.
 - **Logs** carry room codes and events only: never a token or a player
   name. `TestAPI_TokensNeverLogged` scans slog and the std `log` output.
 - **Panics:** `game.SetPanicHook` receives recovered panic values and the

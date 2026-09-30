@@ -14,7 +14,7 @@
 | W5 | Rooms and HTTP API (includes the janitor and the healthz DB check) | merged #55 |
 | W6 | WebSocket play, presence, rematch | open #60 (review fixes pending) |
 | W7 | Response hold | open #60 (built with W6) |
-| W8 | Janitor | merged #55 (nightly `VACUUM INTO` not started) |
+| W8 | Janitor and nightly backup | janitor merged #55; nightly `VACUUM INTO` backup done, pending review |
 | W9 | Wire privacy sweep | todo |
 | W10 | `TableSource` seam | merged #46 |
 | W11 | Client connection | merged #52, #57 |
@@ -218,7 +218,7 @@ cuttle.example.com {
 Caddy fetches and renews the certificate on its own.
 
 - **Deploys:** manual first. `scripts/deploy-server.sh` builds with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64`, uploads `cuttle-server.new`, swaps it in and restarts the service; phones reconnect by themselves. Later a GitHub Action runs the same script over SSH on a tag (secrets `DEPLOY_HOST`, `DEPLOY_SSH_KEY`).
-- **Backups:** optional, since rooms live a day at most. The janitor runs `VACUUM INTO` nightly and keeps 3 copies.
+- **Backups:** optional, since rooms live a day at most. A separate daily loop (`RunBackups`) runs `VACUUM INTO` and keeps the newest 3 copies. It is off unless `-backup-dir` / `CUTTLE_BACKUP_DIR` is set; `-backup-keep` / `CUTTLE_BACKUP_KEEP` changes the count. Point it at a private directory outside `/var/lib/cuttle` (for example `/var/backups/cuttle`); files are 0600, the directory 0700.
 - **Health and logs:** `GET /healthz` checks the database and reports the build version. Logs are JSON lines in journald (`journalctl -u cuttle -f`).
 - **Cost:** the $4/month droplet (512 MB) is enough; $6 (1 GB) gives headroom. DigitalOcean backups add 20%. sslip.io is free.
 

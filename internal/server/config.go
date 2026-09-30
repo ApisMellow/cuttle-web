@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -36,12 +37,18 @@ type Config struct {
 	CreatePerHour  int // per-client create limit; 0 in a literal = default
 	JoinPerHour    int // per-client join limit; 0 in a literal = default
 	MaxRooms       int // live-room cap; 0 in a literal = default
+	// BackupDir receives the nightly database backups; "" turns them off.
+	// It must be an absolute path outside DataDir and outside any directory
+	// a web server serves (the server itself serves no files).
+	BackupDir  string
+	BackupKeep int // backups to keep; 0 in a literal = default
 }
 
 // ParseConfig reads flags from args, falling back to environment values from
 // getenv (CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS comma-separated, CUTTLE_DATA_DIR,
 // CUTTLE_TRUSTED_PROXY comma-separated, CUTTLE_CREATE_PER_HOUR,
-// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS), then to defaults. Flags win over
+// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS, CUTTLE_BACKUP_DIR, CUTTLE_BACKUP_KEEP),
+// then to defaults. Flags win over
 // the environment.
 func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if getenv == nil {
@@ -84,9 +91,15 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	keepDef, err := envInt("CUTTLE_BACKUP_KEEP", DefaultBackupKeep)
+	if err != nil {
+		return Config{}, err
+	}
 	createRate := fs.Int("create-per-hour", createDef, "room creates per client per hour")
 	joinRate := fs.Int("join-per-hour", joinDef, "room joins per client per hour")
 	maxRooms := fs.Int("max-rooms", maxDef, "most live rooms")
+	backupDir := fs.String("backup-dir", getenv("CUTTLE_BACKUP_DIR"), "directory for nightly database backups (absolute path, outside the data dir; off when empty)")
+	backupKeep := fs.Int("backup-keep", keepDef, "number of backups to keep")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -95,7 +108,8 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	}
 
 	cfg := Config{Addr: *addr, Dev: *dev, DataDir: *dataDir,
-		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms}
+		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms,
+		BackupDir: *backupDir, BackupKeep: *backupKeep}
 	for _, p := range strings.Split(*proxies, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
@@ -144,6 +158,9 @@ func (c Config) Validate() error {
 	if c.MaxRooms < 1 {
 		return fmt.Errorf("max rooms must be at least 1")
 	}
+	if err := c.validateBackup(); err != nil {
+		return err
+	}
 	if c.DataDir != "" {
 		st, err := os.Stat(c.DataDir)
 		if err != nil {
@@ -170,4 +187,56 @@ func validateOrigin(o string) error {
 		return fmt.Errorf("origin %q must not end with a slash", o)
 	}
 	return nil
+}
+
+// validateBackup checks the backup settings. Backups are off when BackupDir
+// is empty. They hold every hidden card, so the directory must be an
+// unambiguous absolute path that is not the data directory or inside it.
+func (c Config) validateBackup() error {
+	if c.BackupDir == "" {
+		return nil
+	}
+	if c.BackupKeep < 1 {
+		return fmt.Errorf("backup keep must be at least 1")
+	}
+	if strings.ContainsRune(c.BackupDir, 0) || !filepath.IsAbs(c.BackupDir) {
+		return fmt.Errorf("backup directory must be an absolute path")
+	}
+	if strings.Contains(c.BackupDir, "..") {
+		return fmt.Errorf("backup directory must not contain \"..\"")
+	}
+	if c.DataDir != "" {
+		data, derr := resolvePath(c.DataDir)
+		bk, berr := resolvePath(c.BackupDir)
+		if derr == nil && berr == nil {
+			rel, err := filepath.Rel(data, bk)
+			if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("backup directory must not be the data directory or inside it")
+			}
+		}
+	}
+	return nil
+}
+
+// resolvePath makes p absolute and follows symlinks. The tail of p that does
+// not exist yet (a backup directory still to be created) is kept as written,
+// after resolving its deepest existing ancestor.
+func resolvePath(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	rest := ""
+	cur := abs
+	for {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(real, rest), nil
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return abs, nil
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
 }
