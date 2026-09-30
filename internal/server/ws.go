@@ -442,7 +442,10 @@ func (p *play) hello(c *conn, typ websocket.MessageType, data []byte, client cli
 	// A token is reserved before the lookup and refunded unless the hello
 	// fails as a guess, so parallel guesses can't all slip past one check.
 	// The token is always looked at: an exhausted budget refuses only the
-	// guesses (with no verdict), never a seat's real token.
+	// guesses (with no verdict), never a seat's real token. Letting a valid
+	// token past an exhausted budget is safe only because tokens are 256
+	// random bits compared in constant time (store/token.go): guessing one
+	// is infeasible. Shortening tokens would reopen this as a guessing oracle.
 	res, reserved := p.failed.reserve(client)
 	ctx, cancel := storeCtx()
 	defer cancel()

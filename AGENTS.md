@@ -363,7 +363,7 @@ that makes your list complete.
   `CUTTLE_RESPOND_MIN_MS`, 1500, 1–60000) has passed. Both seats can be
   held at once (a counter holds the counterer). Any resync (a hello, or
   an error followed by state) answers `responding` while held. **A held
-  mover learns nothing from its own frames:** every `move` or `rematch`
+  mover learns nothing from its own frames:** every well-formed `move` or `rematch`
   from it gets the fixed `error STALE` (no `seq` echo) plus `responding`,
   without touching `Apply` or the rematch requests (`refuseHeldLocked`),
   so the bytes are the same whether or not the answer is in or the game

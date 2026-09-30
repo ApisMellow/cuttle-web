@@ -585,7 +585,7 @@ Both calls are `POST` with a JSON body, sent to the configured server origin (`V
 | `UPGRADE_REQUIRED` | 426 | Reserved for a server that has dropped this client's version (§2.12.7) | "Refresh to update." |
 | `RATE_LIMITED` | 429 + `Retry-After` | Per-client limit hit (§2.12.6) | "Too many tries, wait a minute." |
 | `INTERNAL` | 500 | Anything else | Generic failure, retry allowed |
-| `SERVER_FULL` | 503 + `Retry-After: 600` | Create at the live-room cap | "The server is busy, try again later." |
+| `SERVER_FULL` | 503 + `Retry-After: 600` | Create at the live-room cap. The play-socket cap also answers the WebSocket upgrade with `503 SERVER_FULL`, `Retry-After: 30` (§2.12.6). | "The server is busy, try again later." |
 
 A client that gets a non-JSON error body derives the code from the status (W11 `statusCode()`); `503` without a body reads as `INTERNAL`.
 
@@ -606,12 +606,12 @@ A client that gets a non-JSON error body derives the code from the status (W11 `
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `welcome` | `seat, names: [string\|null, string\|null], status` | Hello accepted. `seat` is the seat bound to the token. `names[1]` is `null` until someone joins. `status` is `waiting` (no opponent yet), `playing` or `over` (game over, no rematch dealt yet). |
+| `welcome` | `seat, names: [string\|null, string\|null], status` | Hello accepted. `seat` is the seat bound to the token. `names[1]` is `null` until someone joins. `status` is `waiting` (no opponent yet), `playing` or `over` (game over, no rematch dealt yet). The mover under a hold is told `playing`, never `over` (§2.12.5). |
 | `state` | `game, envelope, opponentOnline, tally: [n0, n1]` | This seat's full redacted envelope (§2.7). Never a diff. `envelope.state.viewer` equals the connection's seat. |
 | `responding` | `by` | The mover's neutral hold after a counterable move (§2.12.5). `by` is the other seat. |
 | `presence` | `opponentOnline` | The other seat connected or dropped. |
 | `rematch` | `requestedBy` | A rematch request is pending from `requestedBy` (either seat, including the receiver's own). |
-| `error` | `code, message, seq?` | §2.12.3. `seq` echoes the rejected `move`'s `seq`, when there was one. |
+| `error` | `code, message, seq?` | §2.12.3. `seq` echoes the rejected `move`'s `seq`, when there was one (never on the held mover's `STALE`, §2.12.5). |
 | `pong` | — | Reply to `ping`. |
 
 Field rules:
@@ -628,7 +628,7 @@ Field rules:
 2. `responding {by}`, if this seat is the mover under a hold (§2.12.5); its `state` follows when the hold ends;
 3. nothing more, if `status` is `waiting` (no game has been dealt); `state` follows the join.
 
-After that, if a rematch request is pending, the server sends `rematch {requestedBy}`. The server never answers a `hello` with a diff or with anything that depends on `lastSeq`.
+After that, if a rematch request is pending, the server sends `rematch {requestedBy}` (to the mover under a hold, only once the hold ends, after its `state`). The server never answers a `hello` with a diff or with anything that depends on `lastSeq`.
 
 **`lastSeq`** is the `envelope.seq` of the last `state` this phone accepted, in whatever game that was (0 if none). It is advisory. `hello` carries no `game`, so the server can't tell whether `lastSeq` belongs to the current game; a v1 server therefore ignores it for every decision (it may log it). Across a rematch it refers to the game the phone last saw, and the server ignores it when that game is not the current one, which in v1 means always. The phone does the comparison itself: on a `state` whose `game` differs from the last one it saw, it starts that game fresh (no recap across games); on the same `game` with `seq` more than one past the last one, it shows the missed-moves recap (plan §7).
 
@@ -652,13 +652,13 @@ After that, if a rematch request is pending, the server sends `rematch {requeste
 | `code` | Sent when | Followed by | Client does |
 |---|---|---|---|
 | `NOT_YOUR_TURN` | `move` from a seat that isn't `Active` | fresh `state` | Resync from it |
-| `STALE` | `move` (or `rematch`) whose `game` or `seq` isn't current | fresh `state` | Resync; the player confirms again if still legal |
+| `STALE` | `move` (or `rematch`) whose `game` or `seq` isn't current; also every well-formed `move` or `rematch` from the mover under a hold, whatever its `game` and `seq`, and then with no `seq` field (§2.12.5) | fresh `state` (`responding` for the held mover) | Resync; the player confirms again if still legal |
 | `GAME_OVER` | `move` after the game ended | fresh `state` | Resync (shows the result) |
 | `ILLEGAL_MOVE` | engine rejected an offered move (§2.9) | nothing | Stuck-state screen (§2.10) |
 | `NO_LEGAL_MOVES` | engine offered nothing outside game over (§2.10) | nothing | Stuck-state screen |
 | `INDEX_OUT_OF_RANGE` | `index` outside the legal-move list | nothing | Client bug: keep the current state, clear `sending` |
 | `BAD_REQUEST` | malformed frame, unknown `t`, `rematch` before the game is over; before `welcome`, the socket is then closed | nothing | Clear `sending`; show a generic failure |
-| `RATE_LIMITED` | frame rate over the limit (§2.12.6), or `hello` over the failed-hello limit | nothing (on `hello`: close) | On `hello`: wait at least 60 s before the next attempt. Otherwise continue. |
+| `RATE_LIMITED` | frame rate over the limit (§2.12.6), or a `hello` that would get `UNAUTHORIZED` or `ROOM_GONE`, once the failed-hello limit is spent | nothing (on `hello`: close) | On `hello`: wait at least 60 s before the next attempt. Otherwise continue. |
 | `INTERNAL` | recovered panic, or a failed save (§2.12.5) | fresh `state` if the session could be reloaded | Clear `sending`; resync |
 
 "Followed by a fresh `state`" means the server sends this seat's current envelope right after the error, **unless this seat is the mover under a hold**, in which case it sends `responding {by}` instead and the `state` waits for the hold to end (otherwise a stray stale move would open the hold early).
@@ -765,6 +765,7 @@ If the save fails, the server reloads the room with `RestoreSession` from the st
 - When both hold, the mover gets the **current** `state`, which may already include later moves (a quick answer and a quick next move); the phone's recap covers the gap.
 - The other seat gets its `state` at once, as for any move.
 - A `hello` from the mover during the hold is answered with `welcome` and `responding` (§2.12.2), never with the withheld state. So is any error that would otherwise be followed by `state`.
+- **The held mover learns nothing from its own frames.** Every well-formed `move` or `rematch` it sends during the hold gets the fixed `error {code: STALE}` (no `seq`) and `responding`, without reaching `Session.Apply` or the rematch requests, so the reply is the same whether or not the answer is in or the game has ended. Its `welcome` says `playing`, never `over`. A rematch request is neither sent nor replayed to it until the hold ends; then it gets the current `state`, then `rematch {requestedBy}`.
 - The hold is enforced by the server, so raw frames reveal nothing early. It lives in memory; a server restart ends it, and the next `hello` gets the current `state` (accepted: a restart takes seconds and says nothing about the hand).
 
 **Presence and liveness.** The client sends `ping` every 15 s and treats a socket as dead if no frame arrives within 10 s of a ping (5 s for the probe on becoming visible). The server answers every `ping` with `pong` and sends no app-level pings of its own. It treats a socket with no inbound frame for 45 s as dead, closes it (bare, retryable) and sends the other seat `presence {opponentOnline:false}`. It must receive `hello` within 10 s of the upgrade or close. **One socket per seat:** a new accepted `hello` for a seat replaces the old socket, which the server closes with `error {code: "REPLACED"}` first (open question 1).
@@ -775,12 +776,13 @@ If the save fails, the server reloads the room with `RestoreSession` from the st
 |---|---|---|
 | Create | 10/hour per client, burst 10 | `429 RATE_LIMITED` + `Retry-After` |
 | Join | 30/hour per client, burst 30; every attempt counts, code guesses included | `429 RATE_LIMITED` + `Retry-After` |
-| Failed `hello` | 30/hour per client. **Counted:** hellos answered `UNAUTHORIZED` or `ROOM_GONE` (token or code guessing). **Not counted:** accepted hellos, `UPGRADE_REQUIRED`, `BAD_REQUEST`, handshake timeouts, closes. A legitimate phone's reconnect storm never trips it. | `error RATE_LIMITED`, then close |
+| Failed `hello` | 30/hour per client. **Counted:** hellos answered `UNAUTHORIZED` or `ROOM_GONE` (token or code guessing). **Not counted:** accepted hellos, `UPGRADE_REQUIRED`, `BAD_REQUEST`, handshake timeouts, closes. A legitimate phone's reconnect storm never trips it. Each `hello` takes a token before its token is checked and gets it back unless the hello failed as a guess, so N parallel guesses spend N tokens. The token is always checked: a valid one is accepted even when the budget is spent. | A guess once the budget is spent gets `error RATE_LIMITED` (no `UNAUTHORIZED`/`ROOM_GONE` verdict), then close |
 | Frames per socket | 10/s sustained, burst 20 (token bucket). Pings at 1 per 15 s and human-rate moves sit far below it. | Frame dropped with `error RATE_LIMITED` (at most one per second); over the limit for 5 s straight, bare close |
 | Inbound frame size | 1 KB | Close (1009), retryable |
 | HTTP body | 1 KB, JSON only, no unknown fields | `400 BAD_REQUEST` |
 | Names | 1–20 runes after stripping and trimming | `400 BAD_REQUEST` |
 | Live rooms | 500 | `503 SERVER_FULL` + `Retry-After: 600` |
+| Play sockets | 500 open in total (`CUTTLE_MAX_SOCKETS`), 8 per client (`CUTTLE_MAX_SOCKETS_PER_CLIENT`) | Upgrade refused with `503 SERVER_FULL` + `Retry-After: 30`, before any frame (the browser sees a failed connection; retryable) |
 | Room idle expiry | 24 h since `updated_at` (`CUTTLE_IDLE_TTL`), joined or not | `ROOM_GONE` |
 | `hello` deadline | 10 s after upgrade | bare close |
 | Idle socket | 45 s with no inbound frame | bare close |
