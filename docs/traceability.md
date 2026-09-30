@@ -85,6 +85,25 @@ required layer set. Entries marked PARTIAL stay `todo` until every layer passes.
 | R23.3 | Automatic fallback to vector baseline | `e2e: themes.spec.ts "a face image that fails to load falls back to the vector face for that card only, in the same box"`<br>`vitest: theme-bitmap.test.ts "per-slot fallback to vector"` | Playwright + vitest | e2e-test | implemented |
 | R23.4 | Full playability with theme off | — | — | e2e-test | todo |
 | R23.5 | Theme-swap visual consistency | — | — | screenshot-judge | todo |
+| R24.1 | A full game between two phones | — (W15) | — | e2e-test | todo |
+| R24.2 | One copy of the redaction code serves the wasm build and the server | `TestGoldenBridgeTranscript`<br>`TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex`, `TestR7_1a_…`, `TestR7_3a_…`, `TestR16_1a_…` (moved to internal/game) | go unit | unit-test | implemented |
+| R24.3 | Each seat gets only its own redacted view; the full snapshot stays on the server | `TestW2_ViewsNeverLeakHiddenCards`<br>`TestW2_ServerSnapshotRefusesToLeak`<br>`TestW2_ServerSnapshotUnreachableByReflection`<br>`TestW2_UpdateCannotBeSentWhole` (PR #45 e791f80) | go unit | unit-test | implemented |
+| R24.4 | Wire privacy sweep through the real server | — (W9) | — | unit-test | todo |
+| R24.5 | The seat comes from the authenticated connection, never from the message | `TestW2_SeatBindingRejectsTheOtherSeat` (PR #45 e791f80)<br>`TestAuthenticate`<br>`TestSaveStaleWritesNothing`<br>`TestConcurrentSaveOneWinner` | go unit (session + store done; WebSocket hello open) | unit-test | in-progress (PARTIAL) |
+| R24.6 | Rooms: a 4-character code, two seats, one winner of a join race | `TestCodeAlphabetIsCrockford`<br>`TestNewCodeFormat`<br>`TestNewCodeUnbiased`<br>`TestNormalizeCode`<br>`TestCreateRetriesOnCollision`<br>`TestConcurrentJoinRace`<br>`TestJoinErrors` | go unit (store done; HTTP API open) | unit-test | in-progress (PARTIAL) |
+| R24.7 | Join link, seat record, one online game per phone | — (W12, W13a) | — | unit-test | todo |
+| R24.8 | Seat tokens: 32 random bytes, stored only as hashes, never in URLs or logs | `TestNewToken`<br>`TestRawTokensNeverStored`<br>`TestAuthenticate`<br>`TestRequestLogOmitsQueryString` | go unit (store + logs done; hello-only transport open) | unit-test | in-progress (PARTIAL) |
+| R24.9 | A room idle for 1 day is gone | `TestExpiredRoomIsGoneBeforeSweep`<br>`TestExpiredWaitingRoomCannotBeJoined`<br>`TestTouch`<br>`TestDeleteExpiredOnlyIdle`<br>`TestDeleteExpiredCustomTTL` | go unit (store done; janitor and ROOM_GONE open) | unit-test | in-progress (PARTIAL) |
+| R24.10 | Rooms persist in one private SQLite file across a restart | `TestPersistsAcrossReopen`<br>`TestRoundTrip`<br>`TestMigrationIdempotent`<br>`TestOpenRefusesNewerSchema`<br>`TestDBFileIsPrivate`<br>`TestOpenTightensLooseFiles`<br>`TestPragmas` | go unit | unit-test | implemented |
+| R24.11 | Uniform 'responding' hold after every counterable move | — (W7, W13b) | — | unit-test | todo |
+| R24.12 | Reconnect and presence | — (W6, W11, W12, W13b) | — | unit-test | todo |
+| R24.13 | Origin lock, rate limits, input caps, no accounts | `TestCORSAllowedOrigin`<br>`TestCORSNeverWildcard`<br>`TestCORSDeniedOrigins`<br>`TestCORSNoOriginPassesThrough`<br>`TestCORSPreflight`<br>`TestDevFlagAllowsLocalOrigins` | go unit (CORS done; WebSocket origin, rate limits, caps open) | unit-test | in-progress (PARTIAL) |
+| R24.14 | Online needs the network and says so; one-phone modes stay offline | — (W14, W13a, W13b) | — | unit-test, e2e-test | todo |
+| R24.15 | Home offers pass-and-play, table mode and two phones | — (W13a, W13b) | — | e2e-test, unit-test | todo |
+| R24.16 | GameScreen reads a TableSource, with a pending gate | `vitest: game-screen-table-source.svelte.test.ts` ('W10: …' suites) | vitest | unit-test | implemented |
+| R24.17 | Health endpoint | `TestHealthz`<br>`TestHealthzWrongMethodAndUnknownPath` | go unit (version done; DB check and room count open) | unit-test | in-progress (PARTIAL) |
+| R24.18 | Static linux binary and ops files | `TestParseConfigDefaults`<br>`TestParseConfigRejects`<br>`TestRunGracefulShutdown` | go unit (build script merged, untested; ops files open) | unit-test, human-approval | in-progress (PARTIAL) |
+| R24.19 | The owner's setup checklist exists | — (docs/two-phone-plan.md §11) | — | human-approval | in-progress |
 
 ## SPEC contracts not traced to a ledger ID
 
