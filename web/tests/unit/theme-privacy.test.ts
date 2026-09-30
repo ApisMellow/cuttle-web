@@ -97,7 +97,7 @@ async function start(): Promise<HTMLDivElement> {
   await startGameMocked(game, bridge, opening(), { seed: '1' });
   host = document.createElement('div');
   document.body.append(host);
-  instance = mount(GameScreen, { target: host });
+  instance = mount(GameScreen, { target: host, props: { source: game } });
   flushSync();
   await tick();
   flushSync();

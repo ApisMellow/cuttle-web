@@ -249,7 +249,8 @@
       winningMove={winningMove(game.view)}
     />
   {:else}
-    <GameScreen />
+    <!-- W10: pass-and-play's table source; W12 passes the online store here. -->
+    <GameScreen source={game} />
   {/if}
 </main>
 

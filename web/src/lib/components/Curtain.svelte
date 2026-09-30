@@ -37,6 +37,12 @@
     /** Already filtered by the store (SPEC §4.6); Curtain never filters. */
     recapEntries: AppliedMove[];
     viewer: PlayerId | null;
+    /**
+     * The table source's history, handed to RecapPanel (a Counter names what
+     * it stops). Public behind a curtain: every mover-only `index` is
+     * stripped there (SPEC §3.2). Omitted, the recap has only its entries.
+     */
+    history?: readonly AppliedMove[];
     /** Table mode (SPEC §5.10): "NAME's turn" heading, no pass prompt. */
     tableMode?: boolean;
     onadvance: () => void;
@@ -49,6 +55,7 @@
     revealPreference,
     recapEntries,
     viewer,
+    history,
     tableMode = false,
     onadvance,
     theme = getTheme(DEFAULT_THEME_ID),
@@ -98,7 +105,7 @@
         {onadvance}
       />
     {:else}
-      <RecapPanel entries={recapEntries} {viewer} {names} {onadvance} {theme} />
+      <RecapPanel entries={recapEntries} {viewer} {names} {onadvance} {theme} {history} />
     {/if}
   </div>
 {/if}
