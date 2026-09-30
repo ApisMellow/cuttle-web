@@ -32,11 +32,13 @@ const (
 // for logs, and Detail for structured context. Message and Detail describe
 // only what the calling seat may already see (ILLEGAL_MOVE names the
 // caller's own move), so they may go back to that seat, never to the other.
+//
+// Each call returns a fresh *Error; editing one changes nothing else.
 type Error struct {
 	Code    Code
 	Message string
 	Detail  map[string]any
-	kind    *Error
+	kind    errKind
 }
 
 func (e *Error) Error() string { return string(e.Code) + ": " + e.Message }
@@ -44,27 +46,56 @@ func (e *Error) Error() string { return string(e.Code) + ": " + e.Message }
 // Is matches the sentinel an error was made from, and nothing else, so
 // ErrBadSeat and a BAD_REQUEST from elsewhere stay distinguishable.
 func (e *Error) Is(target error) bool {
-	t, ok := target.(*Error)
-	if !ok {
-		return false
-	}
-	return t == e || (e.kind != nil && t == e.kind)
+	k, ok := target.(errKind)
+	return ok && e.kind == k
 }
 
+// errKind is a sentinel: a string constant of an unexported type. A
+// constant can't be reassigned, a string has no fields to write, and no
+// code outside this package can build one, so errors.Is(err, ErrStale)
+// can't be spoofed or broken by a caller.
+type errKind string
+
 // Sentinels. Never returned as-is; each call returns a fresh *Error that
-// errors.Is matches to one of these.
-var (
-	ErrNotYourTurn     = &Error{Code: CodeNotYourTurn, Message: "not your turn"}
-	ErrStale           = &Error{Code: CodeStale, Message: "stale seq"}
-	ErrIndexOutOfRange = &Error{Code: CodeIndexOutOfRange, Message: "move index out of range"}
-	ErrIllegalMove     = &Error{Code: CodeIllegalMove, Message: "engine rejected an offered move"}
-	ErrNoLegalMoves    = &Error{Code: CodeNoLegalMoves, Message: "engine offers no legal move"}
-	ErrGameOver        = &Error{Code: CodeGameOver, Message: "the game is over"}
-	ErrBadSeat         = &Error{Code: CodeBadRequest, Message: "seat must be 0 or 1"}
-	ErrInvalidSnapshot = &Error{Code: CodeInvalidSnapshot, Message: "invalid snapshot"}
-	ErrInternal        = &Error{Code: CodeInternal, Message: "internal error"}
+// errors.Is matches to exactly one of these. The value is the kind's
+// default message.
+const (
+	ErrNotYourTurn     errKind = "not your turn"
+	ErrStale           errKind = "stale seq"
+	ErrIndexOutOfRange errKind = "move index out of range"
+	ErrIllegalMove     errKind = "engine rejected an offered move"
+	ErrNoLegalMoves    errKind = "engine offers no legal move"
+	ErrGameOver        errKind = "the game is over"
+	ErrBadSeat         errKind = "seat must be 0 or 1"
+	ErrInvalidSnapshot errKind = "invalid snapshot"
+	ErrInternal        errKind = "internal error"
 )
 
-func newError(kind *Error, message string, detail map[string]any) *Error {
-	return &Error{Code: kind.Code, Message: message, Detail: detail, kind: kind}
+// code is the wire code an error of this kind carries.
+func (k errKind) code() Code {
+	switch k {
+	case ErrNotYourTurn:
+		return CodeNotYourTurn
+	case ErrStale:
+		return CodeStale
+	case ErrIndexOutOfRange:
+		return CodeIndexOutOfRange
+	case ErrIllegalMove:
+		return CodeIllegalMove
+	case ErrNoLegalMoves:
+		return CodeNoLegalMoves
+	case ErrGameOver:
+		return CodeGameOver
+	case ErrBadSeat:
+		return CodeBadRequest
+	case ErrInvalidSnapshot:
+		return CodeInvalidSnapshot
+	}
+	return CodeInternal
+}
+
+func (k errKind) Error() string { return string(k.code()) + ": " + string(k) }
+
+func newError(kind errKind, message string, detail map[string]any) *Error {
+	return &Error{Code: kind.code(), Message: message, Detail: detail, kind: kind}
 }

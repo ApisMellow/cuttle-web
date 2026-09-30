@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 
 	"github.com/ApisMellow/cuttle/engine"
 )
@@ -64,20 +66,56 @@ type Status struct {
 
 // Update is the result of a committed move: one redacted envelope per
 // seat, rendered before the move was committed (§2.9).
+//
+// An Update holds both seats' envelopes, so it is never sent whole: each
+// seat gets For(seat). The envelopes sit in a closure, out of reach of
+// reflection (see ServerSnapshot), and an Update refuses encoding/json,
+// encoding.TextMarshaler, encoding.BinaryMarshaler and so gob
+// (ErrUpdateNotForClients) and prints only its public Seq and Mover.
 type Update struct {
-	Seq       int
-	Mover     Seat
-	Envelopes [2]Envelope
+	Seq   int
+	Mover Seat
+	envs  func(Seat) Envelope
 }
 
-// For returns seat's envelope, the only part of an Update that seat may
-// receive. An invalid seat gets the zero Envelope.
+// ErrUpdateNotForClients is returned by any attempt to encode an Update.
+var ErrUpdateNotForClients = errors.New("game: Update holds both seats' envelopes; send each seat Update.For(seat), never the Update")
+
+// newUpdate takes ownership of envs.
+func newUpdate(seq int, mover Seat, envs [2]Envelope) Update {
+	return Update{Seq: seq, Mover: mover, envs: func(seat Seat) Envelope { return cloneEnvelope(envs[seat]) }}
+}
+
+// For returns a copy of seat's envelope, the only part of an Update that
+// seat may receive. An invalid seat, or the zero Update, gets the zero
+// Envelope.
 func (u Update) For(seat Seat) Envelope {
-	if !seat.Valid() {
+	if !seat.Valid() || u.envs == nil {
 		return Envelope{}
 	}
-	return u.Envelopes[seat]
+	return u.envs(seat)
 }
+
+// MarshalJSON always fails: send For(seat) instead.
+func (Update) MarshalJSON() ([]byte, error) { return nil, ErrUpdateNotForClients }
+
+// MarshalText always fails, for the same reason.
+func (Update) MarshalText() ([]byte, error) { return nil, ErrUpdateNotForClients }
+
+// MarshalBinary always fails, for the same reason. gob uses it too;
+// without it gob would silently send Seq and Mover.
+func (Update) MarshalBinary() ([]byte, error) { return nil, ErrUpdateNotForClients }
+
+func (u Update) String() string {
+	return fmt.Sprintf("game.Update(seq=%d, mover=%d, redacted)", u.Seq, int(u.Mover))
+}
+func (u Update) GoString() string { return u.String() }
+
+// Format prints String for every verb.
+func (u Update) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, u.String()) }
+
+// LogValue keeps the envelopes out of slog output.
+func (u Update) LogValue() slog.Value { return slog.StringValue(u.String()) }
 
 // renderFunc builds one viewer's envelope. buildEnvelope in production; a
 // test swaps it per instance to prove commit atomicity.
@@ -118,15 +156,43 @@ func NewSession(seed uint64, dealer Seat) (*Session, error) {
 
 // RestoreSession rebuilds a Session from ServerSnapshot.PersistBytes (or a
 // v1/v2 SnapshotJson). Any malformed or inconsistent blob is
-// ErrInvalidSnapshot. The checks are the Bridge's restore checks
-// (decodeSnapshot): structure and shape, never game rules.
-func RestoreSession(persisted []byte) (s *Session, err error) {
+// ErrInvalidSnapshot. The checks are the Bridge's restore checks: the
+// decode (decodeSnapshot, structure and shape, never game rules), then
+// both seats' envelopes must render.
+func RestoreSession(persisted []byte) (*Session, error) {
+	return restoreSession(persisted, nil)
+}
+
+// restoreSession is RestoreSession with a per-instance renderer (nil means
+// buildEnvelope); a test injects a failing one.
+func restoreSession(persisted []byte, render renderFunc) (s *Session, err error) {
 	defer recoverInternal(&err)
 	g, e := decodeSnapshot(string(persisted))
 	if e != nil {
 		return nil, e
 	}
-	return &Session{g: g}, nil
+	s = &Session{g: g, render: render}
+	// Bridge.Restore's render-before-commit check (commit): a blob that
+	// decodes but can't be shown to both seats is refused, not handed out.
+	if e := s.renderBoth(); e != nil {
+		return nil, newError(ErrInvalidSnapshot, "snapshot does not render: "+e.Error(), nil)
+	}
+	return s, nil
+}
+
+// renderBoth renders both seats' envelopes of the held game and reports a
+// panic in either as an error.
+func (s *Session) renderBoth() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("recovered panic: %v", r)
+		}
+	}()
+	render := s.renderer()
+	for _, viewer := range []Seat{Seat0, Seat1} {
+		render(s.g.state, s.g.history, engine.PlayerID(viewer))
+	}
+	return nil
 }
 
 // Status reports whose move it is and whether the game is over.
@@ -224,7 +290,7 @@ func (s *Session) Apply(seat Seat, seq, index int) (up Update, err error) {
 		envs[viewer] = cloneEnvelope(render(next.state, next.history, engine.PlayerID(viewer)))
 	}
 	s.g = next
-	return Update{Seq: len(next.history), Mover: seat, Envelopes: envs}, nil
+	return newUpdate(len(next.history), seat, envs), nil
 }
 
 // Snapshot returns the full game for server persistence. See
@@ -235,7 +301,7 @@ func (s *Session) Snapshot() (snap ServerSnapshot, err error) {
 	if e != nil {
 		return ServerSnapshot{}, newError(ErrInternal, "encoding failed: "+e.Error(), nil)
 	}
-	return ServerSnapshot{blob: out}, nil
+	return newServerSnapshot(out), nil
 }
 
 func (s *Session) renderer() renderFunc {

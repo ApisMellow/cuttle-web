@@ -184,9 +184,13 @@ that makes your list complete.
   rule or check in the core so both get it. `Session.Apply(seat, seq,
   index)` refuses any seat but engine `Active` (`ErrNotYourTurn`) and any
   seq but the current one (`ErrStale`). `ServerSnapshot` holds the full
-  game: it refuses JSON/text encoding and prints redacted; its bytes leave
-  only through `PersistBytes`, for the store. Only `Envelope` is
-  `ClientSafe`. The envelope renderer is a per-instance field (`render`),
+  game in a closure, so reflection (fmt, slog, json, gob) can't reach the
+  bytes at any nesting depth; it refuses JSON/text/binary encoding and
+  prints redacted, and its bytes leave only through `PersistBytes`, for the
+  store. `Update` holds both seats' envelopes the same way: send
+  `up.For(seat)`, never the Update, which refuses encoding. Only `Envelope`
+  is `ClientSafe`. The `ErrX` sentinels are constants of an unexported
+  `errKind`; match them with `errors.Is`. The envelope renderer is a per-instance field (`render`),
   never a package variable: sessions run in parallel under `-race`.
 - **Golden transcript.** `internal/game/golden_test.go` hashes every
   bridge call's JSON output over 64 seeded games against

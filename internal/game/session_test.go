@@ -5,11 +5,14 @@ package game
 
 import (
 	"bytes"
+	"encoding/gob"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -532,9 +535,12 @@ func TestW2_ReturnedEnvelopesDoNotAliasSession(t *testing.T) {
 	}
 	before := persisted(t, s)
 	for _, seat := range []Seat{Seat0, Seat1} {
+		want := jsonOf(t, up.For(seat))
 		e := up.For(seat)
 		scribble(&e)
-		scribble(&up.Envelopes[seat])
+		if jsonOf(t, up.For(seat)) != want {
+			t.Fatalf("editing For(%d) changed the Update", seat)
+		}
 	}
 	if persisted(t, s) != before {
 		t.Fatal("editing an Update changed the session")
@@ -753,8 +759,14 @@ func TestW2_ServerSnapshotRefusesToLeak(t *testing.T) {
 			t.Fatalf("json.Marshal(%s): %v", label, err)
 		}
 	}
+	if _, err := snap.MarshalJSON(); !errors.Is(err, ErrSnapshotNotForClients) {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
 	if _, err := snap.MarshalText(); !errors.Is(err, ErrSnapshotNotForClients) {
 		t.Fatalf("MarshalText: %v", err)
+	}
+	if _, err := snap.MarshalBinary(); !errors.Is(err, ErrSnapshotNotForClients) {
+		t.Fatalf("MarshalBinary: %v", err)
 	}
 	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d"} {
 		out := fmt.Sprintf(verb, snap)
@@ -767,6 +779,19 @@ func TestW2_ServerSnapshotRefusesToLeak(t *testing.T) {
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("x", "snap", snap)
 	if strings.Contains(buf.String(), "Deck") || strings.Contains(buf.String(), "Rank") {
 		t.Fatalf("slog leaks the snapshot: %s", buf.String())
+	}
+	// Every print form is exactly the marker, and slog shows it without an
+	// encoding error.
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d"} {
+		if out := fmt.Sprintf(verb, snap); out != redactedSnapshot {
+			t.Fatalf("fmt %s = %q, want %q", verb, out, redactedSnapshot)
+		}
+	}
+	if snap.String() != redactedSnapshot || snap.GoString() != redactedSnapshot {
+		t.Fatal("String/GoString not redacted")
+	}
+	if strings.Count(buf.String(), redactedSnapshot) != 2 || strings.Contains(buf.String(), "ERROR") {
+		t.Fatalf("slog: %s", buf.String())
 	}
 
 	if _, ok := any(snap).(ClientSafe); ok {
@@ -900,20 +925,342 @@ func TestW2_ParallelSessionsShareNoState(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestW2_ErrorsMatchOnlyTheirOwnSentinel(t *testing.T) {
-	sentinels := []*Error{ErrNotYourTurn, ErrStale, ErrIndexOutOfRange, ErrIllegalMove, ErrNoLegalMoves, ErrGameOver, ErrBadSeat, ErrInvalidSnapshot, ErrInternal}
+	sentinels := []errKind{ErrNotYourTurn, ErrStale, ErrIndexOutOfRange, ErrIllegalMove, ErrNoLegalMoves, ErrGameOver, ErrBadSeat, ErrInvalidSnapshot, ErrInternal}
+	codes := []Code{CodeNotYourTurn, CodeStale, CodeIndexOutOfRange, CodeIllegalMove, CodeNoLegalMoves, CodeGameOver, CodeBadRequest, CodeInvalidSnapshot, CodeInternal}
 	for i, a := range sentinels {
 		e := newError(a, "detail text", map[string]any{"k": 1})
-		if e.Code != a.Code || !strings.Contains(e.Error(), string(a.Code)) || !strings.Contains(e.Error(), "detail text") {
-			t.Fatalf("%s: %v", a.Code, e)
+		if e.Code != codes[i] || a.code() != codes[i] || !strings.Contains(e.Error(), string(codes[i])) || !strings.Contains(e.Error(), "detail text") {
+			t.Fatalf("%s: %v", codes[i], e)
+		}
+		if a.Error() != string(codes[i])+": "+string(a) {
+			t.Fatalf("sentinel text %q", a.Error())
 		}
 		for j, b := range sentinels {
 			if errors.Is(e, b) != (i == j) {
-				t.Fatalf("errors.Is(%s instance, %s) = %v", a.Code, b.Code, i != j)
+				t.Fatalf("errors.Is(%s instance, %s) = %v", codes[i], codes[j], i != j)
 			}
+		}
+		// A foreign error with the same text, or an *Error with no kind,
+		// matches nothing.
+		if errors.Is(errors.New(a.Error()), a) || errors.Is(&Error{Code: codes[i], Message: string(a)}, a) {
+			t.Fatalf("%s: a lookalike error matched the sentinel", codes[i])
 		}
 	}
 	// ErrBadSeat shares BAD_REQUEST's wire code but is its own sentinel.
-	if ErrBadSeat.Code != CodeBadRequest {
+	if ErrBadSeat.code() != CodeBadRequest {
 		t.Fatal("ErrBadSeat code")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Reflection-level leaks: fmt and slog don't call Format/String/LogValue on
+// a value they reach through an unexported field (it can't be turned back
+// into an interface), so they print its fields raw. Nothing a ServerSnapshot
+// or an Update holds may be reachable that way, at any depth.
+// ---------------------------------------------------------------------------
+
+// leakForms returns tok as it would look in the output of every printer we
+// check: raw, %q-escaped, %v of a []byte (decimal), %x, and %#v of a []byte.
+func leakForms(tok string) []string {
+	b := []byte(tok)
+	dec := make([]string, len(b))
+	gox := make([]string, len(b))
+	for i, c := range b {
+		dec[i] = strconv.Itoa(int(c))
+		gox[i] = fmt.Sprintf("0x%x", c)
+	}
+	q := strconv.Quote(tok)
+	return []string{tok, q[1 : len(q)-1], strings.Join(dec, " "), hex.EncodeToString(b), strings.ToUpper(hex.EncodeToString(b)), strings.Join(gox, ", ")}
+}
+
+func assertNoLeak(t *testing.T, label, out string, tokens []string, maxLen int) {
+	t.Helper()
+	for _, tok := range tokens {
+		for _, form := range leakForms(tok) {
+			if strings.Contains(out, form) {
+				t.Fatalf("%s leaks %q (as %q): %.400s", label, tok, form, out)
+			}
+		}
+	}
+	if len(out) > maxLen {
+		t.Fatalf("%s printed %d bytes (cap %d), content is reachable: %.400s", label, len(out), maxLen, out)
+	}
+}
+
+// printAll renders v with every fmt verb a log line might use, slog's text
+// and JSON handlers, encoding/json and gob, and returns labelled outputs.
+// Encoding errors are fine (a refusal is not a leak); their text is checked
+// too.
+func printAll(v any) map[string]string {
+	out := map[string]string{}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+		out["fmt "+verb] = fmt.Sprintf(verb, v)
+	}
+	var tb, jb bytes.Buffer
+	slog.New(slog.NewTextHandler(&tb, nil)).Info("x", "v", v)
+	slog.New(slog.NewJSONHandler(&jb, nil)).Info("x", "v", v)
+	out["slog text"] = tb.String()
+	out["slog json"] = jb.String()
+	j, err := json.Marshal(v)
+	out["json"] = string(j) + fmt.Sprint(err)
+	var gb bytes.Buffer
+	err = gob.NewEncoder(&gb).Encode(v)
+	out["gob"] = gb.String() + fmt.Sprint(err)
+	return out
+}
+
+type snapRoom struct{ snap ServerSnapshot }
+
+type snapNest struct {
+	room  snapRoom
+	byID  map[string]ServerSnapshot
+	list  []ServerSnapshot
+	ptr   *ServerSnapshot
+	arr   [1]ServerSnapshot
+	iface any
+	Pub   int // gives gob something to encode
+}
+
+func TestW2_ServerSnapshotUnreachableByReflection(t *testing.T) {
+	s := mustSession(t, 42, Seat1)
+	snap, err := s.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(snap.PersistBytes())
+	deckCard := jsonOf(t, s.g.state.Deck[0])
+	tokens := []string{`"Deck"`, deckCard, `"seed":"42"`, `{"ok":true`}
+	for _, tok := range tokens {
+		if !strings.Contains(raw, tok) {
+			t.Fatalf("precondition: snapshot lacks %q", tok)
+		}
+	}
+	nest := snapNest{
+		room:  snapRoom{snap},
+		byID:  map[string]ServerSnapshot{"r": snap},
+		list:  []ServerSnapshot{snap},
+		ptr:   &snap,
+		arr:   [1]ServerSnapshot{snap},
+		iface: snap,
+		Pub:   1,
+	}
+	for label, v := range map[string]any{
+		"unexported field":  snapRoom{snap},
+		"pointer to room":   &snapRoom{snap},
+		"nest":              nest,
+		"pointer to nest":   &nest,
+		"slice of nest":     []snapNest{nest},
+		"map of nest":       map[string]snapNest{"n": nest},
+		"nest in any field": struct{ v any }{nest},
+	} {
+		for how, out := range printAll(v) {
+			assertNoLeak(t, label+" / "+how, out, tokens, 1200)
+		}
+	}
+	// Direct gob of a snapshot, or of a struct exporting one, refuses loudly.
+	for label, v := range map[string]any{"value": snap, "exported field": struct{ S ServerSnapshot }{snap}} {
+		var gb bytes.Buffer
+		if err := gob.NewEncoder(&gb).Encode(v); !errors.Is(err, ErrSnapshotNotForClients) {
+			t.Fatalf("gob %s: err = %v, want ErrSnapshotNotForClients", label, err)
+		}
+		assertNoLeak(t, "gob "+label, gb.String(), tokens, 1200)
+	}
+}
+
+type updRoom struct{ last Update }
+
+type updNest struct {
+	room  updRoom
+	byID  map[string]Update
+	list  []Update
+	ptr   *Update
+	iface any
+	Pub   int
+}
+
+func TestW2_UpdateCannotBeSentWhole(t *testing.T) {
+	s := mustSession(t, 42, Seat1)
+	st := s.Status()
+	up, err := s.Apply(st.Actor, st.Seq, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The envelopes are reachable only through For.
+	ty := reflect.TypeOf(up)
+	for i := 0; i < ty.NumField(); i++ {
+		f := ty.Field(i)
+		if f.IsExported() && strings.Contains(f.Type.String(), "Envelope") {
+			t.Fatalf("Update exports %s %s", f.Name, f.Type)
+		}
+	}
+	env0, env1 := up.For(Seat0), up.For(Seat1)
+	if !env0.OK || !env1.OK || up.Seq != 1 || up.Mover != st.Actor {
+		t.Fatalf("update content: seq %d mover %d ok %v/%v", up.Seq, up.Mover, env0.OK, env1.OK)
+	}
+	// For hands out a fresh copy each call.
+	scribble(&env0)
+	if jsonOf(t, up.For(Seat0)) == jsonOf(t, env0) {
+		t.Fatal("For aliases the Update's envelope")
+	}
+	w0, w1 := jsonOf(t, up.For(Seat0)), jsonOf(t, up.For(Seat1))
+	hand0 := jsonOf(t, s.g.state.Players[0].Hand[0])
+	hand1 := jsonOf(t, s.g.state.Players[1].Hand[0])
+	if !strings.Contains(w0, hand0) || !strings.Contains(w1, hand1) || !strings.Contains(w0+w1, "draw a card") {
+		t.Fatal("precondition: envelopes lack the tokens this test searches for")
+	}
+	tokens := []string{hand0, hand1, "draw a card", `"legalMoves"`}
+	fields := []string{"Hand", "Descriptions", "LegalMoves", "Envelopes", "OK:true"}
+
+	// Top level: every encoder refuses, every print form is the marker.
+	want := fmt.Sprintf("game.Update(seq=%d, mover=%d, redacted)", up.Seq, up.Mover)
+	for label, v := range map[string]any{"value": up, "pointer": &up, "field": struct{ U Update }{up}, "in map": map[string]any{"u": up}} {
+		if out, err := json.Marshal(v); !errors.Is(err, ErrUpdateNotForClients) {
+			t.Fatalf("json.Marshal(%s) = %s, %v; want ErrUpdateNotForClients", label, out, err)
+		}
+		var gb bytes.Buffer
+		if err := gob.NewEncoder(&gb).Encode(v); !errors.Is(err, ErrUpdateNotForClients) && label != "in map" {
+			t.Fatalf("gob(%s): %v; want ErrUpdateNotForClients", label, err)
+		}
+	}
+	if _, err := up.MarshalJSON(); !errors.Is(err, ErrUpdateNotForClients) {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	if _, err := up.MarshalText(); !errors.Is(err, ErrUpdateNotForClients) {
+		t.Fatalf("MarshalText: %v", err)
+	}
+	if _, err := up.MarshalBinary(); !errors.Is(err, ErrUpdateNotForClients) {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d"} {
+		if out := fmt.Sprintf(verb, up); out != want {
+			t.Fatalf("fmt %s = %q, want %q", verb, out, want)
+		}
+	}
+	if up.String() != want || up.GoString() != want {
+		t.Fatalf("String/GoString: %q %q", up.String(), up.GoString())
+	}
+	var tb, jb bytes.Buffer
+	slog.New(slog.NewTextHandler(&tb, nil)).Info("x", "up", up)
+	slog.New(slog.NewJSONHandler(&jb, nil)).Info("x", "up", up)
+	for label, out := range map[string]string{"text": tb.String(), "json": jb.String()} {
+		if !strings.Contains(out, "redacted") || strings.Contains(out, "ERROR") {
+			t.Fatalf("slog %s: %s", label, out)
+		}
+	}
+
+	// Nested where the methods can't run.
+	nest := updNest{room: updRoom{up}, byID: map[string]Update{"r": up}, list: []Update{up}, ptr: &up, iface: up, Pub: 1}
+	for label, v := range map[string]any{
+		"unexported field": updRoom{up},
+		"pointer to room":  &updRoom{up},
+		"nest":             nest,
+		"pointer to nest":  &nest,
+		"slice of nest":    []updNest{nest},
+	} {
+		for how, out := range printAll(v) {
+			assertNoLeak(t, label+" / "+how, out, append(tokens, fields...), 1200)
+		}
+	}
+	if _, ok := any(up).(ClientSafe); ok {
+		t.Fatal("Update must not be ClientSafe")
+	}
+	// The zero Update gives zero envelopes and still prints redacted.
+	var zero Update
+	if z := zero.For(Seat0); z.OK {
+		t.Fatal("zero Update.For must be the zero Envelope")
+	}
+	if fmt.Sprint(zero) != "game.Update(seq=0, mover=0, redacted)" {
+		t.Fatalf("zero update prints %q", fmt.Sprint(zero))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Sentinels are immutable.
+// ---------------------------------------------------------------------------
+
+func allSentinels() []error {
+	return []error{ErrNotYourTurn, ErrStale, ErrIndexOutOfRange, ErrIllegalMove, ErrNoLegalMoves, ErrGameOver, ErrBadSeat, ErrInvalidSnapshot, ErrInternal}
+}
+
+func TestW2_SentinelsAreImmutable(t *testing.T) {
+	before := map[int]string{}
+	for i, sen := range allSentinels() {
+		before[i] = sen.Error()
+		// No exported sentinel may be a pointer: through a pointer, a type
+		// assertion would reach the shared value and rewrite it.
+		if k := reflect.ValueOf(sen).Kind(); k == reflect.Ptr || k == reflect.Map || k == reflect.Slice {
+			t.Fatalf("sentinel %v is a %s; its fields are writable through the exported name", sen, k)
+		}
+		if p, ok := any(sen).(*Error); ok {
+			p.Code, p.Message = "HIJACKED", "hijacked"
+		}
+	}
+	// Mutate every field of real returned errors.
+	s := mustSession(t, 42, Seat1)
+	st := s.Status()
+	for _, call := range []func() error{
+		func() error { _, err := s.Apply(st.Actor, st.Seq+1, 0); return err },
+		func() error { _, err := s.Apply(st.Actor.Other(), st.Seq, 0); return err },
+		func() error { _, err := s.View(7); return err },
+		func() error { _, err := RestoreSession(nil); return err },
+	} {
+		err := call()
+		var ge *Error
+		if !errors.As(err, &ge) {
+			t.Fatalf("not an *Error: %v", err)
+		}
+		ge.Code, ge.Message = "HIJACKED", "hijacked"
+		ge.Detail = map[string]any{"x": 1}
+	}
+	for i, sen := range allSentinels() {
+		if sen.Error() != before[i] || strings.Contains(sen.Error(), "HIJACKED") {
+			t.Fatalf("sentinel %d changed: %q -> %q", i, before[i], sen.Error())
+		}
+	}
+	_, err := s.Apply(st.Actor, st.Seq+1, 0)
+	wantErr(t, "stale after mutation", err, ErrStale, CodeStale)
+	_, err = s.Apply(st.Actor.Other(), st.Seq, 0)
+	wantErr(t, "not your turn after mutation", err, ErrNotYourTurn, CodeNotYourTurn)
+}
+
+// ---------------------------------------------------------------------------
+// RestoreSession renders both seats before it returns (the Bridge.Restore
+// render-before-commit check).
+// ---------------------------------------------------------------------------
+
+func TestW2_RestoreRendersBothSeatsBeforeReturning(t *testing.T) {
+	// The engine and validateState leave no known snapshot that decodes yet
+	// fails to render (a 40-seed mutation fuzz of phase, pending, reveals and
+	// out-of-range targets found none), so the render failure is injected
+	// through the per-instance renderer, as in the Apply atomicity test.
+	good := []byte(persisted(t, mustSession(t, 9, Seat0)))
+	for _, failSeat := range []Seat{Seat0, Seat1} {
+		var rendered [2]int
+		render := func(g engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
+			rendered[viewer]++
+			if viewer == engine.PlayerID(failSeat) {
+				panic("render failed")
+			}
+			return buildEnvelope(g, h, viewer)
+		}
+		s, err := restoreSession(good, render)
+		if s != nil {
+			t.Fatalf("fail seat %d: got a session", failSeat)
+		}
+		wantErr(t, fmt.Sprintf("fail seat %d", failSeat), err, ErrInvalidSnapshot, CodeInvalidSnapshot)
+		if rendered[failSeat] == 0 {
+			t.Fatalf("fail seat %d was never rendered", failSeat)
+		}
+	}
+	var rendered [2]int
+	s, err := restoreSession(good, func(g engine.GameState, h []AppliedMove, viewer engine.PlayerID) Envelope {
+		rendered[viewer]++
+		return buildEnvelope(g, h, viewer)
+	})
+	if err != nil || s == nil || rendered[0] == 0 || rendered[1] == 0 {
+		t.Fatalf("good restore: %v, renders %v", err, rendered)
+	}
+	if persisted(t, s) != string(good) {
+		t.Fatal("good restore is not exact")
 	}
 }

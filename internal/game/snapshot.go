@@ -20,19 +20,31 @@ import (
 // NEVER SEND IT TO A CLIENT. Anyone holding it knows every hidden card and
 // the whole draw order. Per-seat Envelopes (Session.View, Update.For) are
 // the only client-safe output. To make an accident loud rather than
-// silent, a ServerSnapshot refuses encoding/json and encoding.TextMarshaler
-// (ErrSnapshotNotForClients), prints as a fixed redacted string under every
-// fmt verb and in slog, and is not ClientSafe. The bytes come out only
-// through PersistBytes, whose name says where they may go.
+// silent, a ServerSnapshot refuses encoding/json, encoding.TextMarshaler,
+// encoding.BinaryMarshaler and so gob (ErrSnapshotNotForClients), prints as a
+// fixed redacted string under every fmt verb and in slog, and is not
+// ClientSafe. The bytes come out only through PersistBytes, whose name
+// says where they may go.
+//
+// The bytes live inside a closure, not in a field. fmt and slog skip
+// Format/String/LogValue on a value reached through an unexported field
+// and print it by reflection instead; reflection can walk slices, arrays,
+// maps and pointers, but it cannot see what a func captured. Nested at any
+// depth, a ServerSnapshot prints as a func address.
 type ServerSnapshot struct {
-	blob []byte
+	blob func() []byte
 }
 
-// ErrSnapshotNotForClients is returned by any attempt to JSON- or
-// text-encode a ServerSnapshot.
+// ErrSnapshotNotForClients is returned by any attempt to encode a
+// ServerSnapshot.
 var ErrSnapshotNotForClients = errors.New("game: ServerSnapshot is server-only; persist it with PersistBytes, never send it to a client")
 
 const redactedSnapshot = "game.ServerSnapshot(redacted)"
+
+// newServerSnapshot takes ownership of b.
+func newServerSnapshot(b []byte) ServerSnapshot {
+	return ServerSnapshot{blob: func() []byte { return append([]byte(nil), b...) }}
+}
 
 // PersistBytes returns a copy of the snapshot bytes, for the server's
 // store only. Hand them back to RestoreSession; never write them to a
@@ -41,7 +53,7 @@ func (s ServerSnapshot) PersistBytes() []byte {
 	if s.blob == nil {
 		return nil
 	}
-	return append([]byte(nil), s.blob...)
+	return s.blob()
 }
 
 // MarshalJSON always fails: a snapshot must never be serialized as, or
@@ -50,6 +62,10 @@ func (ServerSnapshot) MarshalJSON() ([]byte, error) { return nil, ErrSnapshotNot
 
 // MarshalText always fails, for the same reason.
 func (ServerSnapshot) MarshalText() ([]byte, error) { return nil, ErrSnapshotNotForClients }
+
+// MarshalBinary always fails, for the same reason. gob uses it too, so gob
+// refuses loudly instead of silently writing an empty value.
+func (ServerSnapshot) MarshalBinary() ([]byte, error) { return nil, ErrSnapshotNotForClients }
 
 func (ServerSnapshot) String() string   { return redactedSnapshot }
 func (ServerSnapshot) GoString() string { return redactedSnapshot }
