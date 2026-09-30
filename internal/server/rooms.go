@@ -85,6 +85,9 @@ type room struct {
 	meta     store.Room
 	sess     *game.Session // nil while waiting for the second player
 	lastUsed time.Time
+	// live is the room's sockets, response holds and rematch requests
+	// (play.go). Memory only.
+	live liveRoom
 }
 
 // NewRooms builds a manager over st.
@@ -161,6 +164,8 @@ func (m *Rooms) Join(ctx context.Context, rawCode, name string) (store.Claim, er
 		r.meta.Names[1] = name
 		r.meta.Joined = true
 		r.meta.Status = store.StatusActive
+		// A connected seat 0 hears the names first, then the deal's state.
+		r.live.welcomeAllLocked(r)
 		if err := m.dealLocked(ctx, r); err != nil {
 			m.log.Error("deal after join failed; will deal on next load", "code", r.code, "err", err)
 			r.loaded = false
@@ -193,6 +198,19 @@ func (m *Rooms) View(ctx context.Context, code string, seat game.Seat) (game.Env
 func (m *Rooms) Move(ctx context.Context, code string, seat game.Seat, seq, index int) (game.Update, error) {
 	var up game.Update
 	err := m.withRoom(ctx, code, func(r *room) error {
+		var err error
+		up, err = m.moveLocked(ctx, r, seat, seq, index)
+		return err
+	})
+	return up, err
+}
+
+// moveLocked is Move's critical section, for callers that already hold
+// r.mu (the socket's move handler, which also fans the result out under
+// the same lock).
+func (m *Rooms) moveLocked(ctx context.Context, r *room, seat game.Seat, seq, index int) (game.Update, error) {
+	var up game.Update
+	err := func() error {
 		if r.sess == nil {
 			return ErrNotStarted
 		}
@@ -200,7 +218,13 @@ func (m *Rooms) Move(ctx context.Context, code string, seat game.Seat, seq, inde
 		if err != nil {
 			return err
 		}
-		st := r.sess.Status()
+		st, err := r.sess.Status()
+		if err != nil {
+			// The move is applied in memory but can't be described for
+			// the save: put memory back to what the store holds.
+			m.log.Error("status after move failed; reloading", "code", r.code)
+			return m.reloadLocked(ctx, r, err)
+		}
 		sv := store.Save{
 			PrevGame: r.meta.Game, PrevSeq: r.meta.Seq,
 			Game: r.meta.Game, Seq: st.Seq,
@@ -220,7 +244,7 @@ func (m *Rooms) Move(ctx context.Context, code string, seat game.Seat, seq, inde
 		}
 		up = u
 		return nil
-	})
+	}()
 	return up, err
 }
 
@@ -288,6 +312,9 @@ func (m *Rooms) dealLocked(ctx context.Context, r *room) error {
 		return err
 	}
 	m.log.Info("game dealt", "code", r.code, "game", r.meta.Game)
+	// Connected seats get the new game at once; holds and rematch
+	// requests belong to the old one.
+	r.live.dealtLocked(r)
 	return nil
 }
 
@@ -360,6 +387,8 @@ func (m *Rooms) withRoom(ctx context.Context, rawCode string, fn func(*room) err
 
 // dropLocked removes r from the map. r.mu must be held.
 func (m *Rooms) dropLocked(r *room) {
+	// Sockets close bare (retryable); the next hello reloads the room.
+	r.live.closeLocked(nil)
 	r.gone, r.loaded, r.sess = true, false, nil
 	m.mu.Lock()
 	if m.rooms[r.code] == r {
@@ -394,10 +423,15 @@ func (m *Rooms) Sweep(ctx context.Context) (deleted, dropped int, err error) {
 		}
 		r.mu.Lock()
 		if !r.gone {
-			drop := now.Sub(r.lastUsed) > m.memIdle
+			// A room with a live socket stays in memory however idle.
+			drop := now.Sub(r.lastUsed) > m.memIdle && !r.live.connected()
 			if !drop {
 				_, gerr := m.st.Get(ctx, r.code)
-				drop = errors.Is(gerr, store.ErrNotFound)
+				if errors.Is(gerr, store.ErrNotFound) {
+					// Expired under a live socket: ROOM_GONE, then close.
+					r.live.closeLocked(newErrorFrame(CodeRoomGone, nil))
+					drop = true
+				}
 			}
 			if drop {
 				m.dropLocked(r)

@@ -21,9 +21,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/ApisMellow/cuttle-web/internal/store"
 )
@@ -55,6 +58,10 @@ type api struct {
 	create  *limiter
 	join    *limiter
 	trusted trustedSet
+	now     func() time.Time
+	// lastXFFWarn is the unix-nano time of the last "proxy sent no
+	// X-Forwarded-For" warning (warnNoXFF).
+	lastXFFWarn atomic.Int64
 }
 
 type nameBody struct {
@@ -110,7 +117,11 @@ func (a *api) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 // limit spends one token from l for this client, or answers 429.
 func (a *api) limit(w http.ResponseWriter, r *http.Request, l *limiter) bool {
-	ok, wait := l.allow(clientKey(r, a.trusted))
+	c := identify(r, a.trusted)
+	if c.proxyNoXFF {
+		a.warnNoXFF()
+	}
+	ok, wait := l.allow(c)
 	if ok {
 		return true
 	}
@@ -121,6 +132,21 @@ func (a *api) limit(w http.ResponseWriter, r *http.Request, l *limiter) bool {
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
 	writeError(w, http.StatusTooManyRequests, CodeRateLimited, "too many tries; wait a minute")
 	return false
+}
+
+// warnNoXFF logs, at most once a minute, that a trusted proxy sent a
+// request with no usable X-Forwarded-For. Every such request is keyed by
+// the proxy's own address, so all its clients share one bucket: usually
+// the proxy isn't configured to set the header.
+func (a *api) warnNoXFF() {
+	now := a.now().UnixNano()
+	last := a.lastXFFWarn.Load()
+	if last != 0 && now-last < int64(time.Minute) {
+		return
+	}
+	if a.lastXFFWarn.CompareAndSwap(last, now) {
+		a.log.Warn("trusted proxy sent no usable X-Forwarded-For; its clients share one rate-limit bucket")
+	}
 }
 
 // readName decodes {"name": "..."} strictly: JSON content type, at most
@@ -165,14 +191,26 @@ func (a *api) readName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return name, true
 }
 
-// cleanName strips control characters and bidirectional-override
-// characters (which can make a name display as something else), then
-// trims surrounding space. The result must be 1..MaxNameRunes runes. Other
-// format characters, such as the zero-width joiner inside emoji, stay.
+// cleanName normalizes to NFC, then strips control characters,
+// bidirectional-override characters (which can make a name display as
+// something else) and invisible format characters (Unicode Cf: zero-width
+// space, word joiner, BOM, soft hyphen, tag characters, ...), then trims
+// surrounding space. The one format character kept is the zero-width
+// joiner inside an emoji sequence (keepZWJ). The result must be
+// 1..MaxNameRunes runes, so a name of only invisible characters is
+// refused.
 func cleanName(s string) (string, bool) {
+	rs := []rune(norm.NFC.String(s))
 	var b strings.Builder
-	for _, r := range s {
-		if unicode.IsControl(r) || isBidiControl(r) {
+	for i, r := range rs {
+		switch {
+		case unicode.IsControl(r), isBidiControl(r):
+			continue
+		case r == zwj:
+			if !keepZWJ(rs, i) {
+				continue
+			}
+		case unicode.Is(unicode.Cf, r):
 			continue
 		}
 		b.WriteRune(r)
@@ -181,6 +219,42 @@ func cleanName(s string) (string, bool) {
 	n := utf8.RuneCountInString(out)
 	return out, n >= 1 && n <= MaxNameRunes
 }
+
+const zwj = '\u200d'
+
+// keepZWJ reports whether the ZWJ at rs[i] joins two emoji: the rune
+// after it is a pictograph, and the rune before it is a pictograph or
+// an emoji modifier or variation selector that follows one.
+func keepZWJ(rs []rune, i int) bool {
+	if i == 0 || i+1 >= len(rs) || !isPictograph(rs[i+1]) {
+		return false
+	}
+	prev := rs[i-1]
+	if (unicode.Is(unicode.Variation_Selector, prev) || isEmojiModifier(prev)) && i >= 2 {
+		prev = rs[i-2]
+	}
+	return isPictograph(prev)
+}
+
+// isPictograph approximates Extended_Pictographic (Go's unicode tables
+// don't carry emoji properties): the symbol blocks emoji live in.
+func isPictograph(r rune) bool {
+	switch {
+	case r >= 0x1F000 && r <= 0x1FAFF: // cards, emoji, symbols and pictographs
+		return true
+	case r >= 0x2600 && r <= 0x27BF: // misc symbols, dingbats (♀ ♂ ⚕ ❤)
+		return true
+	case r >= 0x2B00 && r <= 0x2BFF: // arrows, ⬛ ⭐
+		return true
+	case r >= 0x2190 && r <= 0x21FF, r >= 0x2300 && r <= 0x23FF: // arrows, technical (⌚ ⏰)
+		return true
+	case r == 0x00A9, r == 0x00AE, r == 0x203C, r == 0x2049, r == 0x2122, r == 0x2139, r == 0x3030, r == 0x303D:
+		return true
+	}
+	return false
+}
+
+func isEmojiModifier(r rune) bool { return r >= 0x1F3FB && r <= 0x1F3FF }
 
 func isBidiControl(r rune) bool {
 	switch {

@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	stdlog "log"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,8 +19,9 @@ type BuildInfo struct {
 }
 
 // Handler assembles the routes and middleware. New routes go on the mux
-// here so CORS and logging wrap them.
-func Handler(cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) http.Handler {
+// here so recovery, CORS and logging wrap them. The rate limiters' pruner
+// runs until ctx is done.
+func Handler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) http.Handler {
 	createRate, joinRate := cfg.CreatePerHour, cfg.JoinPerHour
 	if createRate <= 0 {
 		createRate = DefaultCreatePerHour
@@ -31,12 +35,77 @@ func Handler(cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) http.Ha
 		create:  newLimiter(createRate, rooms.now),
 		join:    newLimiter(joinRate, rooms.now),
 		trusted: newTrustedSet(cfg.TrustedProxies),
+		now:     rooms.now,
 	}
+	// The WebSocket play route (W6). Its sockets close when ctx is done.
+	p := newPlay(cfg, log, rooms)
+	context.AfterFunc(ctx, p.closeAll)
+	startPruner(ctx, a.create, a.join, p.failed)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(info, rooms))
 	mux.HandleFunc("POST /api/rooms", a.handleCreate)
 	mux.HandleFunc("POST /api/rooms/{code}/join", a.handleJoin)
-	return RequestLog(log, CORS(NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev), mux))
+	mux.HandleFunc("GET /api/play", p.handle)
+	return RequestLog(log, Recover(log, CORS(NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev), mux)))
+}
+
+// Recover turns a handler panic into a 500 INTERNAL with a fixed message.
+// The panic value can carry a seat token or card state, so only its type
+// and the request path are logged. http.ErrAbortHandler is re-panicked:
+// it is net/http's own signal to drop the connection quietly. If the
+// handler had already started its response, the response is left as is.
+func Recover(log *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tw := &startTracker{ResponseWriter: w}
+		defer func() {
+			v := recover()
+			if v == nil {
+				return
+			}
+			if v == http.ErrAbortHandler {
+				panic(v)
+			}
+			log.Error("handler panic recovered", "type", fmt.Sprintf("%T", v), "path", r.URL.Path)
+			if !tw.started {
+				writeError(tw, http.StatusInternalServerError, CodeInternal, "internal error")
+			}
+		}()
+		next.ServeHTTP(tw, r)
+	})
+}
+
+// startTracker notes whether a response has begun.
+type startTracker struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (s *startTracker) WriteHeader(code int) {
+	s.started = true
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *startTracker) Write(b []byte) (int, error) {
+	s.started = true
+	return s.ResponseWriter.Write(b)
+}
+
+func (s *startTracker) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// httpErrorLog is http.Server.ErrorLog. net/http logs a panic that
+// escapes a handler as "http: panic serving ADDR: VALUE" plus a stack
+// trace; the value can carry a secret, so that line is replaced by a
+// fixed one. Other server errors pass through at warn level.
+type httpErrorLog struct{ log *slog.Logger }
+
+func (h httpErrorLog) Write(p []byte) (int, error) {
+	line := string(p)
+	if strings.Contains(line, "panic serving") {
+		h.log.Error("http: panic serving a request (detail withheld)")
+	} else {
+		h.log.Warn("http server", "msg", strings.TrimSpace(line))
+	}
+	return len(p), nil
 }
 
 // healthz reports the build and the stored room count; the count is also
@@ -100,9 +169,11 @@ func RequestLog(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// NewHTTPServer returns an http.Server with conservative limits.
-func NewHTTPServer(cfg Config, h http.Handler) *http.Server {
+// NewHTTPServer returns an http.Server with conservative limits. Its own
+// error log goes to log through httpErrorLog.
+func NewHTTPServer(cfg Config, h http.Handler, log *slog.Logger) *http.Server {
 	return &http.Server{
+		ErrorLog:          stdlog.New(httpErrorLog{log}, "", 0),
 		Addr:              cfg.Addr,
 		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,

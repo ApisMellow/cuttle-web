@@ -30,7 +30,7 @@ func testHandler(t *testing.T, dev bool) (http.Handler, *bytes.Buffer) {
 	}
 	t.Cleanup(func() { st.Close() })
 	rooms := NewRooms(st, RoomsOptions{Log: log})
-	return Handler(cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, log, rooms), &buf
+	return Handler(t.Context(), cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, log, rooms), &buf
 }
 
 func do(h http.Handler, method, target string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -252,7 +252,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := NewHTTPServer(Config{Addr: ln.Addr().String()}, h)
+	srv := NewHTTPServer(Config{Addr: ln.Addr().String()}, h, slog.New(slog.DiscardHandler))
 	if srv.ReadHeaderTimeout == 0 || srv.MaxHeaderBytes == 0 || srv.WriteTimeout == 0 || srv.IdleTimeout == 0 {
 		t.Errorf("missing limits: %+v", srv)
 	}

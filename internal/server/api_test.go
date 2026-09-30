@@ -31,7 +31,7 @@ func newAPI(t *testing.T, cfg Config, opt RoomsOptions) *apiEnv {
 	if cfg.AllowedOrigins == nil {
 		cfg.AllowedOrigins = []string{prodOrigin}
 	}
-	return &apiEnv{env: e, h: Handler(cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, e.log, e.rooms)}
+	return &apiEnv{env: e, h: Handler(t.Context(), cfg, BuildInfo{Version: "v1.2.3", Commit: "abc1234"}, e.log, e.rooms)}
 }
 
 type req struct {

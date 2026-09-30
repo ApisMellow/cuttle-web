@@ -76,8 +76,8 @@ func main() {
 		rooms.RunJanitor(ctx, server.JanitorInterval)
 	}()
 
-	h := server.Handler(cfg, server.BuildInfo{Version: version, Commit: commit}, log, rooms)
-	runErr := server.Run(ctx, server.NewHTTPServer(cfg, h), ln, 10*time.Second, log)
+	h := server.Handler(ctx, cfg, server.BuildInfo{Version: version, Commit: commit}, log, rooms)
+	runErr := server.Run(ctx, server.NewHTTPServer(cfg, h, log), ln, 10*time.Second, log)
 	stop()
 	janitor.Wait()
 	if runErr != nil {

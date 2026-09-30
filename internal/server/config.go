@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -22,6 +23,11 @@ const (
 	DefaultOrigin = "https://apismellow.github.io"
 	// ReservedPort belongs to an unrelated local project and is never used.
 	ReservedPort = "8765"
+	// DefaultRespondMin is the counter hold's minimum (SPEC §2.12.5,
+	// CUTTLE_RESPOND_MIN_MS).
+	DefaultRespondMin = 1500 * time.Millisecond
+	// maxRespondMin bounds the configurable hold.
+	maxRespondMin = time.Minute
 )
 
 // Config is the validated server configuration.
@@ -36,13 +42,20 @@ type Config struct {
 	CreatePerHour  int // per-client create limit; 0 in a literal = default
 	JoinPerHour    int // per-client join limit; 0 in a literal = default
 	MaxRooms       int // live-room cap; 0 in a literal = default
+	// RespondMin is the least time the mover of a counterable move waits
+	// for its next state (SPEC §2.12.5). 0 in a literal = default.
+	RespondMin time.Duration
+
+	// tune holds the socket timings and limits; the zero value is SPEC
+	// §2.12.6. Tests shorten them.
+	tune playTuning
 }
 
 // ParseConfig reads flags from args, falling back to environment values from
 // getenv (CUTTLE_ADDR, CUTTLE_ALLOWED_ORIGINS comma-separated, CUTTLE_DATA_DIR,
 // CUTTLE_TRUSTED_PROXY comma-separated, CUTTLE_CREATE_PER_HOUR,
-// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS), then to defaults. Flags win over
-// the environment.
+// CUTTLE_JOIN_PER_HOUR, CUTTLE_MAX_ROOMS, CUTTLE_RESPOND_MIN_MS), then to
+// defaults. Flags win over the environment.
 func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -84,6 +97,11 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	respondDef, err := envInt("CUTTLE_RESPOND_MIN_MS", int(DefaultRespondMin/time.Millisecond))
+	if err != nil {
+		return Config{}, err
+	}
+	respondMS := fs.Int("respond-min-ms", respondDef, "least milliseconds a counterable move's mover waits for its next state")
 	createRate := fs.Int("create-per-hour", createDef, "room creates per client per hour")
 	joinRate := fs.Int("join-per-hour", joinDef, "room joins per client per hour")
 	maxRooms := fs.Int("max-rooms", maxDef, "most live rooms")
@@ -95,7 +113,8 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	}
 
 	cfg := Config{Addr: *addr, Dev: *dev, DataDir: *dataDir,
-		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms}
+		CreatePerHour: *createRate, JoinPerHour: *joinRate, MaxRooms: *maxRooms,
+		RespondMin: time.Duration(*respondMS) * time.Millisecond}
 	for _, p := range strings.Split(*proxies, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			cfg.TrustedProxies = append(cfg.TrustedProxies, p)
@@ -143,6 +162,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxRooms < 1 {
 		return fmt.Errorf("max rooms must be at least 1")
+	}
+	if c.RespondMin < time.Millisecond || c.RespondMin > maxRespondMin {
+		return fmt.Errorf("respond-min-ms must be between 1 and %d", maxRespondMin.Milliseconds())
 	}
 	if c.DataDir != "" {
 		st, err := os.Stat(c.DataDir)

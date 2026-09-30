@@ -271,12 +271,15 @@ that makes your list complete.
   ROOM_FULL 409, RATE_LIMITED 429 + `Retry-After`, SERVER_FULL 503 +
   `Retry-After` (room cap), FORBIDDEN 403 (origin, from `CORS`),
   BAD_REQUEST 400 (every validation failure, oversize and wrong content
-  type included), INTERNAL 500. Messages are fixed strings: never a token,
-  an `err` text or internal detail.
+  type included), INTERNAL 500 (a handler panic too, via `Recover`).
+  Messages are fixed strings: never a token, an `err` text or internal
+  detail.
 - **Request bodies are strict.** `Content-Type: application/json`, at most
-  `MaxBodyBytes` (1 KB), one object, unknown fields rejected. Names:
-  control and bidi-override characters stripped, trimmed, 1–20 runes;
-  other format characters (the ZWJ in emoji) stay.
+  `MaxBodyBytes` (1 KB), one object, unknown fields rejected. Names: NFC
+  (`golang.org/x/text/unicode/norm`), then control, bidi-override and
+  every other format character (Cf: ZWSP, word joiner, BOM, soft hyphen,
+  tag characters, ZWNJ) stripped, except a ZWJ between two emoji;
+  trimmed; 1–20 runes, so an all-invisible name is refused.
 - **`Rooms` (`rooms.go`) is the only holder of `game.Session`s.** A map of
   rooms, each with its own mutex; `withRoom` lazy-loads from the store and
   runs the callback under the room lock. Every Session call and the
@@ -294,15 +297,90 @@ that makes your list complete.
   and join 30/h by default, burst = the hourly amount, every attempt spends
   a token (code guessing included). The client is the peer IP, IPv6
   grouped by /64. `X-Forwarded-For` is read only when the peer is a
-  `-trusted-proxy` address, and then only its rightmost entry.
+  `-trusted-proxy` address, and then only its rightmost entry. IPv6
+  clients also share a /48 bucket (4× the per-client rate), so cycling
+  /64s inside one site mints no new allowance; IPv4 has no /24 group
+  (a /24 is at most 256 keys, and often unrelated carrier users). Each
+  table holds 50k keys; when full, new clients draw from one shared
+  overflow bucket (20× the rate), never a flat refusal. Pruning runs on a
+  one-minute ticker started by `Handler(ctx, ...)` and stopped with ctx;
+  `allow` is O(1) and never prunes.
+- **`-trusted-proxy` must set `X-Forwarded-For`.** If the proxy sends none,
+  every client behind it is keyed by the proxy's address and shares one
+  bucket, so one family's burst throttles everyone. The server logs a
+  warning (at most once a minute) when a trusted proxy's request has no
+  usable XFF. Configure the proxy to set it (Caddy's `reverse_proxy` does).
 - **Janitor:** `RunJanitor` every `JanitorInterval` (10 min) calls
   `Sweep`: `store.DeleteExpired`, then drops cached rooms the store no
   longer has or that sat unused for `MemIdle`. It stops with the server's
   context. The nightly backup is W8.
 - **Logs** carry room codes and events only: never a token or a player
   name. `TestAPI_TokensNeverLogged` scans slog and the std `log` output.
-- **Panics:** `game.SetPanicHook` receives recovered panic values; Session
-  errors carry a fixed message. main logs only the panic's type.
+- **Panics:** `game.SetPanicHook` receives recovered panic values and the
+  cause of every other ErrInternal; every ErrInternal's Message is the
+  fixed "internal error". `NewSession` and `Status` recover too (`Status`
+  returns `(Status, error)`). main logs only the panic's type. `Recover`
+  wraps every route and logs only `%T` and the path; `NewHTTPServer` sets
+  `ErrorLog` so net/http's own "panic serving" line is replaced by a
+  fixed one.
+
+### WebSocket play (two-phone W6 + W7)
+
+- **`GET /api/play`** (`ws.go`, `play.go`, `frames.go`; library
+  `github.com/coder/websocket` v1.8.15, which declares `go 1.23`, so the
+  toolchain pin is untouched). SPEC §2.12 is the contract; this is how
+  the code keeps it.
+- **Origin** is checked with `OriginPolicy` before `websocket.Accept`
+  (403, no upgrade); a missing Origin is refused too. `Accept` runs with
+  `InsecureSkipVerify` only because that check already happened.
+- **Goroutines per socket:** the net/http handler goroutine reads (hello,
+  then frames); one writer goroutine drains `conn.out`. Hold timers are
+  `time.AfterFunc` callbacks. Nothing else.
+- **Never write to a socket under a lock.** Room code calls
+  `conn.enqueue`, which never blocks: a full queue (`sendBuffer`, 32)
+  kills the connection as a slow consumer. `conn.terminal` queues a last
+  frame and a close. `conn.kill` closes `dead` and cancels the conn's
+  context, which aborts in-flight reads and writes.
+- **The seat comes from `store.Authenticate` at hello** and is fixed on
+  the conn; no frame is read for a seat. One socket per seat: a newer
+  hello replaces the old one (`REPLACED`, then close), with no presence
+  flicker. A conn found no longer bound to its seat is killed
+  (`errDetached`).
+- **Send path privacy:** `enqueue` takes the sealed `frame` interface. The
+  only game-data field is `stateFrame.Envelope game.ClientSafe`, filled
+  from `Update.For(seat)` or `Session.View(seat)`.
+  `TestWS_FramesCarryOnlyClientSafeData` pins every frame field's type.
+  Logs carry code, seat, seq and event: never a token, name or envelope.
+- **Moves** run `Rooms.moveLocked` (Apply → Save, reload on failure) and
+  the fan-out in one room-lock section. A failed save answers `INTERNAL`
+  plus the reloaded state; if the reload fails, the room is dropped and
+  both sockets close bare.
+- **The counter hold** (`hold`, `checkHoldsLocked`): after a counterable
+  move (OneOff, Counter, SevenPick whose SubMove is a OneOff, whether or
+  not a window opened) the mover gets `responding`, and gets the
+  *current* state only once the engine isn't waiting on the other seat's
+  counter decision AND `RespondMin` (`-respond-min-ms`,
+  `CUTTLE_RESPOND_MIN_MS`, 1500) has passed. Both seats can be held at
+  once (a counter holds the counterer). Any resync (a hello, or an error
+  followed by state) answers `responding` while held. Holds and rematch
+  requests are memory only; a timer checks `gen` so a stale one is a
+  no-op; drop, deal and shutdown stop them.
+- **Room lifetime:** `Sweep` never memory-drops a room with a live
+  socket; a room the store expired gets `ROOM_GONE` then close. `Handler`'s
+  ctx ending closes every socket bare (`play.closeAll`) and refuses new
+  upgrades with 503.
+- **Limits** (`playTuning`, zero = SPEC §2.12.6): hello within 10 s, idle
+  45 s, frames ≤ 1 KB (1009), 10 frames/s burst 20 per socket (one
+  `RATE_LIMITED` per second; 5 s of denials with no second's break closes),
+  failed hellos 30/h per client counting only `UNAUTHORIZED` and
+  `ROOM_GONE`, checked with `limiter.exhausted` (no spend) before the
+  token is looked at. Tests shorten these through `Config.tune`.
+- **Tests** (`ws_test.go`, `ws_helpers_test.go`) use a real httptest
+  server, a file store and real sockets. The `duo` driver replays every
+  move on a local `Session` and checks each state frame equals that
+  seat's own `View` at that seq and carries no hidden card outside
+  history. It plays at machine speed, so the harness raises the frame
+  rate; `TestWS_FrameRateLimit` pins the SPEC rate.
 
 ### Online client connection (two-phone W11)
 
@@ -320,7 +398,18 @@ that makes your list complete.
 - The client never queues or resends a move: `sendMove` returns false
   unless the connection is `open` (after `welcome`).
 - `ROOM_GONE`, `UNAUTHORIZED` and `UPGRADE_REQUIRED` are terminal; add a
-  code to `TERMINAL_ERROR_CODES` only with a plan or SPEC change.
+  code to `TERMINAL_ERROR_CODES` only with a plan or SPEC change. The
+  client-side `SEAT_MISMATCH` (a welcome or state for the wrong seat) is
+  also terminal and means "forget the seat". `REPLACED` (a newer tab took
+  the seat) sets status `replaced`: no auto-reconnect, seat kept, `retry()`
+  resumes. The binding contract is SPEC §2.12.
+- Reconnect: backoff capped at 30 s with jitter; after `RATE_LIMITED` wait
+  at least 60 s, even on online/visible; after 10 failures without a
+  welcome the status is `stalled` until `retry()`. A socket factory that
+  throws counts as a drop. HTTP calls time out after 10 s.
+- `code.ts` is the one room-code implementation (pinned to Go
+  `store.NormalizeCode`); `config.ts` is the one reader of
+  `VITE_CUTTLE_SERVER`. Don't add a second of either.
 - Seat storage is one key, `cuttle.online.v1`, holding only
   `{v, server, code, seat, token, names}`.
 - The server origin comes from `VITE_CUTTLE_SERVER`; a dev build may

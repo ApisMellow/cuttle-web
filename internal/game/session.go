@@ -149,10 +149,25 @@ type session struct {
 // opponent acts first. The seed decides every card, so the server draws it
 // from crypto/rand and never reveals it.
 func NewSession(seed uint64, dealer Seat) (*Session, error) {
+	return newSession(seed, dealer, nil)
+}
+
+// dealFunc deals a new game; dealNewGame in production, a test injects a
+// panicking one.
+type dealFunc func(seed uint64, dealer engine.PlayerID) engine.GameState
+
+// newSession is NewSession with a replaceable deal (nil means dealNewGame).
+// A panic in the deal is ErrInternal and its value goes to the hook.
+func newSession(seed uint64, dealer Seat, deal dealFunc) (s *Session, err error) {
+	defer recoverInternal(&err)
 	if !dealer.Valid() {
 		return nil, newError(ErrBadSeat, fmt.Sprintf("dealer must be 0 or 1, got %d", dealer), nil)
 	}
-	return &Session{g: newGameData(seed, engine.PlayerID(dealer))}, nil
+	if deal == nil {
+		deal = dealNewGame
+	}
+	d := engine.PlayerID(dealer)
+	return &Session{g: &session{state: deal(seed, d), history: []AppliedMove{}, seed: seed, dealer: d}}, nil
 }
 
 // RestoreSession rebuilds a Session from ServerSnapshot.PersistBytes (or a
@@ -198,10 +213,18 @@ func (s *Session) renderBoth() (err error) {
 	return nil
 }
 
-// Status reports whose move it is and whether the game is over.
-func (s *Session) Status() Status {
+// Status reports whose move it is and whether the game is over. A panic
+// (the stuck check asks the engine for legal moves) is ErrInternal with
+// the zero Status.
+func (s *Session) Status() (out Status, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			reportPanic(r)
+			out, err = Status{}, internalErr()
+		}
+	}()
 	st := s.g.state
-	out := Status{
+	out = Status{
 		Seq:    len(s.g.history),
 		Actor:  Seat(st.Active),
 		Phase:  st.Phase,
@@ -213,7 +236,7 @@ func (s *Session) Status() Status {
 		out.Winner = Seat(*st.Winner)
 	}
 	out.Stalemate = out.Over && st.Winner == nil
-	return out
+	return out, nil
 }
 
 // Seq is the history length, the seq the next move must name.
@@ -302,7 +325,7 @@ func (s *Session) Snapshot() (snap ServerSnapshot, err error) {
 	defer recoverInternal(&err)
 	out, e := json.Marshal(s.g.wire())
 	if e != nil {
-		return ServerSnapshot{}, newError(ErrInternal, "encoding failed: "+e.Error(), nil)
+		return ServerSnapshot{}, internalError(e)
 	}
 	return newServerSnapshot(out), nil
 }
@@ -325,15 +348,30 @@ func badSeat(seat Seat) *Error {
 func recoverInternal(err *error) {
 	if r := recover(); r != nil {
 		reportPanic(r)
-		*err = newError(ErrInternal, "recovered panic", nil)
+		*err = internalErr()
 	}
+}
+
+// internalMessage is the Message of every ErrInternal. It is fixed: an
+// engine or encoder error text, like a panic value, can describe hidden
+// cards, and an Error's Message may reach a client.
+const internalMessage = "internal error"
+
+func internalErr() *Error { return newError(ErrInternal, internalMessage, nil) }
+
+// internalError reports cause to the panic hook (server-side only) and
+// returns an ErrInternal with the fixed message.
+func internalError(cause error) *Error {
+	reportPanic(cause)
+	return internalErr()
 }
 
 // panicHook receives recovered panic values (SetPanicHook).
 var panicHook atomic.Pointer[func(any)]
 
 // SetPanicHook installs h to receive the value of every panic a Session
-// method or RestoreSession recovers; nil removes it. The value can hold
+// method, NewSession or RestoreSession recovers, and the cause of every
+// other ErrInternal; nil removes it. The value can hold
 // card state, so it goes only to h (server side), never into an Error.
 // Safe to call concurrently with running sessions.
 func SetPanicHook(h func(any)) {
@@ -378,7 +416,7 @@ func (g *session) applyMove(moves []engine.Move, index int) (*session, *Error) {
 				fmt.Sprintf("engine rejected offered move %d (%q)", index, description),
 				map[string]any{"index": index, "description": description, "seq": len(g.history), "phase": int(pre.Phase)})
 		}
-		return nil, newError(ErrInternal, "engine.Apply: "+err.Error(), nil)
+		return nil, internalError(err)
 	}
 	idx := index
 	history := append(append([]AppliedMove{}, g.history...), AppliedMove{
