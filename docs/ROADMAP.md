@@ -9,6 +9,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 - **Learn-as-you-play help.** A short rules screen, plus one line under each one-off that says what it does ("5: draw two", "9: send a card back to its owner's hand"). Aimed at a first-time player.
 - **Clearer recaps.** Every recap says what actually happened: which cards were drawn, and what a one-off did.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.
+- **Menu-first settings.** Move options (card style, table mode, rules) behind the hamburger menu instead of selectors on the front screen, with a toolbar for common actions.
 
 ## Themes
 
@@ -16,6 +17,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 
 - **Mythic (first):** a full 52-card painted deck in the spirit of classic fantasy card games. Colour follows what each rank does: the Ace wipes the board, the 2 counters, the Jack steals. Sideways goggles mark a glasses 8.
 - **Card gallery (shipped).** Every Mythic painting, uncropped, one card at a time at https://apismellow.github.io/cuttle-web/gallery/. A standalone page in `gallery/` (see `gallery/README.md`).
+- **Classic card redesign.** Rework the standard deck for legibility: a real card's proportion (about 5:7), a large serif corner index with the suit beside it, one big centre pip, plain white faces with a thin edge. Paired with a textured felt table.
 - **New Classic card back:** the standard vector deck gets a new back design, replacing the current plain back.
 - **Stained glass:** a hand-drawn vector deck. It's a candidate to become the standard look.
 - **Webb table:** playmats and card backs from James Webb Space Telescope imagery (IC 348), which pair with any theme.

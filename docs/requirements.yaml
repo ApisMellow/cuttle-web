@@ -858,3 +858,230 @@ requirements:
   # (player 2's hand at the physical top, player 1's at the bottom, a drag
   # by player 2 follows the finger and stages, the curtain still hides the
   # hand, the setting survives a reload).
+
+  # ---------------------------------------------------------------------
+  # R24 — Two-phone online play (PRD §10 amendment A-7, docs/two-phone-plan.md)
+  # ---------------------------------------------------------------------
+  # Added 2026-09-29 when the first two-phone work items started, as A-7
+  # says. W-numbers are the plan's §13 work items. Merged so far on main:
+  # W1 (PR #43), W3 (PR #44), W10 (PR #46), W4 (PR #47). W2 (PR #45) is open.
+  - id: R24.1
+    prd: R24
+    title: "A full game between two phones"
+    acceptance:
+      - "e2e-test: two browser contexts against a local server: one creates a room, the other joins by the share link, they play a scripted seed to a win, rematch, and one side reconnects mid-game and carries on (plan §12 E2E, O1)"
+    verify: [e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W15. Needs its own Playwright config and a ci.sh row, both orchestrator-owned."
+
+  - id: R24.2
+    prd: R24
+    title: "One copy of the redaction code serves the wasm build and the server"
+    acceptance:
+      - "unit-test: the view, envelope, deal and snapshot code lives in the importable package internal/game; internal/wasm is only the syscall/js shim (A-7 'The server is authoritative', plan §2)"
+      - "unit-test: moving the code changes no wire output: every bridge call's JSON over 64 seeded games matches the committed golden transcript, and the seed-42 golden deal is unchanged (plan §12)"
+    verify: [unit-test]
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (W1, PR #43, merged to main @ ac37136): go internal/game/golden_test.go TestGoldenBridgeTranscript against testdata/golden/bridge-transcript.json; the moved redaction tests stay green in their new package (internal/game/view_test.go TestSPEC3_2_ViewRedactsHandsDeckSevenAndScrapIndex, TestR7_1a_OpponentHandNullWithoutGlassesEveryPhase, TestR7_3a_DeckNeverTransmittedEveryPhase, TestR16_1a_SevenRevealedOnlyToActorWhileChoosing; deal_test.go TestR1_1a_GoldenSeedDeal). internal/wasm holds only main.go and main_host.go. Runs in ci.sh's go test ./... row."
+    fails: 0
+
+  - id: R24.3
+    prd: R24
+    title: "Each seat gets only its own redacted view; the full snapshot stays on the server"
+    acceptance:
+      - "unit-test: property test over seeded games: every envelope a Session renders for a seat holds none of the opponent's hand (unless the seat has glasses), no deck card, and no 7 reveal when the seat isn't the actor; the test fails if glasses, a 7 reveal and a counter window were never exercised (O2, plan §9 'The full state never leaves the server')"
+      - "unit-test: the server snapshot (full state, deck order and seed) can't be marshalled, printed, logged or reached by reflection, and an Update can't be sent whole; each seat's envelope is reachable only through its own seat (plan §4)"
+    verify: [unit-test]
+    status: implemented
+    evidence: "Merged (W2, PR #45 @ e791f80): go internal/game/session_test.go TestW2_ViewsNeverLeakHiddenCards (120 seeds, counts glasses and both sides of a 7 reveal), TestW2_ServerSnapshotRefusesToLeak, TestW2_ServerSnapshotUnreachableByReflection, TestW2_UpdateCannotBeSentWhole, TestW2_ReturnedEnvelopesDoNotAliasSession, TestW2_TypedAPIMatchesBridge."
+    fails: 0
+
+  - id: R24.4
+    prd: R24
+    title: "Wire privacy sweep through the real server"
+    acceptance:
+      - "unit-test: two simulated clients play random games over seeds 1–240 through the real HTTP and WebSocket stack (httptest); every card-shaped value in every frame to seat s is outside the hidden set at that moment (the opponent's hand unless s has glasses, the whole deck, the 7's revealed cards when s isn't the actor); no frame contains seed, Deck, snapshot or any token other than the socket's own; the test fails if glasses, a 7 reveal and a counter window were never exercised (plan §12)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W9 (needs W6 and W7)."
+
+  - id: R24.5
+    prd: R24
+    title: "The seat comes from the authenticated connection, never from the message"
+    acceptance:
+      - "unit-test: the server binds a socket to the seat its token authenticates in hello; move frames carry no seat, and a seat field in one is ignored or refused (plan §3, §9)"
+      - "unit-test: a move from the seat that isn't the actor gets NOT_YOUR_TURN, a wrong game or seq gets STALE followed by a fresh state, and each refusal leaves the stored game byte-identical (plan §3 'Seq rules', §12 'Auth and seq')"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. Session half, merged (W2, PR #45 @ e791f80): go internal/game/session_test.go TestW2_SeatBindingRejectsTheOtherSeat (60 seeds, every phase: the other seat gets ErrNotYourTurn, seq -1/+1 gets ErrStale, a bad index or seat is refused, and the session is unchanged), TestW2_ApplyCommitsOnlyIfBothEnvelopesRender. Store half, merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestAuthenticate (a token maps to exactly one seat), TestSaveStaleWritesNothing, TestConcurrentSaveOneWinner. Open: the WebSocket hello-to-seat binding and the STALE resend (W6)."
+    fails: 0
+
+  - id: R24.6
+    prd: R24
+    title: "Rooms: a 4-character code, two seats, one winner of a join race"
+    acceptance:
+      - "unit-test: codes are 4 random Crockford base32 characters, unbiased, redrawn on collision with a live room, and user input is normalized (case, confusable letters) before lookup (plan §5)"
+      - "unit-test: a room has exactly two seats; creating takes seat 0, joining takes seat 1, and among many concurrent joins exactly one wins while the rest get ROOM_FULL (plan §5, §12)"
+      - "unit-test: POST /api/rooms and POST /api/rooms/{code}/join return {code, seat, token} with Cache-Control: no-store; the join deals with a random dealer and both seats get state (plan §3, §5)"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/codes_test.go TestCodeAlphabetIsCrockford, TestNewCodeFormat, TestNewCodeUnbiased, TestNormalizeCode; sqlite_test.go TestCreateRetriesOnCollision, TestConcurrentJoinRace (8 rooms x 24 joiners, one winner each), TestJoinErrors. Open: the HTTP create/join API (W5) and the deal on join (W6)."
+    fails: 0
+
+  - id: R24.7
+    prd: R24
+    title: "Join link, seat record, one online game per phone"
+    acceptance:
+      - "unit-test: opening #/join/CODE prefills the Join screen's code, on load and on hashchange, and the hash is then cleared with history.replaceState (plan §7)"
+      - "unit-test: localStorage holds only the seat record {v, server, code, seat, token, names} under cuttle.online.v1, never game state (A-7, SPEC OQ-9 closed for online play)"
+      - "unit-test: a phone holds at most one online game; starting a second asks first and forgets the first seat (plan §14 question 3)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W12 (seat record) and W13a (join link, Create/Join screens)."
+
+  - id: R24.8
+    prd: R24
+    title: "Seat tokens: 32 random bytes, stored only as hashes, never in URLs or logs"
+    acceptance:
+      - "unit-test: a token is 32 bytes from crypto/rand, base64url; the database stores only SHA-256(token), and a scan of the database and WAL bytes never finds the raw token; authentication compares hashes in constant time (plan §9)"
+      - "unit-test: the token travels only in the create/join reply and the first WebSocket hello frame, never in a URL or query string; request logs carry no query string, header or body (plan §3, §9)"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. Merged: W4 (PR #47 @ e5e76d7) go internal/store/token_test.go TestNewToken, TestNewTokenReaderError; sqlite_test.go TestRawTokensNeverStored, TestAuthenticate. W3 (PR #44 @ a4ce617) go internal/server/server_test.go TestRequestLogOmitsQueryString. Open: the client and server send the token only in hello and the create/join reply (W5, W6, W11)."
+    fails: 0
+
+  - id: R24.9
+    prd: R24
+    title: "A room idle for 1 day is gone"
+    acceptance:
+      - "unit-test: a room with no activity for longer than the idle limit (default 24 h, CUTTLE_IDLE_TTL) is treated as gone by every store call at once, joined or not, before any sweep; exactly the limit is still alive (A-7 'Game life', plan §5)"
+      - "unit-test: a janitor deletes idle rooms every 10 minutes, and a phone holding a dead seat gets ROOM_GONE and forgets the seat (plan §5 step 4, §3)"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. Store half merged (W4, PR #47 @ e5e76d7): go internal/store/sqlite_test.go TestExpiredRoomIsGoneBeforeSweep, TestExpiredWaitingRoomCannotBeJoined, TestTouch, TestDeleteExpiredOnlyIdle, TestDeleteExpiredCustomTTL; DefaultIdleTTL is 24 h (internal/store/store.go). Open: the janitor (W8) and ROOM_GONE handling (W6, W12)."
+    fails: 0
+
+  - id: R24.10
+    prd: R24
+    title: "Rooms persist in one private SQLite file across a restart"
+    acceptance:
+      - "unit-test: rooms, seats, names and the game snapshot survive closing and reopening the store; schema migrations are idempotent and a newer schema is refused (A-7 'Storage')"
+      - "unit-test: the database is created 0600, a loose existing db, -wal or -shm is tightened to 0600, and secure_delete is on so deleted snapshots are zeroed (plan §9)"
+    verify: [unit-test]
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (W4, PR #47, merged to main @ e5e76d7): go internal/store/sqlite_test.go TestPersistsAcrossReopen, TestRoundTrip, TestMigrationIdempotent, TestOpenRefusesNewerSchema, TestDBFileIsPrivate, TestOpenTightensLooseFiles, TestPragmas. Pure-Go driver (modernc.org/sqlite), so CGO_ENABLED=0 builds work. Runs in ci.sh's go test ./... row. The end-to-end check that both clients resync after a server restart is R24.12."
+    fails: 0
+
+  - id: R24.11
+    prd: R24
+    title: "Uniform 'responding' hold after every counterable move"
+    acceptance:
+      - "unit-test: after a OneOff, a SevenPick whose sub-move is a one-off, or a Counter, the mover gets responding at once and no state until both the answer is in and the minimum hold has passed (CUTTLE_RESPOND_MIN_MS, default 1500), whether or not a counter window opened; the responder gets its own state at once (A-7 'R14 online', plan §6)"
+      - "unit-test: with and without a 2 in the responder's hand, the mover's frames match in type and order; a reconnect during the hold gets responding again (plan §6, §12 'Hold test')"
+      - "unit-test: only the responder's phone shows the counter prompt, and only when it holds a legal 2 (plan §6)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W7 (server hold) and W13b (the 'responding' panel). A long think still tells; that leak is accepted by R14."
+
+  - id: R24.12
+    prd: R24
+    title: "Reconnect and presence"
+    acceptance:
+      - "unit-test: on every hello the server sends the full redacted state for that seat, never a diff, which also settles a move that was in flight; the client never resends a move on its own (plan §3, §8)"
+      - "unit-test: after a server restart mid-game both clients reconnect and resync to the same seq (plan §12 'Persistence')"
+      - "unit-test: the client reconnects with backoff (0.5, 1, 2, 4, then every 8 s), and at once on visibilitychange to visible and on online (plan §8)"
+      - "unit-test: 45 s without a heartbeat marks a connection dead and the other seat gets presence {opponentOnline: false}; the UI shows 'Reconnecting…' and 'NAME is offline', and a seq jump shows a recap of the missed entries (plan §7, §8)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W6 (server), W11 (connection module), W12 (store), W13b (banners)."
+
+  - id: R24.13
+    prd: R24
+    title: "Origin lock, rate limits, input caps, no accounts"
+    acceptance:
+      - "unit-test: CORS on /api/rooms* echoes only an exact configured origin (default the Pages origin), never *, and a disallowed Origin gets 403; the WebSocket Origin check uses the same list; localhost is allowed only by a dev flag (plan §9)"
+      - "unit-test: rate limits per IP: create 10/hour, join and failed hello 30/hour, 10 frames/second per socket, with RATE_LIMITED; X-Forwarded-For is trusted only from the local proxy (plan §9)"
+      - "unit-test: names are capped at 20 characters with control characters stripped, frames at 1 KB, live rooms at 500 (plan §9)"
+      - "unit-test: there are no accounts, email or analytics; a code grants only the empty seat 1, once (plan §9)"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. CORS half merged (W3, PR #44 @ a4ce617): go internal/server/server_test.go TestCORSAllowedOrigin, TestCORSNeverWildcard, TestCORSDeniedOrigins, TestCORSNoOriginPassesThrough, TestCORSPreflight, TestDevFlagAllowsLocalOrigins, TestParseConfigRejects. Store refuses an empty name (TestCreateRejectsEmptyName) and a second join (TestJoinErrors). Open: the WebSocket Origin check (W6), rate limits and name/frame/room caps (W5, W6)."
+    fails: 0
+
+  - id: R24.14
+    prd: R24
+    title: "Online needs the network and says so; one-phone modes stay offline"
+    acceptance:
+      - "unit-test: no service-worker runtimeCaching route matches the server origin, and navigateFallback denies /api/ (plan §10)"
+      - "e2e-test: offline, Play online stays visible and explains that it needs a connection; a game in progress shows 'You're offline. Online games need a connection.' and reconnects on its own when the network returns (plan §7, §10)"
+      - "e2e-test: pass-and-play and table mode still start and play with the network off after first load (A-7 'Modes', O4)"
+      - "unit-test: with VITE_CUTTLE_SERVER unset at build time, Play online is hidden (plan §7)"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W14 (config and service-worker guard) and W13a/W13b (the offline copy)."
+
+  - id: R24.15
+    prd: R24
+    title: "Home offers pass-and-play, table mode and two phones"
+    acceptance:
+      - "e2e-test: Home offers Pass and play, Table mode and Play online (Create or Join); Create leads to a waiting screen with the code in large type, Share and Copy link; a saved seat adds 'Resume online game with NAME' (A-7 'Modes', plan §7)"
+      - "unit-test: the online mode runs without the curtain, handoff, reveal gate, resume gate or viewer switching; rematch shows 'Waiting for NAME' until both tap (plan §7)"
+    verify: [e2e-test, unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Plan W13a (Home, Create, Join, waiting screen) and W13b (online result and rematch)."
+
+  - id: R24.16
+    prd: R24
+    title: "GameScreen reads a TableSource, with a pending gate"
+    acceptance:
+      - "unit-test: GameScreen renders from and applies through the TableSource it is given; the local GameStore implements it with no behaviour change (plan §7 'Store seam')"
+      - "unit-test: while the source is pending, Confirm, Pass, the counter prompt and the 7 tray take no input and a double Confirm applies once; an unasked state (the opponent moved) updates the board and clears a staged move; a late answer after unmount doesn't throw (plan §7)"
+    verify: [unit-test]
+    status: implemented
+    evidence: "IMPLEMENTED 2026-09-29 (W10, PR #46, merged to main @ 6de7302): vitest web/tests/unit/game-screen-table-source.svelte.test.ts 'W10: GameScreen reads the TableSource it is given', 'W10: pending apply' (Confirm disabled and board inert, a double Confirm applies once, the counter prompt sends nothing), 'W10: pending and Pass, the counter prompt, the recap history', 'W10: pending blocks the 7 tray too', 'W10: an unasked state (the opponent moved)', 'W10: a late answer after unmount', 'W10: the key guard still blocks held keys'; interface web/src/lib/stores/tableSource.ts, GameStore implements it (game.svelte.ts)."
+    fails: 0
+
+  - id: R24.17
+    prd: R24
+    title: "Health endpoint"
+    acceptance:
+      - "unit-test: GET /healthz returns JSON with ok status, the build version and the live room count, checks the database, and is never cached; other methods get 405 (plan §3, §11)"
+    verify: [unit-test]
+    status: in-progress
+    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): go internal/server/server_test.go TestHealthz (status ok, version and commit, application/json), TestHealthzWrongMethodAndUnknownPath; the handler sets Cache-Control: no-store. Open: the database check and the room count once the store is wired in (W5)."
+    fails: 0
+
+  - id: R24.18
+    prd: R24
+    title: "Static linux binary and ops files"
+    acceptance:
+      - "unit-test: scripts/build-server.sh builds cmd/cuttle-server with CGO_ENABLED=0 GOOS=linux GOARCH=amd64, and the binary is statically linked and stamped with its version (plan §11)"
+      - "human-approval: the Caddyfile, systemd unit, setup script and deploy script exist, and a first manual deploy serves /healthz over TLS; the server listens on localhost only and never on 8765 (plan §11, W16)"
+    verify: [unit-test, human-approval]
+    status: in-progress
+    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. Open: ops files (W16) and the deploy Action (W17)."
+    fails: 0
+
+  - id: R24.19
+    prd: R24
+    title: "The owner's setup checklist exists"
+    acceptance:
+      - "human-approval: a step-by-step checklist lets the product owner create the droplet, SSH key, firewall and hostname and set CUTTLE_SERVER_ORIGIN, with no prior DigitalOcean knowledge (plan §11 'Setup checklist for the owner')"
+    verify: [human-approval]
+    status: in-progress
+    evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Open: the product owner's walk-through, and the setup script it points to (W16)."
+    fails: 0

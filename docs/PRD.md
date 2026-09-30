@@ -226,4 +226,4 @@ Consequences recorded here so later readers aren't surprised:
 - **R14 online:** only the responder's phone shows the counter prompt, and only when they hold a 2. After every counterable move the mover sees a neutral "responding" state for a uniform minimum of about 1.5 s, enforced by the server, so a quick "no 2" isn't told apart from a quick decline. A long think remains a tell, as at a real table.
 - **No push notifications in the first online release.** Web Push is a later option.
 
-This amendment adds no new R numbers yet. Ledger entries for online play are added when its first work item starts.
+This amendment is tracked in the ledger as group R24 (`docs/requirements.yaml`, R24.1-R24.19).
