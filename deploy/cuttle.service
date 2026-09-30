@@ -1,0 +1,55 @@
+[Unit]
+Description=Cuttle game server (two-phone online play)
+Documentation=https://github.com/ApisMellow/cuttle-web/blob/main/docs/ops.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cuttle
+Group=cuttle
+# Origins and the backup directory live in the env file so a change needs
+# no unit edit. Listen address, data directory and trusted proxy are fixed
+# here: the server binds loopback only, and Caddy on the same machine is the
+# one address whose X-Forwarded-For it believes.
+EnvironmentFile=/etc/cuttle/cuttle.env
+ExecStart=/opt/cuttle/bin/cuttle-server -addr 127.0.0.1:8080 -data-dir /var/lib/cuttle -trusted-proxy 127.0.0.1
+Restart=on-failure
+RestartSec=2
+# Shutdown closes sockets and the store (10 s HTTP drain plus 5 s sockets).
+TimeoutStopSec=25
+
+# Hardening. The service reads its binary and writes only its data and
+# backup directories.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+SystemCallFilter=@system-service
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+# Both directories must exist before the service starts (setup.sh creates
+# them, mode 0700, owned by cuttle): ProtectSystem=strict makes everything
+# else read-only, so the server cannot create them itself. The leading "-"
+# only stops systemd failing to build the sandbox if the backup one is gone.
+ReadWritePaths=/var/lib/cuttle
+ReadWritePaths=-/var/backups/cuttle
+
+[Install]
+WantedBy=multi-user.target

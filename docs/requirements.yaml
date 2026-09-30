@@ -1075,7 +1075,7 @@ requirements:
       - "human-approval: the Caddyfile, systemd unit, setup script and deploy script exist, and a first manual deploy serves /healthz over TLS; the server listens on localhost only and never on 8765 (plan §11, W16)"
     verify: [unit-test, human-approval]
     status: in-progress
-    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. W5 (PR #55) adds TestParseConfigW5Flags. Open: ops files (W16) and the deploy Action (W17)."
+    evidence: "PARTIAL. Merged (W3, PR #44 @ a4ce617): scripts/build-server.sh (CGO_ENABLED=0, linux/amd64, -ldflags version and commit); go internal/server/server_test.go TestParseConfigDefaults (localhost default), TestParseConfigRejects (refuses port 8765), TestRunGracefulShutdown. No test yet checks the built binary is static. W5 (PR #55) adds TestParseConfigW5Flags. Written (W16, W17; not yet exercised on a droplet): deploy/ (cuttle.service, Caddyfile, cuttle.env.example, setup.sh, update.sh), docs/ops.md, .github/workflows/deploy-server.yml (manual only, skips cleanly without secrets). Open: the first manual deploy serving /healthz over TLS, and the product owner's approval."
     fails: 0
 
   - id: R24.19
@@ -1085,5 +1085,5 @@ requirements:
       - "human-approval: a step-by-step checklist lets the product owner create the droplet, SSH key, firewall and hostname and set CUTTLE_SERVER_ORIGIN, with no prior DigitalOcean knowledge (plan §11 'Setup checklist for the owner')"
     verify: [human-approval]
     status: in-progress
-    evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Open: the product owner's walk-through, and the setup script it points to (W16)."
+    evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Setup script written (W16): deploy/setup.sh, with docs/ops.md covering first setup, updates, restore and CUTTLE_SERVER_ORIGIN. Open: the product owner's walk-through."
     fails: 0
