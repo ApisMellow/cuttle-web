@@ -74,9 +74,11 @@ export default defineConfig({
         // worker serves the copy from its own build, so the token can be
         // ignored when matching the precache.
         ignoreURLParametersMatching: [/^v$/],
-        // Navigations in scope fall back to the app shell, except the gallery.
+        // Navigations in scope fall back to the app shell, except the gallery
+        // and /api/ (REST and the /api/play socket): a navigation there must
+        // reach the network, never be answered with the app shell (plan §10).
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/\/gallery(\/|$)/],
+        navigateFallbackDenylist: [/\/gallery(\/|$)/, /\/api(\/|\?|$)/],
         cleanupOutdatedCaches: true,
         clientsClaim: false,
         skipWaiting: false,

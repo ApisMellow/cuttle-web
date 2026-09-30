@@ -3,7 +3,8 @@
 // when it's unset, `serverOrigin()` is null and Play online stays hidden.
 // A dev build (vite dev server) may point at a local server by setting
 // localStorage[DEV_SERVER_OVERRIDE_KEY], e.g. to http://127.0.0.1:8080.
-// W14 wires the full setting.
+// W14: a production build accepts an https origin only; plain http to
+// loopback is a dev-build convenience. No user-facing override exists.
 
 /** localStorage key read only in dev builds. */
 export const DEV_SERVER_OVERRIDE_KEY = 'cuttle.online.devServer';
@@ -12,10 +13,10 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
  * Returns the normalized origin (scheme://host[:port]) for a server setting,
- * or null when it isn't one. Only https, or plain http to a loopback host;
- * no path, query, fragment or credentials.
+ * or null when it isn't one. Only https, or (unless `allowLoopbackHttp` is
+ * false) plain http to a loopback host; no path, query, fragment or credentials.
  */
-export function parseServerOrigin(value: unknown): string | null {
+export function parseServerOrigin(value: unknown, { allowLoopbackHttp = true }: { allowLoopbackHttp?: boolean } = {}): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (trimmed === '') return null;
@@ -25,7 +26,8 @@ export function parseServerOrigin(value: unknown): string | null {
   } catch {
     return null;
   }
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname))) return null;
+  const loopbackHttp = allowLoopbackHttp && url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
+  if (url.protocol !== 'https:' && !loopbackHttp) return null;
   if (url.username !== '' || url.password !== '') return null;
   if (url.pathname !== '/' || url.search !== '' || url.hash !== '') return null;
   // A bare "?" or "#" parses to an empty search/hash; reject those too.
@@ -55,7 +57,7 @@ export function resolveServerOrigin({ env, storage }: ResolveOptions): string | 
     const parsed = parseServerOrigin(override);
     if (parsed !== null) return parsed;
   }
-  return parseServerOrigin(env.VITE_CUTTLE_SERVER);
+  return parseServerOrigin(env.VITE_CUTTLE_SERVER, { allowLoopbackHttp: env.DEV === true });
 }
 
 function defaultStorage(): Pick<Storage, 'getItem'> | undefined {
