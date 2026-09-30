@@ -21,7 +21,7 @@
 | W12 | `OnlineGameStore` and app wiring | merged #58 |
 | W13a | Home modes, Create, Join, waiting screen, `#/join/CODE` | merged #49 |
 | W13b | In-game banners, "responding" panel, online result and rematch | todo |
-| W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | partly in #52 (parser and guard test); origin config todo |
+| W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | done (parser and guard test in #52; https-only production origin, `/api/` fallback denylist and the Pages variable in this change) |
 | W15 | Two-browser e2e | todo |
 | W16 | Ops files | todo |
 | W17 | Deploy Action | todo |

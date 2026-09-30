@@ -1,7 +1,10 @@
 // Two-phone W11 (docs/two-phone-plan.md §7 "Server origin"): the server
 // origin comes from VITE_CUTTLE_SERVER at build time, never a hard-coded
-// host. A dev build may override it from localStorage. W14 wires the
-// full setting.
+// host. A dev build may override it from localStorage. W14: a production
+// build accepts an https origin only (plain http to loopback is dev-only).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -61,6 +64,14 @@ describe('resolveServerOrigin', () => {
     expect(resolveServerOrigin({ env: { DEV: true }, storage })).toBe('http://127.0.0.1:8080');
   });
 
+  it('accepts only an https origin from a production build', () => {
+    expect(resolveServerOrigin({ env: { DEV: false, VITE_CUTTLE_SERVER: 'http://127.0.0.1:8080' } })).toBeNull();
+    expect(resolveServerOrigin({ env: { VITE_CUTTLE_SERVER: 'http://localhost:8080' } })).toBeNull();
+    expect(resolveServerOrigin({ env: { DEV: true, VITE_CUTTLE_SERVER: 'http://localhost:8080' } })).toBe(
+      'http://localhost:8080',
+    );
+  });
+
   it('ignores the override in a production build', () => {
     const storage = fakeStorage();
     storage.setItem(DEV_SERVER_OVERRIDE_KEY, 'http://127.0.0.1:8080');
@@ -103,6 +114,8 @@ describe('onlineAvailable', () => {
     // Not an origin serverOrigin() accepts: hidden, not merely non-empty.
     vi.stubEnv('VITE_CUTTLE_SERVER', 'http://cuttle.example.com');
     expect(onlineAvailable()).toBe(false);
+    vi.stubEnv('VITE_CUTTLE_SERVER', 'http://127.0.0.1:8080');
+    expect(onlineAvailable()).toBe(false);
     vi.stubEnv('VITE_CUTTLE_SERVER', '');
     expect(onlineAvailable()).toBe(false);
   });
@@ -111,5 +124,18 @@ describe('onlineAvailable', () => {
     vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_CUTTLE_SERVER', '');
     expect(onlineAvailable()).toBe(true);
+  });
+});
+
+describe('Pages workflow', () => {
+  const workflow = readFileSync(join(__dirname, '..', '..', '..', '.github', 'workflows', 'pages.yml'), 'utf8');
+
+  it('passes VITE_CUTTLE_SERVER from the CUTTLE_SERVER_ORIGIN repo variable, not a secret', () => {
+    expect(workflow).toMatch(/^\s+VITE_CUTTLE_SERVER: \$\{\{ vars\.CUTTLE_SERVER_ORIGIN \}\}\s*$/m);
+    expect(workflow).not.toMatch(/secrets\.CUTTLE_SERVER/);
+  });
+
+  it('hard-codes no server host', () => {
+    expect(workflow).not.toMatch(/VITE_CUTTLE_SERVER:\s*['"]?https?:/);
   });
 });
