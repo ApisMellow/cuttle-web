@@ -20,13 +20,13 @@
 | W11 | Client connection | merged #52, #57 |
 | W12 | `OnlineGameStore` and app wiring | merged #58 |
 | W13a | Home modes, Create, Join, waiting screen, `#/join/CODE` | merged #49 |
-| W13b | In-game banners, "responding" panel, online result and rematch | todo |
+| W13b | In-game banners, "responding" panel, online result and rematch | done (this change): status and notice banners, responding and waiting panels, the waiting line, the missed-moves recap, the online stuck screen, the rematch line and the Home offline copy (SPEC §2.12.9) |
 | W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | done (parser and guard test in #52; https-only production origin, `/api/` fallback denylist and the Pages variable in this change) |
 | W15 | Two-browser e2e | todo |
 | W16 | Ops files | done (`deploy/`, `docs/ops.md`; open PR) |
 | W17 | Deploy Action | done (`.github/workflows/deploy-server.yml`, manual only; open PR; first manual deploy still to do) |
 
-Next, in order: W6 review fixes and merge, then the W9 privacy sweep, W13b UI polish, and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
+Next, in order: W6 review fixes and merge, then the W9 privacy sweep and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
 
 ## 1. Summary and goals
 

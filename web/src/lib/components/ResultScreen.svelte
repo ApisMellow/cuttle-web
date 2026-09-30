@@ -32,9 +32,27 @@
      * final scoreboard. '' or omitted: no line (a stalemate).
      */
     winningMove?: string;
+    /**
+     * Two-phone W13b (plan §7): the rematch line, "Waiting for Blake…" or
+     * "Blake wants a rematch.", built by the app layer from the online
+     * store's rematch frames. '' or omitted: no line (pass-and-play).
+     */
+    rematchStatus?: string;
+    /** W13b: this seat's rematch request is out; Rematch is spent until the new game. */
+    rematchWaiting?: boolean;
   }
 
-  let { state, names, tally, scores, onRematch, onHome, winningMove = '' }: ResultScreenProps = $props();
+  let {
+    state,
+    names,
+    tally,
+    scores,
+    onRematch,
+    onHome,
+    winningMove = '',
+    rematchStatus = '',
+    rematchWaiting = false,
+  }: ResultScreenProps = $props();
 
   const headline = $derived(
     state.winner !== null
@@ -59,7 +77,7 @@
     </p>
   {/if}
   <div class="result-screen__actions">
-    <button type="button" data-testid="rematch" class="result-screen__button" onclick={onRematch}>
+    <button type="button" data-testid="rematch" class="result-screen__button" disabled={rematchWaiting} onclick={onRematch}>
       Rematch
     </button>
     {#if onHome}
@@ -68,6 +86,15 @@
       </button>
     {/if}
   </div>
+  {#if rematchStatus !== ''}
+    <p
+      class={['result-screen__rematch', rematchWaiting && 'result-screen__rematch--waiting']}
+      data-testid="online-rematch-status"
+      role="status"
+    >
+      {rematchStatus}
+    </p>
+  {/if}
 </div>
 
 <style>
@@ -136,6 +163,35 @@
     border: 1px solid var(--cu-ink-line);
     background: transparent;
     color: var(--cu-pearl);
+  }
+
+  .result-screen__button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  /* W13b: the online rematch line, under the buttons. Iris edge when Blake
+     has asked (your move), muted while waiting on Blake. */
+  .result-screen__rematch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    max-width: 32em;
+    margin: 0;
+    padding: var(--cu-space-2) var(--cu-space-4);
+    border: 1px solid var(--cu-ink-line);
+    border-left: 4px solid var(--cu-iris);
+    border-radius: var(--cu-radius-well);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-size: var(--cu-text-md);
+  }
+
+  .result-screen__rematch--waiting {
+    border-left-color: var(--cu-ink-line);
+    color: var(--cu-muted);
   }
 
   .result-screen__button {

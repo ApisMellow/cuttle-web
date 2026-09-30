@@ -43,22 +43,43 @@
 //   - REPLACED and a stall leave the status line with a button that calls
 //     the connection's `retry()`.
 //
+//   - W13b, the missed-moves recap (SPEC §2.12.2 `lastSeq`, plan §7): a
+//     state in the same game whose `seq` is more than one past the last
+//     state's lists, in `missed`, the other seat's entries after that last
+//     seq, `isRecapVisible` only, taken from this state's own (already
+//     redacted) history and nothing else. This seat's own moves are "seen"
+//     (SPEC §4.6), so a jump over only its own move and a Decline (the end of
+//     a hold after a declined counter window) shows nothing, exactly as the
+//     no-window case: no hold tell. Non-blocking; cleared by
+//     `dismissMissed()`, this seat's next move from the board, a new game or
+//     a detach. An apply at its own counter window drops only the entries
+//     the prompt showed (`counterPromptEntries`, SPEC §4.6) and keeps earlier
+//     ones. A further jump while it is up extends it from the same start,
+//     never re-adding what the prompt showed.
+//   - W13b, the stuck state (SPEC §2.10): `ILLEGAL_MOVE` or `NO_LEGAL_MOVES`
+//     from the server, or a state where this seat must act and nothing is
+//     offered (§2.10 rule 1), sets `stuck`. It stays for that position (a
+//     resent identical state keeps it) and clears only when a state for
+//     another position arrives. Never retried (§2.10 rule 3); `leaveGame()`
+//     is the way on.
+//
 // Privacy: the only game data held is this seat's own envelope; `history`
 // keeps a mover-only `index` only on this seat's own entries. The seat
 // record (with its token) is kept privately and never exposed; it is sent
 // only to the server it belongs to (the caller checks `seatMatchesServer`).
 // Nothing here logs.
 
-import type { AppliedMove, Envelope, PlayerId } from '../bridge/schema';
+import type { AppliedMove, Card, Envelope, PlayerId } from '../bridge/schema';
 import { type DrawReveal, drawnHandIndices, unseenDrawFor } from '../drawReveal';
 import { Phase } from '../enums';
+import { counterPromptEntries, isRecapVisible } from '../recap';
 import type { RoomEvent } from '../online/actions';
 import { createConnection, type ConnectionOptions, type ConnectionStatus, type OnlineConnection } from '../online/connection';
 import type { RoomStatus, SeatNames, ServerFrame } from '../online/protocol';
 import { clearSeat, saveSeat, type SeatRecord } from '../online/seat';
 import type { CurtainState } from './curtain.svelte';
 import { online } from './online.svelte';
-import { MoveNotSent, type OnlineTableInfo, type TableSource } from './tableSource';
+import { MoveNotSent, type OnlineStuck, type OnlineTableInfo, type TableSource } from './tableSource';
 
 type SeatStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -74,7 +95,6 @@ export interface OnlineGameDeps {
 const NOTICE_NOT_SENT = 'You’re offline, so your move wasn’t sent. It stays staged: Confirm it again once you’re back.';
 const NOTICE_MOVED_ON = 'The game moved on while you were away, so the move you kept was cleared.';
 const NOTICE_NOT_THROUGH = 'That move didn’t go through. Try again.';
-const NOTICE_STUCK = 'The game hit an error it could not recover from.';
 const NOTICE_RATE = 'Too many tries. Wait a moment and try again.';
 
 const LEAVE_ENDED = 'This game has ended.';
@@ -82,7 +102,7 @@ const LEAVE_UNRESUMABLE = 'This game couldn’t be resumed.';
 const LEAVE_UPDATE = 'This app needs an update to keep playing online. It updates on its own shortly, or reload the page. Your game is kept.';
 
 /** Engine errors after which the game can't go on from this position (SPEC §2.10). */
-const STUCK_CODES = new Set(['ILLEGAL_MOVE', 'NO_LEGAL_MOVES']);
+const STUCK_CODES = new Set<string>(['ILLEGAL_MOVE', 'NO_LEGAL_MOVES']);
 /** Errors the server follows with a fresh `state` (SPEC §2.12.3); they need no notice of their own. */
 const RESYNC_CODES = new Set(['NOT_YOUR_TURN', 'STALE', 'GAME_OVER']);
 
@@ -129,6 +149,13 @@ export class OnlineGameStore implements TableSource {
   #unsent = false;
   /** Review F4: the finished game to ask a rematch for once its state arrives (after an update reload), or null. */
   #rematchOnResume: number | null = null;
+  /** W13b: the seq the open missed-moves recap starts after, or null when none is up. */
+  #missedFrom: number | null = null;
+  /** W13b: seqs the counter prompt showed and this seat answered, kept out of the open recap. */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- private bookkeeping, never read by a template or a derived.
+  #missedSeen = new Set<number>();
+  /** W13b: the card of this seat's last sent move (its own legal move), for the hold panel. */
+  #sentCard: Card | null = null;
 
   // ---- TableSource ----------------------------------------------------------
   envelope = $state<Envelope | null>(null);
@@ -155,6 +182,12 @@ export class OnlineGameStore implements TableSource {
   status = $state<ConnectionStatus>({ kind: 'idle' });
   /** One line about the last move or error; cleared by the next state. */
   notice = $state<string | null>(null);
+  /** W13b: the card this seat played that the hold is about, or null (see OnlineTableInfo). */
+  respondingCard = $state<Card | null>(null);
+  /** W13b: the other seat's moves missed on a same-game seq jump (see the module doc). */
+  missed = $state<AppliedMove[]>([]);
+  /** W13b: the game can't go on from this position (SPEC §2.10), or null. */
+  stuck = $state<OnlineStuck | null>(null);
 
   /** A move has been sent and neither its state nor an error is back. */
   #sending = $state(false);
@@ -213,8 +246,14 @@ export class OnlineGameStore implements TableSource {
     this.#lastGame = 0;
     this.#unsent = false;
     this.#rematchOnResume = null;
+    this.#missedFrom = null;
+    this.#missedSeen.clear();
+    this.#sentCard = null;
     this.#sending = false;
     this.#rematchSent = false;
+    this.respondingCard = null;
+    this.missed = [];
+    this.stuck = null;
     this.envelope = null;
     this.history = [];
     this.seq = 0;
@@ -270,7 +309,8 @@ export class OnlineGameStore implements TableSource {
       throw new Error('OnlineGameStore.apply() needs this seat to be the one to act (SPEC §3.3)');
     }
     // The client never sends a second move before the first one's answer.
-    if (this.pending) return;
+    // Nor from a stuck position (SPEC §2.10 rule 3: never retry).
+    if (this.pending || this.stuck !== null) return;
     const connection = this.#connection;
     if (connection === null || !connection.sendMove(this.game, env.seq, moveIndex)) {
       this.notice = NOTICE_NOT_SENT;
@@ -280,6 +320,35 @@ export class OnlineGameStore implements TableSource {
     this.notice = null;
     this.#unsent = false;
     this.#sending = true;
+    // This seat's own card, from its own legal-move list (never another seat's).
+    this.#sentCard = env.legalMoves[moveIndex]?.Card ?? null;
+    // Having moved, this seat has seen the board the recap was about. At
+    // its counter window it has seen what the prompt showed (SPEC §4.6):
+    // those entries go, earlier missed moves the prompt didn't show stay.
+    if (kind === 'none') this.dismissMissed();
+    else this.#seenAtPrompt();
+  }
+
+  /** W13b: closes the missed-moves recap. */
+  dismissMissed(): void {
+    this.#missedFrom = null;
+    this.#missedSeen.clear();
+    if (this.missed.length > 0) this.missed = [];
+  }
+
+  /** Review blocker 2: the counter prompt's entries count as seen once this seat answers there. */
+  #seenAtPrompt(): void {
+    for (const entry of counterPromptEntries(this.history)) this.#missedSeen.add(entry.seq);
+    const kept = this.missed.filter((e) => !this.#missedSeen.has(e.seq));
+    if (kept.length === 0) this.dismissMissed();
+    else if (kept.length !== this.missed.length) this.missed = kept;
+  }
+
+  /** W13b: the stuck screen's way on (SPEC §2.10): forget this seat and go Home. */
+  leaveGame(): void {
+    clearSeat(this.#storage);
+    this.detach();
+    this.#onLeave(null);
   }
 
   dismissDrawReveal(): void {
@@ -333,6 +402,10 @@ export class OnlineGameStore implements TableSource {
         this.#onState(frame.game, frame.envelope, frame.opponentOnline, frame.tally);
         return;
       case 'responding':
+        // The card only when this page sent the move being answered; a hold
+        // met on a resume shows none. Either way it is this seat's own card,
+        // and the same whether or not the answer is in (SPEC §2.12.5).
+        this.respondingCard = this.#sending ? this.#sentCard : this.responding !== null ? this.respondingCard : null;
         this.#sending = false;
         this.responding = frame.by;
         return;
@@ -358,6 +431,7 @@ export class OnlineGameStore implements TableSource {
     // F5). A second Confirm meanwhile can't apply twice: the server refuses
     // an old seq (STALE).
     this.responding = null;
+    this.respondingCard = null;
     this.#sending = false;
     this.roomStatus = status;
     const joined = this.#sawWaiting && names[1] !== null && this.roomNames[1] === null;
@@ -375,6 +449,7 @@ export class OnlineGameStore implements TableSource {
     const seat = this.seat;
     if (seat === null || env.state.viewer !== seat) return; // the connection already refuses these
     const newGame = game !== this.#lastGame;
+    const prevSeq = this.seq;
     // A kept (unsent) move is still good only at the same position (review F2).
     const movedOn = this.#unsent && (newGame || env.seq !== this.seq);
     if (movedOn) this.#unsent = false;
@@ -384,7 +459,12 @@ export class OnlineGameStore implements TableSource {
       this.drawReveal = null;
       this.rematchRequestedBy = null;
       this.#rematchSent = false;
+      // No recap across games, and none for a first state (SPEC §2.12.2).
+      this.dismissMissed();
     }
+    // A stuck position stays stuck until the game is somewhere else.
+    if (this.stuck !== null && (this.stuck.game !== game || this.stuck.seq !== env.seq)) this.stuck = null;
+    this.respondingCard = null;
     this.#lastGame = game;
     this.game = game;
     this.tally = [tally[0], tally[1]];
@@ -400,6 +480,12 @@ export class OnlineGameStore implements TableSource {
     // must not look like a new curtain to GameScreen's staging reset (review F2).
     const curtain = curtainFor(env, seat);
     if (!sameCurtain(this.curtain, curtain)) this.curtain = curtain;
+    if (!newGame) this.#updateMissed(prevSeq, env.seq, seat);
+    // SPEC §2.10 rule 1: this seat must act and nothing is offered.
+    const view = env.state;
+    if (view.viewer === view.active && view.phase !== Phase.GameOver && env.legalMoves.length === 0) {
+      this.stuck = { code: 'NO_LEGAL_MOVES', game, seq: env.seq };
+    }
     if (!newGame) this.#revealUnseenDraw(env, seat);
     const rematchFor = this.#rematchOnResume;
     if (rematchFor !== null) {
@@ -413,8 +499,27 @@ export class OnlineGameStore implements TableSource {
     this.#rematchSent = false;
     if (RESYNC_CODES.has(code) || code === 'REPLACED') return;
     if (code === 'RATE_LIMITED') this.notice = NOTICE_RATE;
-    else if (STUCK_CODES.has(code)) this.notice = `${NOTICE_STUCK} (${code})`;
+    else if (STUCK_CODES.has(code)) this.stuck = { code: code as OnlineStuck['code'], game: this.game, seq: this.seq };
     else this.notice = NOTICE_NOT_THROUGH;
+  }
+
+  /**
+   * W13b: the missed-moves recap after a state at `next` following one at
+   * `prev` in the same game. Reads only this seat's redacted `history` (set
+   * from the same state just before this runs).
+   */
+  #updateMissed(prev: number, next: number, seat: PlayerId): void {
+    const jumped = next > prev + 1;
+    // A single step leaves an open recap as it is; no jump and none open: nothing.
+    if (!jumped) return;
+    const from = this.#missedFrom ?? prev;
+    const seen = this.#missedSeen;
+    const entries = this.history.filter(
+      (h) => h.seq > from && h.seq <= next && h.by !== seat && isRecapVisible(h) && !seen.has(h.seq),
+    );
+    if (entries.length === 0) seen.clear();
+    this.#missedFrom = entries.length === 0 ? null : from;
+    this.missed = entries;
   }
 
   #onStatus(status: ConnectionStatus): void {
@@ -458,6 +563,7 @@ export class OnlineGameStore implements TableSource {
     const status = this.status;
     let statusText: string | null;
     let statusAction: string | null = null;
+    let statusTone: 'warn' | 'info' | null = 'warn';
     switch (status.kind) {
       case 'idle':
       case 'connecting':
@@ -479,6 +585,7 @@ export class OnlineGameStore implements TableSource {
         break;
       case 'open':
         statusText = this.opponentOnline || this.roomNames[other] === null ? null : `${otherName} is offline.`;
+        statusTone = 'info';
         break;
       default:
         statusText = null;
@@ -487,11 +594,44 @@ export class OnlineGameStore implements TableSource {
       names: this.names,
       statusText,
       statusAction,
+      statusTone: statusText === null ? null : statusTone,
       respondingName: this.responding === null ? null : this.names[this.responding],
+      respondingCard: this.responding === null ? null : this.respondingCard,
+      waitingText: this.#waitingText(otherName),
       notice: this.notice,
       runStatusAction: () => this.retry(),
+      missed: this.missed,
+      dismissMissed: () => this.dismissMissed(),
+      stuck: this.stuck,
+      leaveGame: () => this.leaveGame(),
     };
   }
+
+  /**
+   * Plan §7 `waitingOn`: what the other seat is doing, from the public phase
+   * and turn only. Its counter window (reachable without a hold only after a
+   * server restart) reads exactly like the hold panel, so it tells nothing
+   * the hold doesn't.
+   */
+  #waitingText(otherName: string): string | null {
+    const view = this.envelope?.state;
+    if (view === undefined || view.active === view.viewer) return null;
+    switch (view.phase) {
+      case Phase.AwaitingDiscard:
+        return `${otherName} is choosing what to discard.`;
+      case Phase.SevenChoosing:
+        return `${otherName} is choosing from the 7.`;
+      case Phase.AwaitingCounter:
+        return respondingText(otherName);
+      default:
+        return null;
+    }
+  }
+}
+
+/** The hold's one line, for the panel and the waiting line alike. */
+export function respondingText(name: string): string {
+  return `${name} is responding…`;
 }
 
 /** None while playing, `result` at game over, `ack` at this seat's own counter window. */

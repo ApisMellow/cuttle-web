@@ -45,6 +45,8 @@
   //     the real hand; the prompt holds the action bar until a pair stages.
   //   - ScrapBrowser (R6): an idle scrap-pile tap opens browse mode; a 3's
   //     scrap-pick collapse opens pick mode (StagingStore.scrapPick).
+  import '../styles/card-geometry.css';
+
   import { tick, untrack } from 'svelte';
 
   import type { Card, Envelope, PlayerId } from '../bridge/schema';
@@ -70,6 +72,8 @@
   import DiscardPicker from './DiscardPicker.svelte';
   import DrawRevealPanel from './DrawRevealPanel.svelte';
   import GameMenu from './GameMenu.svelte';
+  import MissedMovesPanel from './MissedMovesPanel.svelte';
+  import OnlineStuckPanel from './OnlineStuckPanel.svelte';
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
   import StagingBar from './StagingBar.svelte';
@@ -675,6 +679,36 @@
     source.newGame().catch(report);
   }
 
+  // ---- W13b: the missed-moves strip never hides the hand -------------------
+  // The strip sits in the flow under the board, so opening it (or a status
+  // banner arriving under it) shrinks the board. Only the hand slot is
+  // sticky, and it can rise no higher than the top of the player's zone; on
+  // a short screen with a full board that leaves the hand below the board's
+  // visible bottom. While the strip is up, whenever the board or the strip
+  // changes size, the board scrolls just far enough that the hand's bottom
+  // edge meets the board's (the field scrolls, as on any short screen).
+  function keepHandInView(): void {
+    const boardEl = screenEl?.querySelector<HTMLElement>('[data-testid="board"]');
+    const hand = boardEl?.querySelector<HTMLElement>('[data-testid="player-hand"]');
+    if (!boardEl || !hand) return;
+    const over = hand.getBoundingClientRect().bottom - boardEl.getBoundingClientRect().bottom;
+    if (over > 0.5) boardEl.scrollTop += Math.ceil(over);
+  }
+
+  const missedUp = $derived(online !== null && online.missed.length > 0);
+  $effect(() => {
+    void board;
+    const root = screenEl;
+    if (!missedUp || root === undefined || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => keepHandInView());
+    for (const id of ['board', 'online-recap']) {
+      const el = root.querySelector(`[data-testid="${id}"]`);
+      if (el !== null) observer.observe(el);
+    }
+    keepHandInView();
+    return () => observer.disconnect();
+  });
+
   // ---- Test hook (SPEC §6.5), compiled out of production -----------------
   $effect(() => {
     if (!import.meta.env.DEV) return;
@@ -720,6 +754,16 @@
       onadvance={advanceCurtain}
       {theme}
     />
+  {:else if online?.stuck && source.viewer !== null}
+    <!-- W13b (SPEC §2.10): the game can't go on. Takes the place of the
+         board, the counter prompt and the draw reveal; nothing retries. -->
+    <OnlineStuckPanel
+      stuck={online.stuck}
+      history={source.history}
+      viewer={source.viewer}
+      {names}
+      onleave={() => online?.leaveGame()}
+    />
   {:else if drawReveal !== null}
     <DrawRevealPanel
       hand={drawReveal.hand}
@@ -741,11 +785,16 @@
       {theme}
     />
   {:else if online?.respondingName}
-    <!-- W12: the response hold (SPEC §2.12.5). The envelope on show is the
-         pre-move one, so the board stays down until the state arrives.
-         Placeholder text; W13b draws the real panel. -->
+    <!-- W12/W13b: the response hold (SPEC §2.12.5, plan §6). The envelope on
+         show is the pre-move one, so the board stays down until the state
+         arrives. The panel shows only the name and this seat's own played
+         card, so it reads the same whether or not a counter window opened. -->
     <div class="game-screen__online-panel" data-testid="online-responding" role="status">
-      <p>{online.respondingName} is responding…</p>
+      {#if online.respondingCard}
+        <span class="game-screen__held-card"><theme.Face card={online.respondingCard} size="field" /></span>
+      {/if}
+      <p class="game-screen__panel-title">{online.respondingName} is responding…</p>
+      <span class="game-screen__dots" aria-hidden="true"><span></span><span></span><span></span></span>
     </div>
   {:else if board !== null}
     {#if theme.Table}
@@ -771,6 +820,19 @@
       centerOverlay={staging.chooser === null ? undefined : chooserSheet}
       {drag}
     />
+
+    {#if online !== null && online.missed.length > 0}
+      <!-- W13b: the missed-moves recap, between the board and the action
+           bar so the board stays live (plan §7: non-blocking). -->
+      <MissedMovesPanel
+        entries={online.missed}
+        viewer={board.state.viewer}
+        {names}
+        history={source.history}
+        {theme}
+        ondismiss={() => online?.dismissMissed()}
+      />
+    {/if}
 
     {#snippet chooserSheet()}
       <!-- r16: on the centre strip, not over the hand (design.md §6). -->
@@ -830,6 +892,10 @@
       {:else if notice !== null}
         <!-- Playtest 2026-09-29: why the last tap did nothing. -->
         <p class="game-screen__hint game-screen__notice" role="status" data-blocked-reason>{notice}</p>
+      {:else if online?.waitingText}
+        <!-- W13b (plan §7 waitingOn): what Blake is doing, from public phase
+             and turn only. -->
+        <p class="game-screen__waiting-on" data-testid="online-waiting-on" role="status">{online.waitingText}</p>
       {/if}
     </div>
 
@@ -850,20 +916,24 @@
       <CardDetailPopover card={inspectCard} reason={inspectReason} onclose={() => (staging.inspect = null)} {theme} />
     {/if}
   {:else if online !== null}
-    <!-- W12: an online source with no state yet (connecting, or the deal
-         not in). Placeholder text; W13b styles it. -->
+    <!-- W12/W13b: an online source with no state yet (connecting, or the
+         deal not in). The status line below says why. -->
     <div class="game-screen__online-panel" data-testid="online-waiting" role="status">
-      <p>Waiting for the game…</p>
+      <span class="game-screen__held-card"><theme.Back size="field" /></span>
+      <p class="game-screen__panel-title">Waiting for the game…</p>
+      <span class="game-screen__dots" aria-hidden="true"><span></span><span></span><span></span></span>
     </div>
   {/if}
 
   {#if online !== null && (online.statusText !== null || online.notice !== null)}
-    <!-- W12: the connection status line and the last move's notice, as plain
-         text (W13b makes them pretty). Fixed strings and room names only. -->
+    <!-- W12/W13b: the connection status line and the last move's notice.
+         Fixed strings and room names only; `data-tone` picks the look:
+         warn (this phone's connection), info (the opponent), notice. -->
     <div class="game-screen__online-status">
       {#if online.statusText !== null}
-        <p data-testid="online-status" role="status">
-          {online.statusText}
+        <p class="game-screen__banner" data-testid="online-status" data-tone={online.statusTone ?? 'warn'} role="status">
+          <span class="game-screen__banner-dot" aria-hidden="true"></span>
+          <span class="game-screen__banner-text">{online.statusText}</span>
           {#if online.statusAction !== null}
             <button type="button" class="game-screen__online-retry" data-testid="online-retry" onclick={() => online.runStatusAction()}>
               {online.statusAction}
@@ -872,7 +942,10 @@
         </p>
       {/if}
       {#if online.notice !== null}
-        <p data-testid="online-notice" role="status">{online.notice}</p>
+        <p class="game-screen__banner" data-testid="online-notice" data-tone="notice" role="status">
+          <span class="game-screen__banner-dot" aria-hidden="true"></span>
+          <span class="game-screen__banner-text">{online.notice}</span>
+        </p>
       {/if}
     </div>
   {/if}
@@ -1072,38 +1145,148 @@
     cursor: pointer;
   }
 
-  /* W12 placeholders (W13b restyles): plain text, every testid box at
-     least 44 px tall (SPEC §5.1). */
+  /* W13b: the waiting and responding panels. A card (a back while waiting,
+     the played card during the hold) above one line and three quiet dots.
+     Every testid box is at least 44 px tall (SPEC §5.1). */
   .game-screen__online-panel {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--cu-space-4, 16px);
     min-height: var(--cu-tap-min, 44px);
     padding: 0 var(--cu-space-4, 16px);
     text-align: center;
     font-size: var(--cu-text-md, 16px);
   }
 
+  /* SPEC §5.6 rule 2: the container owns the card box; the face fills it. */
+  .game-screen__held-card {
+    display: block;
+    flex: none;
+    width: calc(var(--cuttle-card-width-field) * 1.5);
+    aspect-ratio: var(--cuttle-card-aspect);
+    overflow: hidden;
+    border-radius: var(--cu-radius-card, 6px);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  }
+
+  .game-screen__panel-title {
+    margin: 0;
+    font-size: var(--cu-text-lg, 20px);
+    font-weight: var(--cu-weight-bold, 700);
+    color: var(--cu-pearl, #eee8f1);
+    overflow-wrap: anywhere;
+  }
+
+  .game-screen__dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .game-screen__dots > span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--cu-muted, #b4a8be);
+    animation: game-screen-dot 1.2s ease-in-out infinite;
+  }
+
+  .game-screen__dots > span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .game-screen__dots > span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes game-screen-dot {
+    0%,
+    80%,
+    100% {
+      opacity: 0.25;
+    }
+    40% {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-screen__dots > span {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
+  /* W13b: what the other seat is doing, in the action bar's reserved space. */
+  .game-screen__waiting-on {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min, 44px);
+    margin: 0 var(--cu-space-4, 16px);
+    color: var(--cu-muted, #b4a8be);
+    font-size: var(--cu-text-sm, 14px);
+    font-style: italic;
+    text-align: center;
+  }
+
   .game-screen__online-status {
     flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cu-space-1, 4px);
+    box-sizing: border-box;
     width: 100%;
     max-width: var(--cu-board-max, 560px);
     margin: 0 auto;
+    padding: var(--cu-space-1, 4px) var(--cu-space-2, 8px);
     font-size: var(--cu-text-sm, 14px);
   }
 
-  .game-screen__online-status p {
+  /* W13b: one banner per line. The tone sets the edge and the dot: ochre
+     for this phone's connection, iris for the opponent, pearl for a notice. */
+  .game-screen__banner {
+    --banner-accent: var(--cu-ochre, #f0b54a);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: var(--cu-space-3, 12px);
+    gap: var(--cu-space-2, 8px) var(--cu-space-3, 12px);
     box-sizing: border-box;
     min-height: var(--cu-tap-min, 44px);
     margin: 0;
-    padding: 0 var(--cu-space-4, 16px);
+    padding: var(--cu-space-1, 4px) var(--cu-space-4, 16px);
+    border: 1px solid var(--cu-ink-line, #4a3d57);
+    border-left: 4px solid var(--banner-accent);
+    border-radius: var(--cu-radius-well, 10px);
+    background: var(--cu-ink-raised, #30263a);
+    color: var(--cu-pearl, #eee8f1);
     text-align: center;
+    line-height: 1.3;
+  }
+
+  .game-screen__banner[data-tone='info'] {
+    --banner-accent: var(--cu-iris, #5ccfc4);
+  }
+
+  .game-screen__banner[data-tone='notice'] {
+    --banner-accent: var(--cu-pearl, #eee8f1);
+  }
+
+  .game-screen__banner-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--banner-accent);
+  }
+
+  .game-screen__banner-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .game-screen__online-retry {

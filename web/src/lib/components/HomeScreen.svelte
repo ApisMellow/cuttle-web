@@ -22,6 +22,7 @@
   import { untrack } from 'svelte';
 
   import type { OnlineActions } from '../online/actions';
+  import { browserEnvironment, type ConnectionEnvironment } from '../online/connection';
   import { getOnlineActions, onlineAvailable } from '../online/provider';
   import { game } from '../stores/game.svelte';
   import { online } from '../stores/online.svelte';
@@ -36,8 +37,29 @@
     actions?: OnlineActions;
     /** Whether Play on two phones is offered at all (no server configured: hidden). */
     onlineEnabled?: boolean;
+    /** W13b: where "is the network up" comes from (the browser by default; tests pass a fake). */
+    network?: Pick<ConnectionEnvironment, 'isOnline' | 'listen'>;
   }
-  let { actions = getOnlineActions(), onlineEnabled = onlineAvailable() }: Props = $props();
+  let { actions = getOnlineActions(), onlineEnabled = onlineAvailable(), network = browserEnvironment() }: Props = $props();
+
+  // R24.14 (plan §10): offline, Play on two phones stays on Home and says it
+  // needs a connection; Start a room and Join wait for the network (both
+  // would only fail). Resume stays: the game screen shows the offline line
+  // and reconnects on its own when the network returns.
+  let networkOnline = $state(untrack(() => network.isOnline()));
+  $effect(() => {
+    const source = network;
+    networkOnline = source.isOnline();
+    const update = () => {
+      networkOnline = source.isOnline();
+    };
+    const offOnline = source.listen('online', update);
+    const offOffline = source.listen('offline', update);
+    return () => {
+      offOnline();
+      offOffline();
+    };
+  });
 
   // One online game per phone: a stored seat replaces Create and Join with Resume.
   const savedSeat = untrack(() => actions.savedSeat());
@@ -202,6 +224,11 @@
   {#if onlineEnabled}
     <section class="home-screen__mode" aria-labelledby="mode-online" data-testid="mode-online">
       <h2 id="mode-online" class="home-screen__mode-title">Play on two phones</h2>
+      {#if !networkOnline}
+        <p class="home-screen__offline" data-testid="online-offline" role="status">
+          You’re offline. Online games need a connection.
+        </p>
+      {/if}
       {#if savedSeat}
         <p class="home-screen__mode-note">You have a game in progress.</p>
         <div class="home-screen__actions">
@@ -212,10 +239,10 @@
       {:else}
         <p class="home-screen__mode-note">Each player uses their own phone.</p>
         <div class="home-screen__actions home-screen__actions--row">
-          <button type="button" data-testid="online-create" class="home-screen__button" onclick={() => online.openCreate()}>
+          <button type="button" data-testid="online-create" class="home-screen__button" disabled={!networkOnline} onclick={() => online.openCreate()}>
             Start a room
           </button>
-          <button type="button" data-testid="online-join" class="home-screen__button" onclick={() => online.openJoin()}>
+          <button type="button" data-testid="online-join" class="home-screen__button" disabled={!networkOnline} onclick={() => online.openJoin()}>
             Join with a code
           </button>
         </div>
@@ -304,6 +331,23 @@
   .home-screen__mode-note {
     margin: 0;
     color: var(--cu-muted);
+    font-size: var(--cu-text-sm);
+  }
+
+  /* W13b: the offline line in Play on two phones (44 px: it carries a testid). */
+  .home-screen__offline {
+    display: flex;
+    align-items: center;
+    gap: var(--cu-space-2);
+    box-sizing: border-box;
+    min-height: var(--cu-tap-min);
+    margin: 0;
+    padding: var(--cu-space-1) var(--cu-space-3);
+    border: 1px solid var(--cu-ink-line);
+    border-left: 4px solid var(--cu-ochre);
+    border-radius: var(--cu-radius-well);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
     font-size: var(--cu-text-sm);
   }
 
