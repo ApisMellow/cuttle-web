@@ -1,0 +1,109 @@
+name: Deploy server
+
+# W17: builds cuttle-server and deploys it to the droplet over SSH. Manual
+# only: nothing deploys on push. With none of the secrets set (a fork, a repo
+# that has no droplet) the run ends green with a notice. If DEPLOY_HOST is set
+# but another secret is missing, the run fails. docs/ops.md has the one-time
+# server-side setup and the GitHub Environment.
+#
+# The secrets live in the GitHub Environment `production`, restricted to the
+# main branch (Settings > Environments), not in repo-wide secrets:
+#   DEPLOY_HOST         hostname or IP to SSH to
+#   DEPLOY_USER         unprivileged SSH user; its sudoers entry allows one
+#                       command (docs/ops.md)
+#   DEPLOY_SSH_KEY      private key for that user (a key made for this)
+#   DEPLOY_KNOWN_HOSTS  the droplet's host key line(s), as printed by
+#                       `ssh-keyscan HOST`. Required: the key is pinned,
+#                       never fetched on the run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, never cancelled midway.
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      # Presence only: the expressions below become true/false, so no secret
+      # value reaches this step.
+      - name: Check the deploy secrets
+        id: gate
+        env:
+          HAVE_HOST: ${{ secrets.DEPLOY_HOST != '' }}
+          HAVE_USER: ${{ secrets.DEPLOY_USER != '' }}
+          HAVE_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+          HAVE_KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS != '' }}
+        run: |
+          if [ "$HAVE_HOST$HAVE_USER$HAVE_KEY$HAVE_KNOWN" = "falsefalsefalsefalse" ]; then
+            echo "::notice title=Deploy skipped::No deploy secrets are set. Nothing was deployed."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          missing=""
+          [ "$HAVE_HOST" = "true" ] || missing="$missing DEPLOY_HOST"
+          [ "$HAVE_USER" = "true" ] || missing="$missing DEPLOY_USER"
+          [ "$HAVE_KEY" = "true" ] || missing="$missing DEPLOY_SSH_KEY"
+          [ "$HAVE_KNOWN" = "true" ] || missing="$missing DEPLOY_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "::error title=Deploy secrets incomplete::Missing:${missing}"
+            exit 1
+          fi
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.gate.outputs.deploy == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        if: steps.gate.outputs.deploy == 'true'
+        with:
+          go-version-file: go.mod
+
+      # go.mod pins the toolchain; scripts/build-server.sh produces the same
+      # static linux/amd64 binary as a local build and stamps version+commit.
+      - name: Build the server
+        if: steps.gate.outputs.deploy == 'true'
+        run: ./scripts/build-server.sh "$RUNNER_TEMP/cuttle-server"
+
+      # The key is written to a runner-local file and removed at the end;
+      # nothing here prints it.
+      - name: Set up SSH
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload and switch over
+        if: steps.gate.outputs.deploy == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          opts="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
+          target="${DEPLOY_USER}@${DEPLOY_HOST}"
+          # shellcheck disable=SC2086
+          scp $opts -q "$RUNNER_TEMP/cuttle-server" "${target}:cuttle-server.upload"
+          # update.sh checks the binary, swaps it in, restarts the service
+          # and rolls back if /healthz does not answer 200. $HOME is meant to
+          # expand on the droplet (single quotes): the sudoers entry names
+          # that exact path.
+          # shellcheck disable=SC2086
+          ssh $opts "$target" 'sudo -n /opt/cuttle/update.sh --binary "$HOME/cuttle-server.upload"'
+
+      - name: Remove the key
+        if: always() && steps.gate.outputs.deploy == 'true'
+        run: rm -f ~/.ssh/deploy_key

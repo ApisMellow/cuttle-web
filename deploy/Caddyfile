@@ -1,0 +1,37 @@
+# /etc/caddy/Caddyfile template. Replace cuttle.example.com with your host
+# (setup.sh does this for you). Caddy gets and renews the HTTPS certificate
+# by itself; ports 80 and 443 must be open. reverse_proxy carries WebSocket
+# upgrades on its own and sets X-Forwarded-For, which the server trusts only
+# from 127.0.0.1 (-trusted-proxy).
+cuttle.example.com {
+	encode zstd gzip
+
+	# Security headers on every response. The CSP fits what the app ships:
+	# its own scripts, the wasm engine ('wasm-unsafe-eval'), inline style
+	# attributes, data:/blob: images, the same-origin API and WebSocket
+	# (connect-src 'self' covers wss to this host), the service worker, and
+	# the gallery page's Google Fonts. Recheck it if the app gains a new
+	# external dependency.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
+
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		root * /var/www/cuttle
+		file_server
+		# The app ships a service worker: players must always fetch a fresh
+		# entry page and sw.js or they can get stuck on an old build. Hashed
+		# files under /assets/ cache normally.
+		@nocache path / /index.html /sw.js /manifest.webmanifest
+		header @nocache Cache-Control "no-cache"
+	}
+}
