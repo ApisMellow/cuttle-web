@@ -11,6 +11,9 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.
 - **Table mode (shipped 2026-09-29).** A Home toggle for play with the phone flat between two players: the board stays fixed and player 2's screens turn to face them.
 - **Menu-first settings.** Move options (card style, table mode, rules) behind the hamburger menu instead of selectors on the front screen, with a toolbar for common actions. See `docs/design-refs/`.
+- **Two-phone online play (shipped 2026-10-18).** Each player uses their own phone. A small server runs the game and sends each phone only its own view, so each hand stays hidden. Create a room, share the link or the 4-character code, and play; a closed or locked phone comes back to the same game. Decisions are in PRD §10 A-7, and the work plan and its progress table are in `docs/two-phone-plan.md`.
+- **Automatic server deploy on merge (wire the deploy Action).** Pages already redeploys on merge, but the game server is updated by hand. Run the existing Deploy server workflow on merge so the two can't drift apart. See `docs/ops.md`.
+- **W15: two-browser end-to-end test in CI.** Two browser contexts against a local server: create, join by the share link, play a scripted seed to a win, rematch, and one reconnect. See `docs/two-phone-plan.md` §12.
 
 ## Themes
 
@@ -29,7 +32,6 @@ The work-in-progress source art and its review sheet are on the `art/source-asse
 
 ## Later
 
-- **Two-phone online play (in progress).** Each player uses their own phone. A small server runs the game and sends each phone only its own view, so each hand stays hidden. Decisions are in PRD §10 A-7, and the work plan and its progress table are in `docs/two-phone-plan.md`.
 - **Offline play (shipped 2026-09-29).** A service worker keeps the installed home-screen app working without a connection.
 - **Player colours:** an optional colour for each player, possibly tied to theme suits.
 - **An accessibility pass:** screen-reader labels for every card and action, and contrast checks for every theme.
