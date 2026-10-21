@@ -368,7 +368,8 @@ describe('W13b privacy: the recap never names a hidden card', () => {
   });
 
   it('Blake’s discard: a count, no hand positions', async () => {
-    await jump([appliedMove({ by: 1, kind: Kind.DiscardPair, description: 'discard hand[0] and hand[3]', seq: 4 })]);
+    // Issue #69: the server sends the other seat a count, never hand positions.
+    await jump([appliedMove({ by: 1, kind: Kind.DiscardPair, description: 'discards two cards', seq: 4 })]);
     const recap = q('online-recap');
     expect(recap?.textContent).toContain('Blake discarded 2 cards.');
     expect(recap?.textContent).not.toContain('[');

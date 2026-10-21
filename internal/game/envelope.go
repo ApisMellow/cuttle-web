@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ApisMellow/cuttle/card"
 	"github.com/ApisMellow/cuttle/engine"
@@ -100,13 +101,37 @@ func (m *AppliedMove) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// The DiscardPair description every seat but the discarder sees (issue
+// #69, SPEC §3.2). The engine's "discard hand[a] and hand[b]"
+// (engine/moves.go:66-67) names hand positions, and hands keep arrival
+// order, so the positions would date the discarded cards. A one-card hand
+// discards with DiscardB -1 (engine/apply.go:509-511), described
+// "... and hand[-1]"; that count is public anyway (handCount, scrap).
+const (
+	otherSeatDiscardTwo = "discards two cards"
+	otherSeatDiscardOne = "discards one card"
+)
+
+func otherSeatDiscard(description string) string {
+	if strings.HasSuffix(description, " and hand[-1]") {
+		return otherSeatDiscardOne
+	}
+	return otherSeatDiscardTwo
+}
+
 // redactHistory copies history for one viewer, dropping Index from every
-// entry that viewer did not make.
+// entry that viewer did not make and the hand positions from every
+// DiscardPair that viewer did not make. A DiscardPair is never a
+// SevenPick's SubMove (engine/apply.go:524-544), so the top-level Kind is
+// the only place one appears.
 func redactHistory(history []AppliedMove, viewer engine.PlayerID) []AppliedMove {
 	out := make([]AppliedMove, 0, len(history))
 	for _, h := range history {
 		if h.By != viewer {
 			h.Index = nil
+			if h.Kind == engine.MoveDiscardPair {
+				h.Description = otherSeatDiscard(h.Description)
+			}
 		} else if h.Index != nil {
 			idx := *h.Index
 			h.Index = &idx

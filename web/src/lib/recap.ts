@@ -214,15 +214,21 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
       return `countered with ${m[1]}${ctx.stops}`;
     }
     case KIND.DiscardPair: {
-      // Never extract DiscardA/DiscardB as identities — meaningless to a
-      // human and a leak besides (§4.6). The ONE bit read out of the match
-      // is whether the second index is the engine's literal one-card
-      // sentinel `-1` (engine/apply.go:509-511: a 1-card hand emits
-      // `DiscardA:0, DiscardB:-1`, so moves.go:67 renders
-      // "discard hand[0] and hand[-1]") — never its numeric value, never
-      // DiscardA's value, and the sentinel check itself never appears in
-      // the output. §4.6 has no one-card row; count-wording is an
-      // assumption (report).
+      // Issue #69 (SPEC §3.2): the bridge sends every seat but the
+      // discarder "discards two cards" or "discards one card", never hand
+      // positions. Only these two exact strings are accepted.
+      const redacted = text.match(/^discards (two cards|one card)$/);
+      if (redacted) return redacted[1] === 'one card' ? 'discarded 1 card' : 'discarded 2 cards';
+      // The discarder's own entry, and any entry from a server not yet
+      // updated, still carries the engine's text. Never extract
+      // DiscardA/DiscardB as identities — meaningless to a human and a leak
+      // besides (§4.6). The ONE bit read out of the match is whether the
+      // second index is the engine's literal one-card sentinel `-1`
+      // (engine/apply.go:509-511: a 1-card hand emits `DiscardA:0,
+      // DiscardB:-1`, so moves.go:67 renders "discard hand[0] and
+      // hand[-1]") — never its numeric value, never DiscardA's value, and
+      // the sentinel check itself never appears in the output. The
+      // one-card wording is §4.6's one-card row.
       const m = text.match(/^discard hand\[\d+\] and hand\[(\d+|-1)\]$/);
       if (!m) fail(entry, 'DiscardPair description did not match the engine format');
       return m[1] === '-1' ? 'discarded 1 card' : 'discarded 2 cards';
