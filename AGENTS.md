@@ -545,6 +545,12 @@ Hard rejects. Each came up in rounds 1–2.
 - **Recap:** never name the 7's unchosen card; never show a Decline (filter
   with `isRecapVisible` before the "skip when empty" check); `DiscardPair`
   names no indices and no identities.
+- **A `DiscardPair` description, for any viewer but the mover, reads exactly
+  `discards two cards`, or `discards one card` for a one-card hand
+  (`DiscardB === -1`)** *(2026-10-18, product-owner ruling, SPEC §3.2, issue
+  #69)*: no hand positions, because an unsorted hand's order is the order
+  cards arrived. The redaction is in `redactHistory`
+  (`internal/game/envelope.go`); the mover's own entry is verbatim.
 - `ResultScreen` renders neither hand. The seed appears only on the
   stuck-state screen.
 

@@ -3,7 +3,7 @@
 **Status:** plan, 2026-09-29. Decisions are recorded in PRD §10 amendment A-7.
 **Replaces:** the PRD §7 design sketch wherever the two disagree (in-memory rooms, 1-hour GC, Fly.io).
 
-## Progress (as of 2026-09-29)
+## Progress (as of 2026-10-18)
 
 | # | Item | Status |
 |---|---|---|
@@ -12,10 +12,10 @@
 | W3 | Server skeleton | merged #44 |
 | W4 | SQLite store | merged #47 |
 | W5 | Rooms and HTTP API (includes the janitor and the healthz DB check) | merged #55 |
-| W6 | WebSocket play, presence, rematch | open #60 (review fixes pending) |
-| W7 | Response hold | open #60 (built with W6) |
-| W8 | Janitor and nightly backup | janitor merged #55; nightly `VACUUM INTO` backup done, pending review |
-| W9 | Wire privacy sweep | built on `feat/two-phone-w9-privacy-sweep` (PR to open) |
+| W6 | WebSocket play, presence, rematch | merged (live 2026-10-18) |
+| W7 | Response hold | merged with W6 |
+| W8 | Janitor and nightly backup | janitor merged #55; nightly `VACUUM INTO` backup merged (`internal/server/backup.go`) |
+| W9 | Wire privacy sweep | merged (`internal/server/ws_privacy_sweep_test.go`) |
 | W10 | `TableSource` seam | merged #46 |
 | W11 | Client connection | merged #52, #57 |
 | W12 | `OnlineGameStore` and app wiring | merged #58 |
@@ -23,10 +23,12 @@
 | W13b | In-game banners, "responding" panel, online result and rematch | done (this change): status and notice banners, responding and waiting panels, the waiting line, the missed-moves recap, the online stuck screen, the rematch line and the Home offline copy (SPEC §2.12.9) |
 | W14 | `VITE_CUTTLE_SERVER` config, service-worker guard | done (parser and guard test in #52; https-only production origin, `/api/` fallback denylist and the Pages variable in this change) |
 | W15 | Two-browser e2e | todo |
-| W16 | Ops files | done (`deploy/`, `docs/ops.md`; open PR) |
-| W17 | Deploy Action | done (`.github/workflows/deploy-server.yml`, manual only; open PR; first manual deploy still to do) |
+| W16 | Ops files | done 2026-10-18 (`deploy/`, `docs/ops.md`); used for the live install |
+| W17 | Deploy Action | done 2026-10-18 (`.github/workflows/deploy-server.yml`, manual only). Not wired to the live host yet, so server updates are manual (`update.sh --binary`) |
 
-Next, in order: W6 review fixes and merge, then the W9 privacy sweep and the W15 two-browser e2e. After that comes the droplet deploy (W16, W17, and the product owner's setup checklist in section 11) and setting `VITE_CUTTLE_SERVER` for the Pages build.
+**Live 2026-10-18.** The server is deployed, `CUTTLE_SERVER_ORIGIN` is set, Pages has been rebuilt and Play online is on. The product owner played a full two-phone game with another person, and it worked. Smoke checks passed: create room 201, join 200, WebSocket upgrade 101, and a disallowed origin got 403. The host serves only `/healthz` and `/api/*`; GitHub Pages stays the app host (`docs/ops.md`, "Server-only host").
+
+Next, in order: W15 (the two-browser e2e), then wiring the deploy Action so a merge updates the server. Until then Pages redeploys on merge and the server does not, so a change that touches both needs a manual server update.
 
 ## 1. Summary and goals
 
@@ -207,17 +209,36 @@ The one-phone modes stay fully offline. Online play needs the network and says s
 
 **Layout on the droplet:** Ubuntu 24.04 LTS. Caddy from its apt repo. The binary at `/opt/cuttle/bin/cuttle-server` *(amended: matches the droplet as built; files in `deploy/`, steps in `docs/ops.md`)*, run by systemd as user `cuttle`. The database at `/var/lib/cuttle/cuttle.db`.
 
-Caddyfile:
+Caddyfile *(amended 2026-10-18)*: the shipped template is `deploy/Caddyfile`. It terminates HTTPS and proxies `/healthz` and `/api/*` to `127.0.0.1:8080`. It can also serve the app from `/var/www/cuttle`. When GitHub Pages hosts the app, as it does live, Caddy proxies only those two paths and redirects everything else to the Pages app's home page (the path is dropped on purpose); `docs/ops.md`, "Server-only host", has the block.
 
 ```
 cuttle.example.com {
-  reverse_proxy 127.0.0.1:8080
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		redir https://apismellow.github.io/cuttle-web/ 302
+	}
 }
 ```
 
 Caddy fetches and renews the certificate on its own.
 
-- **Deploys:** manual first. `scripts/deploy-server.sh` builds with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64`, uploads `cuttle-server.new`, swaps it in and restarts the service; phones reconnect by themselves. Later a GitHub Action runs the same script over SSH on a tag (secrets `DEPLOY_HOST`, `DEPLOY_SSH_KEY`).
+- **Deploys** *(amended 2026-10-18, replaces `scripts/deploy-server.sh`, which was never built)*:
+  - First install: `deploy/setup.sh` creates the `cuttle` user and directories, the env file, the unit, and the Caddyfile. It overwrites an existing `/etc/caddy/Caddyfile` unless `/etc/caddy/Caddyfile.cuttle-installed` exists.
+  - Updates: `deploy/update.sh`, installed as `/opt/cuttle/update.sh`. The full run pulls the checkout, builds the app and the server on the host, swaps both in, restarts the service and requires `/healthz` to answer 200, rolling back if it doesn't. It needs the repo and the Go and Node toolchains on the host. `update.sh --binary PATH` deploys only a prebuilt server binary (built with `scripts/build-server.sh`: `CGO_ENABLED=0 GOOS=linux GOARCH=amd64`), so a server-only host needs no toolchain.
+  - The `Deploy server` workflow (`.github/workflows/deploy-server.yml`) builds the binary on a runner and ships it over SSH with `update.sh --binary`. It runs only by hand (`workflow_dispatch`), from the `production` environment, and ends green without deploying when no deploy secrets are set. It does not run on merge or tag, so Pages redeploys on merge while the server does not; wiring it to merge is on the roadmap.
+  - Phones reconnect by themselves after a restart.
 - **Backups:** optional, since rooms live a day at most. A separate daily loop (`RunBackups`) runs `VACUUM INTO` and keeps the newest 3 copies. It is off unless `-backup-dir` / `CUTTLE_BACKUP_DIR` is set; `-backup-keep` / `CUTTLE_BACKUP_KEEP` changes the count. Point it at a private directory outside `/var/lib/cuttle` (for example `/var/backups/cuttle`); files are 0600, the directory 0700.
 - **Health and logs:** `GET /healthz` checks the database and reports the build version. Logs are JSON lines in journald (`journalctl -u cuttle -f`).
 - **Cost:** the $4/month droplet (512 MB) is enough; $6 (1 GB) gives headroom. DigitalOcean backups add 20%. sslip.io is free.

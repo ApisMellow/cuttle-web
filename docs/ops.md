@@ -102,15 +102,77 @@ the server on the runner and ships just the binary with
 With none of the secrets set, the workflow ends green with a notice and
 deploys nothing. With some set and others missing, it fails.
 
+## Server-only host (app on GitHub Pages)
+
+The droplet does not have to serve the web app. When GitHub Pages hosts it,
+the host runs only the game server, and the Pages build points at it with
+`CUTTLE_SERVER_ORIGIN` (see the last section). Caddy then proxies only the
+server's two paths and sends everything else to the Pages app:
+
+```
+cuttle.example.com {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		redir https://apismellow.github.io/cuttle-web/ 302
+	}
+}
+```
+
+The redirect drops the path on purpose: every path that is not `/healthz` or
+`/api/*` lands on the app's home page. The headers use a locked-down CSP,
+since this host serves no pages of its own. Keep `-trusted-proxy 127.0.0.1`
+in the unit.
+
+- **Updating:** build the binary on a dev machine with `scripts/build-server.sh`
+  (static linux/amd64), then deploy it with `update.sh --binary`, the same
+  path the Deploy server workflow uses. The host needs no Go or Node. A full
+  `update.sh` (no `--binary`) needs a source checkout and the Go and Node
+  toolchains on the host, so it is not used on a server-only host.
+- **Caddyfile trap:** `deploy/setup.sh` overwrites `/etc/caddy/Caddyfile`
+  unless `/etc/caddy/Caddyfile.cuttle-installed` already exists. On a host that
+  already has a Caddyfile worth keeping, create that empty marker file before running
+  `setup.sh`, then add the Cuttle site block above to the existing Caddyfile by
+  hand and reload Caddy.
+- **Skew:** Pages redeploys on merge, but the server updates only when someone
+  runs `update.sh --binary` or the Deploy server workflow. A change that touches
+  both sides needs the server updated by hand until the workflow runs on merge.
+
 ## Backups
 
 `CUTTLE_BACKUP_DIR` (default in the env example: `/var/backups/cuttle`) is
-where the server writes its nightly copy of the database (`VACUUM INTO`),
-keeping the newest three. Rooms live a day at most (SPEC section 2.12.6), so
-backups guard against a bad disk or a bad deploy, not against long-term loss.
-The directory holds every hidden card, so it stays `0700` and owned by
-`cuttle`. Until the server's nightly backup ships, the variable is read by
-nothing and the directory stays empty.
+where the server writes a daily copy of the database (`VACUUM INTO`). With
+the variable empty, backups are off. Rooms live a day at most (SPEC section
+2.12.6), so backups guard against a bad disk or a bad deploy, not against
+long-term loss. The directory holds every hidden card, so it stays `0700` and
+owned by `cuttle`.
+
+What the server does:
+
+- **When:** once at start, unless the newest backup in the directory is under
+  a day old (so restarts and deploys neither skip a day nor add copies), then
+  every 24 hours. A failed run is logged and tried again at the next tick.
+- **How many:** it keeps the newest three (`CUTTLE_BACKUP_KEEP`, at least 1)
+  and removes older ones. Only files named `cuttle-YYYYMMDDTHHMMSSZ.db` are
+  ever pruned. A failed run prunes nothing.
+- **Files:** each copy is written under a temporary name and renamed into
+  place only when complete, so a partial file never carries a backup name.
+  Backups are `0600`.
+- **Directory checks:** at startup a missing directory is created `0700`. An
+  existing one that group or others can access is refused and the server
+  exits, never changed. The path must be absolute, with no `..`, and not the
+  data directory or inside it.
 
 To restore a copy:
 
@@ -138,7 +200,7 @@ each line as it passes.
 - [ ] Start a second game and join it on B by typing the 4-character code.
 - [ ] Play one full game to the end on both phones.
 - [ ] Mid-game, lock B for about a minute, reopen it: it resumes at the current position.
-- [ ] Mid-game, put A in airplane mode, move on B, bring A back: A catches up and shows the recap of the moves it missed (once W13b lands).
+- [ ] Mid-game, put A in airplane mode, move on B, bring A back: A catches up and shows the recap of the moves it missed.
 - [ ] After a game ends, ask for a rematch from Alice's side, then again from Blake's side: a new game starts each time.
 - [ ] On every screen, neither phone ever shows the other's hand cards, the other player's 7 reveal or 3 scrap pick, or the deck order.
 - [ ] Open a bad or expired code (change one character, or use a room a day old): a clear "room gone" message, not a blank screen or a spinner.

@@ -387,7 +387,7 @@ export interface AppliedMove {
   by: PlayerId;                     // pre-state Active
   kind: MoveKind;
   card: Card | null;
-  description: string;              // Move.Describe evaluated against the PRE-state
+  description: string;              // Move.Describe evaluated against the PRE-state; for a DiscardPair, redacted for every viewer but `by` (§3.2)
   seq: number;                      // 1-based, monotonic for the game
   subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
                                      // Public to both viewers. (amended 2026-09-26)
@@ -768,6 +768,8 @@ If the save fails, the server reloads the room with `RestoreSession` from the st
 - **The held mover learns nothing from its own frames.** Every well-formed `move` or `rematch` it sends during the hold gets the fixed `error {code: STALE}` (no `seq`) and `responding`, without reaching `Session.Apply` or the rematch requests, so the reply is the same whether or not the answer is in or the game has ended. Its `welcome` says `playing`, never `over`. A rematch request is neither sent nor replayed to it until the hold ends; then it gets the current `state`, then `rematch {requestedBy}`.
 - The hold is enforced by the server, so raw frames reveal nothing early. It lives in memory; a server restart ends it, and the next `hello` gets the current `state` (accepted: a restart takes seconds and says nothing about the hand).
 
+**Shutdown** *(added 2026-10-18, closes issue #63)*. When the server's context ends, the play handler marks itself closed and kills every open socket with a bare close (no error frame, retryable). From then on a `GET /api/play` that passes the Origin check is refused before the upgrade, before the socket caps are counted, with `503`, `Retry-After: 5` and the JSON body `{"code":"INTERNAL","message":"the server is restarting"}` (`Cache-Control: no-store`). A disallowed Origin still gets `403` first. A socket that was mid-upgrade when the sweep ran is killed as soon as it is tracked. `main` then waits up to 5 s for the socket handlers to finish before it closes the store. As with the socket-cap `503` (§2.12.6), a browser sees only a failed connection, which is retryable.
+
 **Presence and liveness.** The client sends `ping` every 15 s and treats a socket as dead if no frame arrives within 10 s of a ping (5 s for the probe on becoming visible). The server answers every `ping` with `pong` and sends no app-level pings of its own. It treats a socket with no inbound frame for 45 s as dead, closes it (bare, retryable) and sends the other seat `presence {opponentOnline:false}`. It must receive `hello` within 10 s of the upgrade or close. **One socket per seat:** a new accepted `hello` for a seat replaces the old socket, which the server closes with `error {code: "REPLACED"}` first (open question 1).
 
 #### 2.12.6 Limits
@@ -830,7 +832,7 @@ What the phone shows around the board, all from `OnlineGameStore` (`web/src/lib/
 
 ### 3.1 Where redaction happens, and why it matters
 
-**Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
+**Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). History redaction (`index`, and the DiscardPair description) lives in `internal/game/envelope.go` (`redactHistory`). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
 
 This is not defense-in-depth for its own sake. PRD §7 makes it a v1 obligation to v2: *"the UI consumes only the envelope + redacted views (never reaches into full state for opponent info)."* If redaction lives in TypeScript, v2 has to write it a second time in Go and the two will drift. Writing it once, Go-side, means the v2 server calls the identical `viewFor(state, viewerId)` and ships its output over the WebSocket. *(Amended 2026-09-29.)* The redaction and the envelope carry over unchanged, which is the part of G4 that holds. The rest of the "transport swap" doesn't: the server only ever sends per-seat envelopes (`game.ClientSafe`, §2.12.5), and the phone reads them through `OnlineGameStore` behind the `TableSource` seam (W10), not through `lib/bridge/engine.ts`.
 
@@ -861,6 +863,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `pending.counterChain` | `state.Pending.CounterChain` | public; every 2 in the chain was played face-up |
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
 | `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
+| `history[].description`, `lastMove.description` | `AppliedMove.description` | Verbatim for `viewer === entry.by`. For any other viewer, a `DiscardPair`'s description is `"discards two cards"`, or `"discards one card"` when the discarding hand held one card (`DiscardB === -1`). The engine's `"discard hand[a] and hand[b]"` names hand positions; hands keep arrival order, so the positions tell the other seat when the discarded cards entered that hand. The count is already public (`opponent.handCount`, `scrap`). Every other kind's description is identical for both viewers. *(amended 2026-10-18, product-owner ruling, issue #69)* |
 
 **`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra in the view.
 
@@ -1070,6 +1073,7 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, ApisMellow)*. "`NAME` let it resolve." adds nothing the one-off's own line and the board don't already say. *(The original reason, the synthetic acknowledgment, was retired 2026-09-29, §4.3; the filter stays.)* |
 | `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, ApisMellow: was "revealed two cards", which is false when the deck held one card.)* |
 | `DiscardPair` | "`NAME` discarded 2 cards." — **never the indices, never the identities**; the cards are in the scrap pile, which the viewer can browse (R6) |
+| `DiscardPair`, one-card hand | "`NAME` discarded 1 card." (the engine's `DiscardB: -1` case; same rule: no indices, no identity) *(added 2026-10-18; matches `lib/recap.ts`)* |
 | `Pass` | "`NAME` passed." |
 
 **No recap line may name a card the viewer is not entitled to see.** Audited against the table: every card named above is one that became public by being played or scrapped. The 7's unchosen card returns to the top of the deck (`engine/apply.go:431-433`) and is never named — it is known to the player who revealed it, which is inherent to the rules and not a UI leak (**OQ-11**).
