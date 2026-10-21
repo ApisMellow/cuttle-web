@@ -182,7 +182,8 @@ describe('a one-off the opponent can answer (they hold a 2): the counter prompt,
       state: playerView({ viewer: O, active: O, phase: P.AwaitingCounter, you: { hand: [TWO], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
       legalMoves: [DECLINE, { ...DECLINE, Kind: Kind.Counter, Card: TWO, HandIndex: 0 }],
       descriptions: ['decline', 'counter with 2♦'],
-      history,
+      // Issue #69: Blake sees Alice's discard as a count, never hand positions.
+      history: history.map((h) => (h.kind === Kind.DiscardPair && h.by !== O ? { ...h, description: 'discards two cards' } : h)),
       seq: history.length,
     });
   }

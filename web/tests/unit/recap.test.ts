@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { formatRecapLine, isRecapVisible } from '../../src/lib/recap';
+import { formatRecapLine, formatRecapLines, isRecapVisible, lastMoveLine } from '../../src/lib/recap';
 import type { AppliedMove, PlayerId } from '../../src/lib/bridge/schema';
 
 const NAMES: [string, string] = ['Alice', 'Blake'];
@@ -213,40 +213,85 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
   });
 
   it('R20.2: DiscardPair names no identities — never the hand indices, never a card', () => {
-    const entryA = move({ by: 1, kind: 8, description: 'discard hand[0] and hand[3]' });
-    const lineA = formatRecapLine(entryA, 0, NAMES);
-    expect(lineA).toBe('Blake discarded 2 cards.');
-    expect(lineA).not.toMatch(SUIT_GLYPH);
-    // The fixed word "2" (the count) is expected; the actual DiscardA/B
-    // index values (0 and 3) must never surface. Vary the indices and
-    // confirm the output is byte-identical regardless — proof the
-    // formatter never parses them out of the description at all.
-    const entryB = move({ by: 1, kind: 8, description: 'discard hand[5] and hand[9]' });
-    const lineB = formatRecapLine(entryB, 0, NAMES);
-    expect(lineB).toBe(lineA);
-    expect(lineB).not.toContain('5');
-    expect(lineB).not.toContain('9');
+    // Wire-true (issue #69, SPEC §3.2): the bridge sends every seat but the
+    // discarder a description with no hand positions.
+    const entry = move({ by: 1, kind: 8, description: 'discards two cards' });
+    const line = formatRecapLine(entry, 0, NAMES);
+    expect(line).toBe('Blake discarded 2 cards.');
+    expect(line).not.toMatch(SUIT_GLYPH);
   });
 
-  it('R20.2 (assumption): one-card DiscardPair — "NAME discarded 1 card." — engine apply.go:509-511', () => {
-    // §4.6 has no one-card row (the table only shows the 2-card case).
-    // Assumption: singular wording when the engine's DiscardB sentinel
-    // (-1, meaning "hand had only one card") is present. Still never reads
-    // or echoes the index values themselves — only whether the second one
-    // is literally -1. The fixed word "1" (the count) is expected — same
-    // as "2" in the two-card case above — but DiscardA's actual value
-    // (always 0 for this shape per apply.go:510) must never surface.
-    const entry = move({ by: 1, kind: 8, description: 'discard hand[0] and hand[-1]' });
+  it('R20.2: one-card DiscardPair — "NAME discarded 1 card." (SPEC §4.6; engine apply.go:509-511)', () => {
+    // Wire-true (issue #69): a one-card hand's discard reaches the other
+    // seat as "discards one card".
+    const entry = move({ by: 1, kind: 8, description: 'discards one card' });
     const line = formatRecapLine(entry, 0, NAMES);
     expect(line).toBe('Blake discarded 1 card.');
     expect(line).not.toMatch(SUIT_GLYPH);
-    expect(line).not.toContain('-1');
-    expect(line).not.toContain('0');
   });
 
   it('R20.2 (assumption): one-card DiscardPair, own move — "You discarded 1 card."', () => {
     const entry = move({ by: 0, kind: 8, description: 'discard hand[0] and hand[-1]' });
     expect(formatRecapLine(entry, 0, NAMES)).toBe('You discarded 1 card.');
+  });
+});
+
+describe('issue #69: the other seat\'s DiscardPair carries no hand positions', () => {
+  // The bridge sends every seat but the discarder "discards two cards" or
+  // "discards one card" (SPEC §3.2). The discarder's own entry keeps the
+  // engine's "discard hand[a] and hand[b]" (engine/moves.go:66-67), and so
+  // does every entry from a server that hasn't been updated yet, which a new
+  // client can meet during a deploy window. Both forms read the same.
+  const four = move({ by: 0, kind: 4, card: { Rank: 4, Suit: 0 }, description: 'play 4♣ as one-off', seq: 1 });
+  const twoRedacted = move({ by: 1, kind: 8, description: 'discards two cards', seq: 2 });
+  const oneRedacted = move({ by: 1, kind: 8, description: 'discards one card', seq: 2 });
+
+  it('the redacted forms read as a count', () => {
+    expect(formatRecapLine(twoRedacted, 0, NAMES)).toBe('Blake discarded 2 cards.');
+    expect(formatRecapLine(oneRedacted, 0, NAMES)).toBe('Blake discarded 1 card.');
+  });
+
+  it('the recap panel\'s run (formatRecapLines) and the idle line read the redacted form', () => {
+    expect(formatRecapLines([twoRedacted], 0, NAMES, [four, twoRedacted])).toEqual(['Blake discarded 2 cards.']);
+    expect(lastMoveLine([four, twoRedacted], 0, NAMES)).toBe('Blake discarded 2 cards.');
+    expect(lastMoveLine([four, oneRedacted], 0, NAMES)).toBe('Blake discarded 1 card.');
+  });
+
+  it('an un-updated server\'s engine text still reads the same, never echoing an index', () => {
+    const lineA = formatRecapLine(move({ by: 1, kind: 8, description: 'discard hand[0] and hand[3]' }), 0, NAMES);
+    const lineB = formatRecapLine(move({ by: 1, kind: 8, description: 'discard hand[5] and hand[9]' }), 0, NAMES);
+    expect(lineA).toBe('Blake discarded 2 cards.');
+    expect(lineB).toBe(lineA);
+    const one = formatRecapLine(move({ by: 1, kind: 8, description: 'discard hand[0] and hand[-1]' }), 0, NAMES);
+    expect(one).toBe('Blake discarded 1 card.');
+    expect(one).not.toContain('-1');
+    expect(one).not.toContain('0');
+  });
+
+  it('the discarder\'s own entry keeps the engine text', () => {
+    expect(formatRecapLine(move({ by: 0, kind: 8, description: 'discard hand[2] and hand[4]' }), 0, NAMES)).toBe('You discarded 2 cards.');
+    expect(formatRecapLine(move({ by: 0, kind: 8, description: 'discard hand[0] and hand[-1]' }), 0, NAMES)).toBe('You discarded 1 card.');
+  });
+
+  it('any other DiscardPair text still fails loudly', () => {
+    for (const description of [
+      'discards three cards',
+      'discards 2 cards',
+      'Discards two cards',
+      'discards two cards.',
+      ' discards two cards',
+      'discards two cards ',
+      'discards one card\n',
+      'discards two cards\nx',
+      '\ndiscards two cards',
+      'discards two cards and hand[1]',
+      'discard two cards',
+      '',
+    ]) {
+      expect(() => formatRecapLine(move({ by: 1, kind: 8, description }), 0, NAMES), description).toThrow(
+        /DiscardPair description did not match/,
+      );
+    }
   });
 });
 

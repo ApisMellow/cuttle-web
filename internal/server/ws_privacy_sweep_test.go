@@ -21,6 +21,10 @@ package server
 //     card on the board before the move (points, Jacks, permanents). Its
 //     description names only its card and targetCard, and on the seat's own
 //     entries it is exactly Move.Describe(pre) of the move at its index.
+//   - No hand position reaches a seat except in its own entries and its own
+//     legal-move descriptions (issue #69): an entry the other seat made
+//     carries no "hand[" text and no digit outside a card name, and nothing
+//     else in a state frame carries "hand[".
 //   - Frames other than state name no card at all.
 //   - The envelope decodes strictly against the SPEC §2.7 shape, so a new
 //     field fails even if it holds no card; the other frames decode
@@ -34,8 +38,9 @@ package server
 //     welcome saying playing; its own probes get fixed bytes before and
 //     after the other seat answers.
 //   - Canaries: on real frames the sweep plants a hidden card (outside
-//     history, in a history description, in a non-state frame) and requires
-//     the check to flag each one, so a check gone blind fails the sweep.
+//     history, in a history description, in a non-state frame) and hand
+//     position text (in the other seat's latest entry), and requires the
+//     check to flag each one, so a check gone blind fails the sweep.
 //
 // The duo driver's own checks (envelope equals the seat's View at that seq,
 // no hidden card outside history, no seed, deck, snapshot or token) run on
@@ -98,6 +103,9 @@ type sweepCov struct {
 	games, frames, states                                                             int
 	canaries, historyEntries, ownDescriptions, targetCards                            int
 	reconnects, heldReconnects, heldProbes, answeredProbes, errorFrames, rematchGames int
+	// otherDiscards counts the other seat's DiscardPair entries checked for
+	// position text (issue #69).
+	otherDiscards int
 }
 
 // add sums every int field, the embedded coverage's included.
@@ -113,6 +121,7 @@ func (c *sweepCov) add(o sweepCov) {
 		{&c.ownDescriptions, &o.ownDescriptions}, {&c.targetCards, &o.targetCards},
 		{&c.reconnects, &o.reconnects}, {&c.heldReconnects, &o.heldReconnects}, {&c.heldProbes, &o.heldProbes},
 		{&c.answeredProbes, &o.answeredProbes}, {&c.errorFrames, &o.errorFrames}, {&c.rematchGames, &o.rematchGames},
+		{&c.otherDiscards, &o.otherDiscards},
 	} {
 		*p[0] += *p[1]
 	}
@@ -195,6 +204,7 @@ func TestW9_WirePrivacySweep(t *testing.T) {
 			"a 5 drawing": total.fiveDraw, "a Jack changing control": total.jackControl,
 			"a counter chain of 2 or more": total.counterChain2, "a 4 discard": total.fourDiscard,
 			"a dead-end 7": total.deadSeven, "glasses leaving play": total.glassesGone,
+			"the other seat's DiscardPair entry": total.otherDiscards,
 		} {
 			must[name] = n
 		}
@@ -659,6 +669,13 @@ func (s *sweeper) mentionViolations(seat game.Seat, raw map[string]any, seq int,
 			v = append(v, fmt.Sprintf("names %v, hidden from it at seq %d (SPEC §3.2)", k, seq))
 		}
 	})
+	// Outside history, only the actor's own option list may name a hand
+	// position (issue #69).
+	stringsOutside(outer, "descriptions", func(x string) {
+		if handPosition.MatchString(x) {
+			v = append(v, fmt.Sprintf("names a hand position outside history: %q (issue #69)", x))
+		}
+	})
 	for _, e := range entries {
 		m, ok := e.(map[string]any)
 		if !ok {
@@ -718,6 +735,10 @@ func (s *sweeper) entryViolations(seat game.Seat, e map[string]any, seq int, tal
 			v = append(v, fmt.Sprintf("history entry %d's description names %v, neither its card nor its targetCard", es, k))
 		}
 	})
+	by, _ := e["by"].(float64)
+	if int(by) != int(seat) && namesPosition(desc) {
+		v = append(v, fmt.Sprintf("history entry %d's description %q names a hand position to the seat that didn't move (issue #69)", es, desc))
+	}
 	if tc, ok := e["targetCard"].(map[string]any); ok {
 		board := boardCards(pre)
 		cardMentions(tc, func(k cardKey) {
@@ -729,7 +750,6 @@ func (s *sweeper) entryViolations(seat game.Seat, e map[string]any, seq int, tal
 			tally.targetCards++
 		}
 	}
-	by, _ := e["by"].(float64)
 	if int(by) == int(seat) {
 		idx, ok := e["index"].(float64)
 		moves := engine.LegalMoves(pre)
@@ -748,6 +768,9 @@ func (s *sweeper) entryViolations(seat game.Seat, e map[string]any, seq int, tal
 		s.entryOK[seat][string(b)] = true
 		if tally != nil {
 			tally.historyEntries++
+			if kind, _ := e["kind"].(float64); int(kind) == int(engine.MoveDiscardPair) && int(by) != int(seat) {
+				tally.otherDiscards++
+			}
 		}
 	}
 	return v
@@ -801,6 +824,23 @@ func (s *sweeper) canary(seat game.Seat, f frameIn) {
 		t.Fatalf("seat %d: hidden card %v planted in a history description went unflagged", seat, hidden)
 	}
 	s.cov.canaries++
+	// Issue #69: the engine's position text planted in the other seat's
+	// latest entry, on a fresh copy so nothing else can flag it.
+	_ = json.Unmarshal(f.raw, &raw)
+	envRaw = raw["envelope"].(map[string]any)
+	h, _ = envRaw["history"].([]any)
+	for i := len(h) - 1; i >= 0; i-- {
+		e := h[i].(map[string]any)
+		if by, _ := e["by"].(float64); int(by) == int(seat) {
+			continue
+		}
+		e["description"] = "discard hand[1] and hand[2]"
+		if len(s.mentionViolations(seat, raw, seq, nil)) == 0 {
+			t.Fatalf("seat %d: position text planted in the other seat's history entry %v went unflagged", seat, e["seq"])
+		}
+		s.cov.canaries++
+		return
+	}
 }
 
 // firstHidden is the lowest card of the 52 that seat can't see.
@@ -1002,6 +1042,41 @@ func sameCards(got []specCard, want []card.Card) bool {
 
 // cardText is card.Card.String(): rank A, 2–10, J, Q, K, then the suit glyph.
 var cardText = regexp.MustCompile(`(10|[2-9AJQK])([♣♦♥♠])`)
+
+// handPosition is hand-position text in any spelling: the engine's
+// DiscardPair "hand[2]" (engine/moves.go:66-67), "hand [ -1 ]", "HAND[0]".
+var handPosition = regexp.MustCompile(`(?i)hand\s*\[`)
+
+// namesPosition reports whether a description the other seat sees names a
+// hand position (issue #69): position text, or any digit left once card
+// names and a SevenPick's "7: " prefix are removed, which catches a
+// position, index or count written any other way.
+func namesPosition(desc string) bool {
+	if handPosition.MatchString(desc) {
+		return true
+	}
+	rest := cardText.ReplaceAllString(strings.TrimPrefix(desc, "7: "), "")
+	return strings.ContainsAny(rest, "0123456789")
+}
+
+// stringsOutside calls fn for every string in v, skipping the value under
+// any key named skip.
+func stringsOutside(v any, skip string, fn func(string)) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, c := range x {
+			if k != skip {
+				stringsOutside(c, skip, fn)
+			}
+		}
+	case []any:
+		for _, c := range x {
+			stringsOutside(c, skip, fn)
+		}
+	case string:
+		fn(x)
+	}
+}
 
 var (
 	rankText = map[string]int{"A": 1, "J": 11, "Q": 12, "K": 13}
@@ -1240,6 +1315,45 @@ func TestW9_SweepCheckCatchesLeaks(t *testing.T) {
 		mine["index"] = 0.0
 		if v := s.entryViolations(0, mine, 1, nil); len(v) == 0 {
 			t.Fatal("an own entry with a made-up description went unflagged")
+		}
+	})
+
+	// Issue #69: a description the other seat sees names no hand position,
+	// in the engine's spelling or any other.
+	t.Run("position text", func(t *testing.T) {
+		discard := func(by int, desc string) map[string]any {
+			e := entry(by, nil, nil, desc)
+			e["kind"] = 8.0 // MoveDiscardPair
+			return e
+		}
+		for _, desc := range []string{
+			"discard hand[2] and hand[3]",
+			"discard hand[0] and hand[-1]",
+			"discard HAND [ 1 ] and hand[2]",
+			"discard cards 2 and 3",
+			"discards two cards from position 4",
+		} {
+			if v := s.entryViolations(0, discard(1, desc), 1, nil); len(v) == 0 {
+				t.Errorf("the other seat's description %q went unflagged", desc)
+			}
+		}
+		for _, e := range []map[string]any{
+			discard(1, "discards two cards"),
+			entry(1, kingObj, nil, "7: play K♠ as permanent"),
+		} {
+			if v := s.entryViolations(0, e, 1, nil); len(v) != 0 {
+				t.Errorf("a clean description %q flagged: %v", e["description"], v)
+			}
+		}
+		// Outside history only the actor's own option list may carry it.
+		frame := func(k string, x any) map[string]any {
+			return map[string]any{"t": "state", "envelope": map[string]any{k: x}}
+		}
+		if v := s.mentionViolations(0, frame("note", "discard hand[1] and hand[2]"), 0, nil); len(v) == 0 {
+			t.Error("position text outside history went unflagged")
+		}
+		if v := s.mentionViolations(0, frame("descriptions", []any{"discard hand[1] and hand[2]"}), 0, nil); len(v) != 0 {
+			t.Errorf("the actor's own options flagged: %v", v)
 		}
 	})
 

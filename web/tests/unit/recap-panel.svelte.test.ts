@@ -97,7 +97,8 @@ const WIRE = {
     description: '7: no legal play — scrap 8♦',
     seq: 12,
   }),
-  discardPair: appliedMove({ by: 1, kind: Kind.DiscardPair, description: 'discard hand[0] and hand[3]', seq: 13 }),
+  // Issue #69: the other seat's DiscardPair carries no hand positions.
+  discardPair: appliedMove({ by: 1, kind: Kind.DiscardPair, description: 'discards two cards', seq: 13 }),
 } satisfies Record<string, AppliedMove>;
 
 let host: HTMLDivElement | undefined;

@@ -221,11 +221,25 @@ func TestSPEC2_7_EnvelopeInvariantsAcrossRandomGames(t *testing.T) {
 						t.Fatalf("seed %d: snapshot history[%d] lost its index", seed, i)
 					}
 				}
-				// The envelope's own entries match the snapshot exactly; others only lack index.
+				// The envelope's own entries match the snapshot exactly; others
+				// lack index, and a DiscardPair also its hand positions (#69).
 				for i, h := range env.History {
 					want := snap.History[i]
 					if h.By != env.State.Viewer {
 						want.Index = nil
+						if want.Kind == engine.MoveDiscardPair {
+							if positionText.MatchString(h.Description) || digitOutsideCards(h.Description) {
+								t.Fatalf("seed %d: the other seat's history[%d] names hand positions: %q", seed, i, h.Description)
+							}
+							redacted := otherSeatTwoCardDiscard
+							if strings.HasSuffix(want.Description, "hand[-1]") {
+								redacted = otherSeatOneCardDiscard
+							}
+							if h.Description != redacted {
+								t.Fatalf("seed %d: the other seat's history[%d] = %q, want %q", seed, i, h.Description, redacted)
+							}
+							want.Description = redacted
+						}
 					}
 					if !reflect.DeepEqual(h, want) {
 						t.Fatalf("seed %d: envelope history[%d] = %+v, want %+v", seed, i, h, want)
