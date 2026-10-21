@@ -387,7 +387,7 @@ export interface AppliedMove {
   by: PlayerId;                     // pre-state Active
   kind: MoveKind;
   card: Card | null;
-  description: string;              // Move.Describe evaluated against the PRE-state
+  description: string;              // Move.Describe evaluated against the PRE-state; for a DiscardPair, redacted for every viewer but `by` (§3.2)
   seq: number;                      // 1-based, monotonic for the game
   subKind: MoveKind | null;         // SubMove.Kind for MoveSevenPick; null otherwise, and null for a dead-end SevenPick (engine scraps an unplayable reveal) (§2.8).
                                      // Public to both viewers. (amended 2026-09-26)
@@ -832,7 +832,7 @@ What the phone shows around the board, all from `OnlineGameStore` (`web/src/lib/
 
 ### 3.1 Where redaction happens, and why it matters
 
-**Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
+**Redaction is performed in Go, inside the bridge, in `internal/game/view.go`** (moved from `internal/wasm` in two-phone W1, 2026-09-29, so the WASM shim and the future server share one copy). History redaction (`index`, and the DiscardPair description) lives in `internal/game/envelope.go` (`redactHistory`). The `GameState` never crosses the WASM boundary. The only game data the TypeScript side can reach is a `PlayerView` already stripped for one named viewer.
 
 This is not defense-in-depth for its own sake. PRD §7 makes it a v1 obligation to v2: *"the UI consumes only the envelope + redacted views (never reaches into full state for opponent info)."* If redaction lives in TypeScript, v2 has to write it a second time in Go and the two will drift. Writing it once, Go-side, means the v2 server calls the identical `viewFor(state, viewerId)` and ships its output over the WebSocket. *(Amended 2026-09-29.)* The redaction and the envelope carry over unchanged, which is the part of G4 that holds. The rest of the "transport swap" doesn't: the server only ever sends per-seat envelopes (`game.ClientSafe`, §2.12.5), and the phone reads them through `OnlineGameStore` behind the `TableSource` seam (W10), not through `lib/bridge/engine.ts`.
 
@@ -863,7 +863,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `pending.counterChain` | `state.Pending.CounterChain` | public; every 2 in the chain was played face-up |
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
 | `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
-| `history[].description`, `lastMove.description` for a `DiscardPair` | `Move.Describe` against the pre-state | The mover's own entry is unchanged. For **any other viewer**, exactly `discards two cards`: no hand positions. A hand is unsorted and its order is the order cards arrived, so positions would leak that order. *(amended 2026-10-18, product-owner ruling, issue #69)* |
+| `history[].description`, `lastMove.description` | `AppliedMove.description` | Verbatim for `viewer === entry.by`. For any other viewer, a `DiscardPair`'s description is `"discards two cards"`, or `"discards one card"` when the discarding hand held one card (`DiscardB === -1`). The engine's `"discard hand[a] and hand[b]"` names hand positions; hands keep arrival order, so the positions tell the other seat when the discarded cards entered that hand. The count is already public (`opponent.handCount`, `scrap`). Every other kind's description is identical for both viewers. *(amended 2026-10-18, product-owner ruling, issue #69)* |
 
 **`viewerHasGlasses` (R7).** `Players[viewer].Permanents` contains any card with `Rank === card.Eight`. `Permanents` holds only Queens, Kings, and glasses-8s (`engine/state.go:56`), so no further filtering is needed. Suit is irrelevant (RULES.md §Notes: "Glasses 8: any 8"). Note the direction carefully: **the glasses' owner sees the other hand.** A viewer with glasses sees `opponent.hand`; a viewer whose *opponent* has glasses sees nothing extra in the view.
 
@@ -1073,6 +1073,7 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, ApisMellow)*. "`NAME` let it resolve." adds nothing the one-off's own line and the board don't already say. *(The original reason, the synthetic acknowledgment, was retired 2026-09-29, §4.3; the filter stays.)* |
 | `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, ApisMellow: was "revealed two cards", which is false when the deck held one card.)* |
 | `DiscardPair` | "`NAME` discarded 2 cards." — **never the indices, never the identities**; the cards are in the scrap pile, which the viewer can browse (R6) |
+| `DiscardPair`, one-card hand | "`NAME` discarded 1 card." (the engine's `DiscardB: -1` case; same rule: no indices, no identity) *(added 2026-10-18; matches `lib/recap.ts`)* |
 | `Pass` | "`NAME` passed." |
 
 **No recap line may name a card the viewer is not entitled to see.** Audited against the table: every card named above is one that became public by being played or scrapped. The 7's unchosen card returns to the top of the deck (`engine/apply.go:431-433`) and is never named — it is known to the player who revealed it, which is inherent to the rules and not a UI leak (**OQ-11**).
