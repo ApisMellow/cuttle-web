@@ -129,6 +129,31 @@ export interface TableSource {
   /** True while an apply is in flight (sent, result not yet in). The local store is never pending. */
   readonly pending: boolean;
 
+  // Tutorial T2 (docs/tutorial-design.md §6.3): three optional fields for the
+  // tutorial's source. GameStore leaves all three absent. OnlineGameStore
+  // already has a public `names` (its room names), which fits the optional
+  // field; GameScreen reads `online.names` first, and `online` is non-null
+  // while that store is attached, so its screen is exactly as before.
+  // `allowsNewGame` and `refusals` are tutorial-only. A present `names` never
+  // means "this is the tutorial": nothing may branch on it.
+
+  /**
+   * Seat names, by seat, for a source that has its own pair (the tutorial:
+   * the learner and "Blake"). GameScreen uses `online.names`, then these,
+   * then the pass-and-play session's names; a source that sets them never
+   * writes the session's.
+   */
+  readonly names?: [string, string];
+  /** False hides the menu's New game (the tutorial). Absent or true: offered, except online, which never offers it. */
+  readonly allowsNewGame?: boolean;
+  /**
+   * How many moves this source has refused without applying them (the
+   * tutorial's apply gate). GameScreen keys the counter prompt on it, so a
+   * refused "Let it resolve" or counter remounts a fresh, working prompt
+   * (design §5.5.1). Absent is 0: the prompt is never remounted.
+   */
+  readonly refusals?: number;
+
   /**
    * Submits legal move `moveIndex` of the current envelope. The promise
    * settles when the source has taken the move; the new position may arrive
