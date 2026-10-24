@@ -31,6 +31,7 @@
   import { settings } from '../stores/settings.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from '../stores/snapshot';
   import { listThemeChoices, vectorTheme } from '../theme';
+  import { tutorial, type TutorialStore } from '../tutorial/tutorial.svelte';
   import RulesButton from './RulesButton.svelte';
 
   interface Props {
@@ -40,8 +41,15 @@
     onlineEnabled?: boolean;
     /** W13b: where "is the network up" comes from (the browser by default; tests pass a fake). */
     network?: Pick<ConnectionEnvironment, 'isOnline' | 'listen'>;
+    /** R25.1: Learn to play. Defaults to the app's tutorial; tests pass their own. */
+    learn?: TutorialStore;
   }
-  let { actions = getOnlineActions(), onlineEnabled = onlineAvailable(), network = browserEnvironment() }: Props = $props();
+  let {
+    actions = getOnlineActions(),
+    onlineEnabled = onlineAvailable(),
+    network = browserEnvironment(),
+    learn = tutorial,
+  }: Props = $props();
 
   // R24.14 (plan §10): offline, Play on two phones stays on Home and says it
   // needs a connection; Start a room and Join wait for the network (both
@@ -160,6 +168,20 @@
     void game.restore();
   }
 
+  // R25.1 (docs/tutorial-design.md §4.1, §10): Learn to play is a static
+  // choice, never a prompt (D1, R25.12). Home reads progress once as it
+  // mounts and writes nothing; the muted line only reports what is done.
+  untrack(() => learn.reload());
+  const learnUid = $props.id();
+  const learnLineId = `learn-to-play-line-${learnUid}`;
+  const learnLine = $derived(
+    learn.done.length === 0
+      ? 'Five short lessons'
+      : learn.done.length === 5
+        ? 'All 5 lessons done'
+        : `${learn.done.length} of 5 done`,
+  );
+
   // PRD §10 A-6: the card-style picker. A look preference only: it lives in
   // the settings store (its own storage key), never in the game snapshot.
   // Catalog themes appear once the tiny catalog has loaded; a saved choice
@@ -173,6 +195,17 @@
 
 <div data-testid="home-screen" class="home-screen">
   <h1 class="home-screen__title">Cuttle</h1>
+
+  <div class="home-screen__learn">
+    <button
+      type="button"
+      data-testid="learn-to-play"
+      class="home-screen__learn-button"
+      aria-describedby={learnLineId}
+      onclick={() => learn.open()}
+    >Learn to play</button>
+    <p id={learnLineId} class="home-screen__learn-line">{learnLine}</p>
+  </div>
 
   {#if game.notice}
     <p class="home-screen__notice" role="status">{game.notice}</p>
@@ -308,6 +341,40 @@
   .home-screen__title {
     font-size: var(--cu-text-xl);
     margin: 0;
+  }
+
+  /* R25.1: a full-width secondary pill under the title, and its muted line.
+     Static on purpose (D1): no motion, badge or accent fill. */
+  .home-screen__learn {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cu-space-1);
+  }
+
+  .home-screen__learn-button {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--cu-tap-min);
+    padding: 0 var(--cu-space-4);
+    border: 1px solid var(--cu-ink-line);
+    border-radius: var(--cu-radius-control);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-family: inherit;
+    font-size: var(--cu-text-md);
+    cursor: pointer;
+  }
+
+  .home-screen__learn-button:focus-visible {
+    outline: 2px solid var(--cu-iris);
+    outline-offset: 2px;
+  }
+
+  .home-screen__learn-line {
+    margin: 0;
+    color: var(--cu-muted);
+    font-size: var(--cu-text-sm);
+    text-align: center;
   }
 
   .home-screen__notice {
