@@ -38,7 +38,7 @@ The Go engine in `cuttle` is a pure, well-tested state machine:
 - No matchmaking or public games.
 - No native app (the stack must keep a Capacitor/TWA door open, nothing more).
 - ~~No bitmap/generated card art — card faces are clean vector/CSS/SVG. (A generated-art theme layer — table background, card backs, cuttlefish mascot — is a v2+ candidate.)~~ *Superseded 2026-08-23 — see §10 Amendment A-1. Vector/SVG faces remain the functional baseline; generated art is now in scope as a theme layer built by its own loop phase.*
-- No tutorial or guided hints — a rules reference screen only.
+- ~~No tutorial or guided hints — a rules reference screen only.~~ *Superseded 2026-10-24 — see §10 Amendment A-8: an opt-in interactive tutorial, reached only from the Home screen. The app still never prompts or suggests it, and there are still no hints during real games.*
 - No persistent match history — the win tally lives only for the browser session.
 
 ## 5. Architecture decisions (locked)
@@ -227,3 +227,17 @@ Consequences recorded here so later readers aren't surprised:
 - **No push notifications in the first online release.** Web Push is a later option.
 
 This amendment is tracked in the ledger as group R24 (`docs/requirements.yaml`, R24.1-R24.19).
+
+### A-8 — Learn to play: an interactive tutorial (2026-10-24, ApisMellow)
+
+The §4 non-goal "No tutorial or guided hints" is superseded for one feature: an interactive tutorial for brand-new players. The design is `docs/tutorial-design.md`. Decisions:
+
+- **Opt-in only.** The one way in is a "Learn to play" choice on the Home screen. **The app never prompts, nudges or suggests the tutorial on its own**: no first-visit nudge, pop-up, banner or badge, on any screen. A player can leave from any step. Lesson progress is remembered on the device, and the app works the same when storage is unavailable.
+- **Five short lessons, about a minute each:** the goal (race to 21); your turn (points and drawing); scuttling; one-offs and countering with a 2; royals and glasses (Jack, Queen, King, the 8 as glasses).
+- **Real board, real engine.** Lessons run on the game screen and the real WASM engine, from authored positions loaded through the bridge's existing restore, against a scripted opponent. This adds no AI player; §4's "No AI player" stands.
+- **A coach on top of the board:** an ink dim with a spotlight on what matters, a short speech bubble, and a demo of the drag or tap before the player tries it. Every lesson ends with the player's own move. A wrong move is not played: the coach nudges as soon as it is set up, before Confirm, and a wrong move confirmed anyway is refused with the same nudge. Never a dead end.
+- **Lively, with no new art.** Cards deal, fly, flip and land using CSS 3D transforms, the Web Animations API and Svelte transitions. No three.js and no motion library in the first version. Reduced motion gets a calm, fully usable version. Only the existing card art, themes and design tokens are used.
+- **Separate from real games.** The tutorial never touches the saved game, the session tally or the player's settings.
+- **Still not in scope:** hints during real games (ROADMAP "Learn-as-you-play help" stays separate), and a tutorial for online play or table mode.
+
+This amendment is tracked in the ledger as group R25 (`docs/requirements.yaml`, R25.1–R25.12). R25.12 records that the app never prompts or suggests the tutorial.

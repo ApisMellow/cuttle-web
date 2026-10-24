@@ -6,6 +6,7 @@ Features we plan to add. The playable beta is live at https://apismellow.github.
 
 - **In-game menu (done 2026-09-29).** A menu button on every game screen opens Rules, Card style, Home (the game stays saved; Resume picks it up) and New game (asks first).
 - **Card labels (shipped).** Cards on the table say what they're doing: a King shows the points its owner now needs to win (21, 14, 10, 7 or 5), a Queen shows it protects, a Jack on a stolen card shows it stole, and a glasses 8 shows it sees the hand. Tap a card in your hand and the action bar gives its name and what it does; the staging line and the card popover name it too. Every rank has a short name (the Ace is "Board Wipe", the 5 "Draw Two"), the Rules sheet uses the same names and wording, and a theme can rename any card. Labels stay readable at phone size and in both Classic and Mythic.
+- **Learn to play (designed 2026-10-24).** An opt-in tutorial, reached only from a "Learn to play" choice on the home screen; the app never prompts for it. Five one-minute lessons on the real board against a scripted opponent: the goal, your turn, scuttling, one-offs and the 2, royals and glasses. A coach spotlights what matters, shows each move first, and lets you make it, with cards that deal, fly and flip. Design: `docs/tutorial-design.md`; decisions in PRD §10 A-8; ledger R25.
 - **Learn-as-you-play help.** A short rules screen, plus one line under each one-off that says what it does ("5: draw two", "9: send a card back to its owner's hand"). Aimed at a first-time player.
 - **Clearer recaps.** Every recap says what actually happened: which cards were drawn, and what a one-off did.
 - **Desktop polish.** Larger labels in the desktop column and full keyboard play. Hand cards already lift on hover, and the lit play zones can be reached with Tab.
@@ -34,6 +35,8 @@ The work-in-progress source art and its review sheet are on the `art/source-asse
 
 - **Offline play (shipped 2026-09-29).** A service worker keeps the installed home-screen app working without a connection.
 - **Player colours:** an optional colour for each player, possibly tied to theme suits.
+- **Card motion in real games (idea).** Reuse the tutorial's card flights (play, scuttle, steal, draw) on the live board, with the same reduced-motion fallback.
+- **A 3D finale (idea).** A three.js moment for the tutorial's last win or the result screen: the winning cards rising into a slow fan. Loaded lazily, kept out of the first-load budget.
 - **An accessibility pass:** screen-reader labels for every card and action, and contrast checks for every theme.
 - **Native iOS app (planned).** A Swift app for iPhone, built as its own project. The Go engine stays the rules reference, and the Swift rules are checked against it.
 - **Smaller engine download (experiment).** Try compiling the Go engine with TinyGo to shrink the WebAssembly file (about 3.5 MB raw today), keeping one copy of the rules for the browser and the server.
