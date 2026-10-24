@@ -1,6 +1,8 @@
 <script lang="ts" module>
-  /** What the line is, so the bubble can tune its accent (plan §5, T5 owns the source of truth). */
-  export type CoachTone = 'main' | 'nudge' | 'success' | 'blake' | 'error';
+  import type { LineTone } from '../tutorial/table.svelte';
+
+  /** What the line is, so the bubble can tune its accent: the table's `LineTone` (plan §5, T5 owns the source of truth). */
+  export type CoachTone = LineTone;
 </script>
 
 <script lang="ts">
