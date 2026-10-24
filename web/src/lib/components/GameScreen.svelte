@@ -89,8 +89,10 @@
 
   // Two-phone W12: an online source brings the room's names, a status line
   // and the response hold; pass-and-play (no `online`) is exactly as before.
+  // Tutorial T2 (design §6.3): a source with its own `names` (the tutorial)
+  // comes next, so the session's names are shown but never written.
   const online = $derived(source.online ?? null);
-  const names = $derived<[string, string]>(online?.names ?? session.names);
+  const names = $derived<[string, string]>(online?.names ?? source.names ?? session.names);
 
   /**
    * W10: the single path from this screen to `source.apply`. Refuses while a
@@ -774,16 +776,23 @@
       {theme}
     />
   {:else if ackTo !== null}
-    <CounterPrompt
-      entries={ackEntries}
-      viewer={ackTo}
-      {names}
-      options={counterOptions}
-      onresolve={resolveAck}
-      oncounter={applyCounter}
-      disabled={source.pending}
-      {theme}
-    />
+    <!-- Tutorial T2 (docs/tutorial-design.md §5.5.1, §6.3): CounterPrompt is
+         once-only, so a move the source refuses without applying it (the
+         tutorial's gate) would leave it locked. Keyed on the refusal count,
+         a refusal remounts a fresh prompt. Sources without `refusals` key on
+         the constant 0 and never remount. -->
+    {#key source.refusals ?? 0}
+      <CounterPrompt
+        entries={ackEntries}
+        viewer={ackTo}
+        {names}
+        options={counterOptions}
+        onresolve={resolveAck}
+        oncounter={applyCounter}
+        disabled={source.pending}
+        {theme}
+      />
+    {/key}
   {:else if online?.respondingName}
     <!-- W12/W13b: the response hold (SPEC §2.12.5, plan §6). The envelope on
          show is the pre-move one, so the board stays down until the state
@@ -963,7 +972,7 @@
     onclose={closeMenu}
     onhome={menuHome}
     onnewgame={menuNewGame}
-    newGame={!isOnline}
+    newGame={!isOnline && source.allowsNewGame !== false}
   />
 </div>
 
