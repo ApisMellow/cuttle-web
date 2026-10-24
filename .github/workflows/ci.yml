@@ -5,9 +5,9 @@ name: CI
 # before it merges.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/**']
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
 
 permissions:
   contents: read
