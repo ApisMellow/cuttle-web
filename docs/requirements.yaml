@@ -1123,14 +1123,16 @@ requirements:
     prd: R25
     title: "Wrong moves are never played, and no lesson can dead-end"
     acceptance:
-      - "unit-test: at every move step, committing any legal move that fails the step's predicate leaves the engine unchanged (seq, envelope and bridge snapshot identical), clears staging to idle, and shows that step's nudge; the expected move still completes the step afterwards (S3)"
-      - "unit-test: a fuzz walk making up to N wrong commits before each right one finishes every lesson; every move step has a nudge; an engine or script error shows Restart lesson and Leave (S4)"
+      - "unit-test: at every move step, committing any legal move that fails the step's predicate leaves the engine unchanged (seq, envelope and bridge snapshot identical), adds 1 to refusals, clears staging to idle, and shows that step's nudge; the expected move still completes the step afterwards (S3a)"
+      - "unit-test: nudge before Confirm (ruling, ApisMellow, 2026-10-24): staging a wrong move puts the coach in staged-wrong, read from page state only (data-staged on hand cards, data-state='staged' on the deck, drop zones and point or permanent card faces; never the staging store): Cancel spotlit, the step's nudge plus 'Tap Cancel to try again.', no Confirm line; a right move shows the Confirm line; a mixed chooser slot is 'unknown' and left to the gate (S3b, tutorial-design §7.2)"
+      - "unit-test: step 4.2: a refused 'Let it resolve' keeps the engine at phase 1 with seat 0 active and the curtain at ack throughout (never none), remounts a fresh CounterPrompt with its controls enabled, and shows the nudge; counter then Confirm completes the step (S3c, ruling, ApisMellow, 2026-10-24, tutorial-design §5.5.1)"
+      - "unit-test: a fuzz walk of wrong stagings, wrong commits and repeated 'Let it resolve' taps before each right move finishes every lesson, with an enabled control leading forward after every action; every move step has a nudge; an engine or script error shows Restart lesson and Leave (S4)"
       - "unit-test: the apply gate is TutorialTable.apply only; the legal-move list GameScreen receives is the engine's, unfiltered (R11 invariant, tutorial-design §6.2)"
     verify: [unit-test]
     status: todo
     evidence: ""
     fails: 0
-    notes: "Strict tier. Mutants: let a wrong move through; drop the predicate's card check; drop its target check."
+    notes: "Strict tier. Mutants: let a wrong move through; drop the predicate's card check; drop its target check; remove the CounterPrompt key; show the Confirm line on a wrong staged move."
 
   - id: R25.4
     prd: R25
@@ -1161,12 +1163,12 @@ requirements:
     title: "The player can leave from any step; the menu stays available"
     acceptance:
       - "unit-test: Leave in the coach bubble returns to the lessons screen from every step; menu Home returns Home; the menu keeps Rules and Card style during the tutorial and hides New game (TableSource.allowsNewGame false), while pass-and-play and online menus are unchanged (S8, tutorial-design §4.3, §6.3)"
-      - "unit-test: the tutorial table passes its own names (TableSource.names) and never writes the session's names; existing GameScreen suites stay green with the two optional fields absent"
+      - "unit-test: the tutorial table passes its own names (TableSource.names) and never writes the session's names; GameScreen keys CounterPrompt on TableSource.refusals, and with refusals absent (pass-and-play, online) the prompt is never remounted; existing GameScreen suites stay green with the three optional fields absent (tutorial-design §6.3)"
     verify: [unit-test]
     status: todo
     evidence: ""
     fails: 0
-    notes: "Strict tier (routing and the GameScreen seam)."
+    notes: "Strict tier (routing and the GameScreen seam). The CounterPrompt key touches counter-window code and needs an Opus review (ruling, ApisMellow, 2026-10-24)."
 
   - id: R25.7
     prd: R25
@@ -1174,7 +1176,7 @@ requirements:
     acceptance:
       - "unit-test: each move step's spotlight follows the staging pipeline read from the DOM (idle: the card; selected: card and target; staged: Confirm); next steps show Next, move steps don't; Show me replays the demo; the overlay takes no input outside the bubble and fades while the menu, Rules, the scrap browser or a card popover is open (tutorial-design §7.1-§7.2, L1)"
       - "e2e-test: at 393×852, 430×932 and 393×660, for every step the bubble intersects no spotlight hole, staging-bar, menu-button or counter option; no horizontal scroll; every new testid is ≥ 44×44 (L2)"
-      - "e2e-test: all five lessons complete by touch (drag and tap) at 393×852 (L3)"
+      - "e2e-test: all five lessons complete by touch (drag and tap) at 393×852, each with one deliberate wrong staging (staged-wrong bubble, Cancel, then the right move) and, in lesson 4, one 'Let it resolve' tap answered by a fresh prompt (L3)"
     verify: [unit-test, e2e-test]
     status: todo
     evidence: ""

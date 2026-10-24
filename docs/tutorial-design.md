@@ -119,9 +119,9 @@ The lesson is marked done (§10) as soon as the sheet appears.
 - **Cards.** Positions name cards as rank plus suit initial (`9D` = nine of diamonds; suits C < D < H < S, `card/card.go` Suit constants). **Coach copy names cards in words only** ("your 9", "his 8 of clubs"), never with suit glyphs. SPEC §5.6 rule 1 forbids glyphs in component source, and `theme-glyph-boundary.test.ts` enforces it.
 - **Positions.** Each lesson starts from an authored, structurally valid engine state: Alice to move (`Active` 0), `Phase` 0, empty history, no Jacks, no frozen cards. Every card the lesson doesn't name sits in the deck after the named top cards, in canonical order (clubs A–K, then diamonds, hearts, spades). The 52 cards are unique and accounted for (enforced by test, §11).
 - **Step kinds.** `next` (the bubble's Next button), `move` (a legal move matching the step's predicate is applied), `appear` (an element with the given testid appears).
-- **Spotlight stages** for a `move` step follow the staging pipeline, read from the DOM (§7.2). *Idle*: the card to play. *Selected*: the card plus its target. *Staged*: Confirm.
+- **Spotlight stages** for a `move` step follow the staging pipeline, read from the DOM (§7.2). *Idle*: the card to play. *Selected*: the card plus its target. *Staged, right move*: Confirm, with the step's "staged" line. *Staged, wrong move*: Cancel, with the step's nudge plus "Tap Cancel to try again." (§7.2, ruling 2026-10-24). The "Wrong-move nudge" column below is used twice: before Confirm (staged wrong) and at commit (the gate, §6.2).
 - **"Blake replies"** are scripted moves applied after the learner's move lands, following a short pause (§6.2).
-- Copy length: the bubble holds at most 3 lines at 393 wide (about 120 characters). Every draft below fits.
+- Copy length: the bubble holds at most 3 lines at 393 wide (about 120 characters). Every draft below fits. A staged-wrong line (a nudge plus "Tap Cancel to try again.") may take 4 lines, and bubble placement reserves room for 4 (§7.3).
 
 ### 5.2 Lesson 1, The goal (race to 21)
 
@@ -176,10 +176,25 @@ On entry the deal plays (§8.5).
 |---|---|---|---|---|---|---|---|
 | 4.1 | move | AS → `zone-oneoff` → Confirm | "Blake has 19, so close. Some cards have a one-off power. Your Ace wipes every point card off the table. Drop it on the middle spot." | drag AS to `zone-oneoff` | OneOff AS | AS for points: "On your Points row an Ace is just 1 point. Drop it on the middle spot to use its power." 5C one-off: "A 5 draws 2 cards, but Blake would still have 19. Use the Ace." Other: "Use your Ace. Drop it on the middle spot." | "Wiped, yours too. A one-off happens right away, then goes to the scrap." |
 | — | Blake | — | "Blake's turn." | — | Blake: OneOff 4D. Alice holds a 2, so the engine opens a counter window and the counter prompt appears. | — | — |
-| 4.2 | move | `counter-option-*` (the 2) → `staging-confirm` | "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm." | tap the counter option, then Confirm | Counter with 2H | "Let it resolve": "Letting it happen costs you 2 cards. Use your 2 to stop it." | "Stopped. His 4 does nothing, and his turn is over." |
+| 4.2 | move | `counter-option-*` (the 2) → `staging-confirm` inside `counter-prompt` | "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm." staged: "Tap Confirm to stop his 4." | tap the counter option, then Confirm | Counter with 2H | "Let it resolve": "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (Refused by the gate; the prompt remounts fresh, §5.5.1.) | "Stopped. His 4 does nothing, and his turn is over." |
 
 **Done line:** "A one-off happens at once, and only a 2 can stop it. Rules in the menu lists every one-off."
 **Engine (house rulings, verified):** A one-off resolves at once unless the opponent holds an unfrozen 2 (`apply.go:324-341`, `hasLegalCounter` `:489-497`). Blake holds no 2, so the Ace resolves immediately and wipes both sides (`resolveOneOffWith` case Ace, `apply.go:626-634`). The Ace resolves by where it's dropped: the middle spot is the one-off, the Points row is points, and no chooser opens (PRD R11 clarification, SPEC §6.4). Blake's 4 opens a window because Alice holds 2H. Countering makes the chain odd, so the 4 is cancelled, both cards are scrapped, and the turn passes back to Alice (`MoveCounter` `apply.go:342-365`, `resolvePending` `:591-608`). Rules sheet wording: `ONE_OFF_TIMING` in `lib/cardText.ts`.
+
+#### 5.5.1 Step 4.2 in full: the counter window (decided call, ApisMellow, 2026-10-24)
+
+`CounterPrompt` is once-only: after any of its buttons fires, it sets `acted = true` and ignores every later tap until it unmounts (`CounterPrompt.svelte:61-81`). "Let it resolve" goes straight to `applyMove` through `GameScreen.resolveAck`. If the gate refuses that Decline and nothing else changes, the prompt stays mounted and locked, which is a dead end. **Ruling (option (a), minimal form):** GameScreen keys the `CounterPrompt` on the source's refusal counter (§6.3), so a move the gate refuses remounts a fresh prompt. There is no logic change inside `CounterPrompt`.
+
+The curtain stays `{kind:'ack', to:0}` for the whole window. It never drops to `none`, so the board never mounts while the counter window is open (AGENTS "Redaction rules": no board at an ack).
+
+| State | How the coach knows | Spotlight | Copy | Learner can |
+|---|---|---|---|---|
+| Fresh prompt | `counter-prompt` present, no `staging-confirm` inside it | the counter option for 2H | the step's main line | tap the 2 (stages it), or Let it resolve |
+| Counter staged | `staging-confirm` inside `counter-prompt` | `staging-confirm` | "Tap Confirm to stop his 4." | Confirm (the expected move: applied, step done) or Cancel (back to Fresh, same instance) |
+| Let it resolve tapped | the gate refuses the Decline: no engine call, nudge set, `refusals` + 1 | — | — | — |
+| Fresh again | GameScreen's `{#key}` remounts the prompt: `acted` and `staged` reset, heading focused, key guard re-armed | the counter option, demo replays once | "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (after two refusals, the §7.4 tap-route line) | everything in the first row again |
+
+The window has only one legal Counter (2H), so a staged counter is always the right move: the staged-wrong check of §7.2 never applies inside this prompt. Its only wrong move is the one-tap Decline, which the remount handles. A test pins every row (S3, S4).
 
 ### 5.6 Lesson 5, Royals and glasses
 
@@ -215,7 +230,8 @@ lib/tutorial/
   table.svelte.ts     TutorialTable implements TableSource: restore, apply gate, Blake replies
   tutorial.svelte.ts  TutorialStore: active, screen, lessonId, stepIndex, coach line, progress
   progress.ts         storage (cuttle-web:tutorial), try/catch, decode
-  match.ts            pure: move predicate vs MoveView (+ public view for target identity)
+  match.ts            pure: move predicate vs MoveView (+ public view for target identity);
+                      the staged-setup matcher (page state + legal moves → right / wrong / unknown, §7.2)
   motion.ts           pure-ish: flight plans per move kind, durations, reduced-motion switch
 lib/components/
   CoachOverlay.svelte, CoachBubble.svelte, CoachSpotlight.svelte,
@@ -250,7 +266,8 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 | `viewer` | `0`, always. |
 | `history` | `envelope.history`, already redacted for seat 0 by the bridge. |
 | `seq` | `history.length`. |
-| `curtain` | `{kind:'none'}`, or `{kind:'ack', to:0}` while the engine is at `PhaseAwaitingCounter` with Alice active (lesson 4.2), so GameScreen mounts the real `CounterPrompt`. Never a handoff, reveal, recap or result: there's one player at the phone. |
+| `curtain` | `{kind:'none'}`, or `{kind:'ack', to:0}` while the engine is at `PhaseAwaitingCounter` with Alice active (lesson 4.2), so GameScreen mounts the real `CounterPrompt`. The ack holds for the whole counter window, refusals included: it never drops to `none` mid-window (§5.5.1). Never a handoff, reveal, recap or result: there's one player at the phone. |
+| `refusals` *(new optional field, §6.3)* | Starts at 0; the gate adds 1 for every move it refuses. |
 | `drawReveal` | `null` (no lesson resolves a 5 for Alice). |
 | `pending` | `true` while Blake is "thinking" (the board is inert and Confirm disabled, as for online play). |
 | `names` *(new optional field, §6.3)* | `[learnerName, 'Blake']`. |
@@ -263,7 +280,7 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 **The apply gate (strict tier).** Every move the learner makes, whether by tap, drag, the deck's second tap, Confirm, a counter option or "Let it resolve", reaches `source.apply(i)`. GameScreen has exactly one path to it (`applyMove`), and StagingStore has one caller (`confirm`). In `apply(i)`:
 
 1. Read `envelope.legalMoves[i]` and test it against the current step's predicate (`match.ts`: kind, card identity, and target card identity read from Alice's public view).
-2. **No match:** apply nothing. Set the coach's nudge line (the step's specific nudge if one matches, else its generic one) and resolve the promise normally. `StagingStore.confirm` then clears to idle (`staging.svelte.ts:352-371`), so the board is exactly as before and nothing can be stuck. No error is thrown, so GameScreen's `report` never logs.
+2. **No match:** apply nothing. Set the coach's nudge line (the step's specific nudge if one matches, else its generic one), add 1 to `refusals`, and resolve the promise normally. On the board, `StagingStore.confirm` then clears to idle (`staging.svelte.ts:352-371`). At the counter prompt, the `refusals` change remounts a fresh prompt (§5.5.1). Either way the screen is exactly as before and nothing can be stuck. No error is thrown, so GameScreen's `report` never logs. With the pre-Confirm check (§7.2) this is a backstop: on the board it fires only when the learner taps Confirm on a setup the coach already flagged, or on a setup the check marks "unknown".
 3. **Match:** call `motion.capture(move)` synchronously (the pre-apply rects, §8.4), then `engine.apply(i)`. Drop the returned envelope (it is the mover's; for Alice it equals `view(0)`). Fetch `view(0)`, set the state, and advance the step. Then, if the step has Blake replies, set `pending = true` and schedule them (below).
 4. Engine errors (`ok:false`) set a tutorial error. The coach shows "This lesson hit a snag." with **Restart lesson** and **Leave**: never a dead end.
 
@@ -271,14 +288,15 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 
 **Why the gate and not a filtered move list.** Filtering `legalMoves` to the expected move would break the R11 invariant (the UI offers exactly the engine's moves) and SPEC §3.3 (no recomputing engine output). With the gate, every legal card still lights up, the player can explore, and only the commit is checked.
 
-### 6.3 The two-line GameScreen seam
+### 6.3 The GameScreen seam: three optional fields, three small changes
 
-GameScreen needs two optional read-only fields on `TableSource`. Both are absent on the existing sources, so their behaviour doesn't change:
+GameScreen needs three optional read-only fields on `TableSource`. All three are absent on the existing sources, so their behaviour doesn't change:
 
 - `readonly names?: [string, string]`. GameScreen uses `online?.names ?? source.names ?? session.names`. The tutorial must not write the pass-and-play session's names.
 - `readonly allowsNewGame?: boolean`. GameScreen passes `newGame={!isOnline && source.allowsNewGame !== false}` to `GameMenu`, so New game is hidden in the tutorial (Home, Rules and Card style stay).
+- `readonly refusals?: number` *(decided call, ApisMellow, 2026-10-24)*. GameScreen wraps its `<CounterPrompt …/>` in `{#key source.refusals ?? 0}`, so a refused counter-window move remounts a fresh prompt (§5.5.1). For `GameStore` and `OnlineGameStore` the key is the constant 0, so the prompt is never remounted.
 
-Nothing else in GameScreen, Board or any board component changes. Table mode never rotates the tutorial, because the viewer is always seat 0 (`screenRotated`, SPEC §5.10). The theme is the player's chosen card style. **SPEC delta to land with the build:** add both fields to §2.12/W10's TableSource description and §5.2's GameScreen notes, and add a §5.11 "Tutorial" pointing here.
+**These are the only GameScreen changes:** the `names` fallback, the menu's `newGame` flag, and the `{#key}` around `CounterPrompt`. Nothing inside `CounterPrompt`, `Board` or any board component changes. **The `{#key}` touches counter-window code, so it is strict tier and needs an Opus review** (loop-workflow §4.5). The review mutates it: with the key removed, a refused "Let it resolve" leaves the prompt locked and S3/S4 fail; with the key on any other field, pass-and-play's counter tests must stay green. Table mode never rotates the tutorial, because the viewer is always seat 0 (`screenRotated`, SPEC §5.10). The theme is the player's chosen card style. **SPEC delta to land with the build:** add the three fields to §2.12/W10's TableSource description, the `{#key}` to §4.3's counter-prompt notes, and §5.2's GameScreen notes, and add a §5.11 "Tutorial" pointing here.
 
 ### 6.4 App routing
 
@@ -313,13 +331,38 @@ While the menu, Rules, the scrap browser or a card popover is open, the overlay 
 
 Targets are named by **testid**, which is already contract (SPEC §5.1, AGENTS "Testids and tap targets"): `score-bar`, `opponent-zone`, `center-zone`, `player-zone`, `player-hand`, `hand-card-<i>`, `deck-pile`, `zone-points`, `zone-permanents`, `zone-oneoff`, `point-<owner>-<i>`, `counter-option-<i>`, `staging-confirm`. Card targets are written as card identity in lesson data and resolved to a testid against Alice's public view at the moment of use (the 9D in her hand is `hand-card-0` now and may be `hand-card-2` later).
 
-A `move` step watches the existing DOM state on the game-screen root. A `MutationObserver` on attributes reads `aria-pressed` on hand cards (selected), whether `staging-confirm` is present (staged), and `data-state` on drop zones. It never reads the staging store and never writes the DOM:
+A `move` step watches the existing DOM state on the game-screen root with a `MutationObserver` (attributes and child list). It never reads the staging store and never writes the DOM. It reads:
 
-- idle: hole on the card to play
-- selected: holes on the card and its expected target
-- staged: hole on `staging-confirm`, with the bubble's staged line
+- `aria-pressed="true"` on a `hand-card-<i>` (selected)
+- `data-staged="true"` on a `hand-card-<i>` (that card is part of the staged move)
+- `data-state="staged"` on `deck-pile`, on a `zone-points`, `zone-permanents` or `zone-oneoff` hit button, and on the theme face inside a `point-<o>-<i>` or `perm-<o>-<i>` button (theme faces reflect `state` as `data-state`, `lib/theme/types.ts`)
+- whether `staging-confirm` is present
+
+**Coach state machine for a `move` step** *(the staged states are a decided call, ApisMellow, 2026-10-24: nudge before Confirm)*:
+
+| State | Entered when | Spotlight | Bubble |
+|---|---|---|---|
+| `idle` | nothing selected or staged | the card to play | the step's main line |
+| `selected` | some hand card has `aria-pressed="true"` | the expected card and its expected target (even if a different card is selected; choosing a card is never nudged) | the main line |
+| `staged-right` | `staging-confirm` present and the staged setup is **right** or **unknown** | `staging-confirm` | the step's "staged" line ("Tap Confirm…") |
+| `staged-wrong` | `staging-confirm` present and the staged setup is **wrong** | `staging-cancel` | the step's wrong-move nudge for that setup, then "Tap Cancel to try again." The bubble shakes once (§8.2). Confirm is never mentioned. |
+| `refused` | the gate refused a commit (§6.2) | back to `idle`'s spotlight; the demo replays once | the same nudge without the Cancel sentence (the board is already idle) |
+| `done` | the expected move applied | — | the success line |
+
+Leaving `staged-wrong` by Cancel returns to `idle` (main line). Confirming anyway reaches the gate, which refuses and goes to `refused`. Two refusals or two `staged-wrong` entries in one step switch the main line to the explicit tap route (§7.4).
+
+**The staged-setup matcher** (`match.ts`, pure, tested):
+
+1. **Source:** the hand card with `data-staged="true"` gives its hand index; `deck-pile` staged means the deck. With neither (a Pass, or something the tutorial never stages), the setup is **unknown**.
+2. **Target key:** the staged drop zone (`zone:points`, `zone:permanents`, `zone:oneoff`) or the staged point or permanent card (`point:<o>:<i>`, `perm:<o>:<i>`), mapped with `targetKeyFromTestId` (`lib/dragDrop.ts`). A staged move with no target (a Draw, a one-off whose zone is the only target) uses the zone or `deck`.
+3. **Candidates:** the legal moves in the board's envelope whose affordance slot is that (source, target). This uses the same slot grouping the board uses (`slotKey` and `groupAffordances` in `lib/affordances.ts`, SPEC §6.2); it reads the engine's list and computes no rule.
+4. **Verdict:** every candidate matches the step's predicate → **right**. No candidate matches → **wrong**, and the nudge is the step's specific nudge for the first candidate that has one, else the generic one. Some match and some don't (an ambiguity-chooser pair, SPEC §6.4) → **unknown**, and the coach shows the Confirm line, leaving the gate to decide.
+
+**Lesson data rule (enforced by S2):** every expected move's (source, target) slot holds exactly one legal move, so the verdict on an expected setup is never "unknown". Lessons 1–5 satisfy it (§5): no expected move is a 9 or a 2 aimed at a point card it could also scuttle.
 
 Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on the target (instant under reduced motion), because at 393×660 the board scrolls (design.md §6). Holes and the bubble re-measure on resize, on board scroll and after every state change, throttled to one `requestAnimationFrame`.
+
+**The counter prompt** (lesson 4.2) is covered in §5.5.1. There the coach reads `counter-prompt` and `staging-confirm` inside it.
 
 ### 7.3 Bubble
 
@@ -336,14 +379,15 @@ Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on
 - `--cu-ink-raised`, 1 px `--cu-ink-line`, `--cu-radius-well`, a soft shadow (as the chooser panel). Width `min(320px, 100% − 32px)`, padding 12/16.
 - `next` steps add **Next** (`coach-next`): a pill with pearl text and a 1 px iris ring. **Ochre stays reserved for the game's own Confirm**, so the learner learns that ochre means "commit".
 - **Show me** (`coach-show-me`) replays the demo. **Leave** (`coach-leave`) exits (§4.3).
-- **Placement.** The bubble never covers a spotlight hole, the card being demonstrated, `staging-bar`, `menu-button` or the counter-prompt options. It goes below the lowest hole if it fits above the action bar with 12 px to spare; else above the highest hole; else on the side with more room, allowed to overlap only unspotlit board; else docked under the score bar. Horizontally it centres on the hole and clamps to a 16 px gutter. At the counter prompt it docks under the menu row. An e2e geometry check covers every step at all three viewports (§11).
+- **Placement.** Room is reserved for 4 lines of copy (the staged-wrong case, §7.2). The bubble never covers a spotlight hole, the card being demonstrated, `staging-bar`, `menu-button` or the counter-prompt options. It goes below the lowest hole if it fits above the action bar with 12 px to spare; else above the highest hole; else on the side with more room, allowed to overlap only unspotlit board; else docked under the score bar. Horizontally it centres on the hole and clamps to a 16 px gutter. At the counter prompt it docks under the menu row. An e2e geometry check covers every step at all three viewports (§11).
 
 ### 7.4 Wrong moves: never a dead end
 
-- A wrong commit is never applied (§6.2). The board returns to idle, the bubble shows the nudge and shakes (§8.2), and the demo replays once.
-- After two wrong commits in one step, the copy adds the explicit tap route ("Tap your 9, then the Points row, then Confirm."), and the demo replays.
-- Exploring is free. Selecting other cards, opening the scrap pile, the menu or Rules: none of it is wrong, and none of it is nudged.
-- Every step can always be completed. Its expected move is legal in its position (tested), and nothing the learner can do changes the position except the expected move (tested).
+- **Before Confirm** (the main path): a wrong move staged on the board puts the coach in `staged-wrong` (§7.2). The bubble shows the nudge with "Tap Cancel to try again.", the spotlight moves to Cancel, and the coach never says "Tap Confirm" for a wrong move. *(Decided call, ApisMellow, 2026-10-24.)*
+- **At commit** (the backstop): a wrong commit is never applied (§6.2). The board returns to idle, or the counter prompt remounts fresh (§5.5.1). The bubble shows the nudge and shakes (§8.2), and the demo replays once.
+- After two wrong setups or commits in one step, the main line becomes the explicit tap route ("Tap your 9, then the Points row, then Confirm."), and the demo replays.
+- Exploring is free. Selecting other cards, opening the scrap pile, the menu or Rules: none of it is wrong, and none of it is nudged. Only a staged or committed wrong move is.
+- **Every step can always be completed.** Its expected move is legal in its position (tested). Nothing the learner can do changes the position except the expected move (tested). The controls for the expected move are always live: on the board, a refused commit leaves staging idle with every card usable; at the counter prompt, a refused Decline remounts the prompt with its options, Confirm and Cancel enabled (`CounterPrompt`'s once-only lock is per instance, §5.5.1). No path leaves a screen with no enabled control that leads forward. S4 checks this for every step.
 - **Show me**, **Leave** and the menu are always there.
 
 ## 8. Motion and visual direction
@@ -474,13 +518,13 @@ The natural slot is the tutorial finale (after lesson 5's win) or the real game'
 | ID | Test |
 |---|---|
 | S1 | **Every lesson replays through the real wasm** (`createWasmEngine()`, `web/tests/scenario/wasm-engine.ts`). Restore the position, walk the steps applying the expected move (and every alternative the predicate allows, e.g. both Jacks in 5.2, both targets in 3.1), apply Blake's replies, and assert each engine description against a golden list kept **in the test file** (the SPEC §7.3 `expect` guard rail; descriptions carry suit glyphs, so they stay out of `src`). Checkpoints: L1 ends `phase 4, winner 0`; L2 ends with Alice at 12 points holding 3D and 10D; L3 ends with 8C scrapped; L4 has both points rows empty after 4.1, then `phase 1, active 0` after Blake's 4 (the ack), and `phase 0, active 0` after the counter; L5 has Blake's hand visible after 5.1, Alice's remaining Jack dimmed (no legal move) after the Queen, and `phase 4, winner 0, threshold 14, points 15` at the end. |
-| S2 | **Positions are valid:** each restores `ok`, holds 52 unique cards, and is `Active 0, Phase 0` with empty history. Every step's expected move is legal in the position it meets. |
-| S3 | **The gate:** at every move step, applying each legal move that fails the predicate changes nothing (seq, envelope and bridge snapshot identical), sets that step's nudge, and the expected move still completes the step afterwards. Mutants: let a wrong move through; drop the predicate's card check; drop its target check. |
-| S4 | **No dead end:** a fuzz walk takes, at each step, up to N random wrong commits then the right one, and every lesson still finishes. Every step has a nudge. The script-error path shows Restart and Leave. |
+| S2 | **Positions are valid:** each restores `ok`, holds 52 unique cards, and is `Active 0, Phase 0` with empty history. Every step's expected move is legal in the position it meets, and its (source, target) slot holds exactly one legal move (the §7.2 lesson data rule, so its verdict is never "unknown"). |
+| S3 | **The gate and the pre-Confirm check.** (a) At every move step, committing each legal move that fails the predicate changes nothing (seq, envelope and bridge snapshot identical), adds 1 to `refusals`, sets that step's nudge, and the expected move still completes the step afterwards. (b) **Matcher**, through the real wasm and the mounted GameScreen: at every board move step, staging each legal move (by tap) puts the coach in `staged-right` exactly when the move matches the predicate, `staged-wrong` (spotlight on `staging-cancel`, the step's nudge plus "Tap Cancel to try again.", no "Confirm" anywhere in the bubble) exactly when it doesn't, and `unknown` only for a mixed chooser slot. The coach reads only page state (a spy confirms it never reads the StagingStore). (c) **Step 4.2:** "Let it resolve" is refused, the engine stays at phase 1 with seat 0 active, the curtain is `ack` at every observed moment (never `none`), a new `CounterPrompt` instance mounts with its counter option and "Let it resolve" enabled, the nudge shows, and counter then Confirm completes the step. Mutants: let a wrong move through; drop the predicate's card check; drop its target check; remove the `{#key}` (the second tap does nothing and the test fails); show the Confirm line on `staged-wrong`. |
+| S4 | **No dead end:** a fuzz walk takes, at each step, up to N random actions drawn from wrong stagings (then Cancel, or Confirm into the gate), wrong commits and, at 4.2, repeated "Let it resolve" taps, then the right move, and every lesson still finishes. After every action, at least one enabled control leads to the expected move. Every step has a nudge. The script-error path shows Restart and Leave. |
 | S5 | **Isolation:** with a saved mid-game position and a tally in storage, run all five lessons, then Resume. `cuttle-web:game` and `cuttle-web:tally` are byte-identical, and Resume restores the same seq and curtain (real wasm). Session names unchanged. No key other than `cuttle-web:tutorial` written (spy on storage). |
 | S6 | **Seat-0 view only:** `TutorialTable.envelope.state.viewer === 0` at every step. `opponent.hand` is null except after glasses (L5). Blake's legal-move envelope is never assigned to a field (mutation: store it and expose it; the test fails). |
 | S7 | **Storage:** throwing storage, malformed JSON, a wrong `v` and unknown lesson numbers all behave per §10. Progress round-trips. |
-| S8 | **Routing and exits:** Leave from any step returns to the lessons screen; menu Home returns Home; New game is absent from the menu in the tutorial and present in pass-and-play (`allowsNewGame`); the existing GameScreen suites stay green (the seam changes nothing for the other sources). |
+| S8 | **Routing and exits:** Leave from any step returns to the lessons screen; menu Home returns Home; New game is absent from the menu in the tutorial and present in pass-and-play (`allowsNewGame`); with `refusals` absent, the counter prompt is the same instance across a whole pass-and-play counter window (no remount); the existing GameScreen suites stay green (the seam changes nothing for the other sources). The `{#key}` change gets an Opus review (§6.3). |
 | S9 | **No prompt, ever (D1):** with empty storage, Home shows only the static Learn to play control. No dialog, toast, badge or overlay about the tutorial appears on Home, in a game or on the result screen. |
 
 **Light tier** (render or smoke test plus a fit check, Sonnet developer, review blocks only on real defects). This covers the overlay's looks, placement and motion.
@@ -489,7 +533,7 @@ The natural slot is the tutorial finale (after lesson 5's win) or the real game'
 |---|---|
 | L1 | Render tests for CoachBubble, the lessons screen and LessonDoneSheet (copy, buttons, testids, Next only on `next` steps). |
 | L2 | e2e geometry at 393×852, 430×932 and 393×660 for every step: the bubble doesn't intersect any hole, `staging-bar`, `menu-button` or counter options; no horizontal scroll; new testids ≥ 44×44. |
-| L3 | e2e touch walkthrough at 393×852: all five lessons by drag and tap. A keyboard-only walkthrough of all five. |
+| L3 | e2e touch walkthrough at 393×852: all five lessons by drag and tap. A keyboard-only walkthrough of all five. Both walkthroughs also make one deliberate wrong staging per lesson and expect the `staged-wrong` bubble (the nudge plus "Tap Cancel to try again.", Cancel spotlit, no Confirm line), then Cancel and the right move. In lesson 4 they tap "Let it resolve" once, expect the nudge and a usable fresh prompt, then counter. |
 | L4 | Reduced motion (forced media query): no running animation on any element after each step (`document.getAnimations()` empty once settled), the numbered markers present, all five lessons completable. |
 | L5 | A unit check that no tutorial state change awaits an animation (the gate and the Blake timer complete with WAAPI stubbed to never finish). |
 | L6 | `screenshot-judge`: deal, a scuttle flight, the glasses flip and the lesson-5 win at 393×852, judged for legibility, pacing, "does it feel alive", and whether the spotlight ever hides what the copy talks about. |
