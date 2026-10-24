@@ -1088,3 +1088,152 @@ requirements:
     status: in-progress
     evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Setup script written (W16): deploy/setup.sh, with docs/ops.md covering first setup, updates, restore and CUTTLE_SERVER_ORIGIN. Live 2026-10-18: the product owner set CUTTLE_SERVER_ORIGIN and Play online is on. Open: the checklist itself was not walked from a blank DigitalOcean account (the install used an existing host), so the acceptance as written is not shown; needs the product owner's call."
     fails: 0
+
+  # ---------------------------------------------------------------------
+  # R25 — Learn to play tutorial (PRD §10 amendment A-8, docs/tutorial-design.md)
+  # ---------------------------------------------------------------------
+  # Added 2026-10-24 with the design. Test IDs S1–S9 (strict tier) and
+  # L1–L6 (light tier) are docs/tutorial-design.md §11. Each item's notes
+  # name its testing tier (docs/loop-workflow.md §4.5).
+  - id: R25.1
+    prd: R25
+    title: "Learn to play on Home opens the lessons screen"
+    acceptance:
+      - "unit-test: Home shows a static 'Learn to play' control (learn-to-play, ≥ 44 px) under the title, with 'Five short lessons', 'N of 5 done' or 'All 5 lessons done' from saved progress; it carries no animation or badge (tutorial-design §4.1)"
+      - "unit-test: the lessons screen lists the five lessons in order with done marks; any row starts that lesson; the primary pill reads Start, 'Continue: lesson N' (first unfinished) or 'Play again from lesson 1'; Back and Escape return Home (§4.2)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier (L1), except the progress wording, which reads R25.5's store (strict)."
+
+  - id: R25.2
+    prd: R25
+    title: "Every lesson replays through the real engine from a valid position"
+    acceptance:
+      - "unit-test: each lesson position restores ok through the real wasm (createWasmEngine), holds 52 unique cards, and is Active 0, Phase 0 with empty history (tutorial-design §6.1, S2)"
+      - "unit-test: walking every lesson through the real wasm, every expected move (and every alternative its predicate allows) is legal where it is met, every scripted Blake reply resolves to exactly one legal move, the engine descriptions match a golden list kept in the test file, and the §11 S1 checkpoints hold (L1 ends phase 4 winner 0; L4 opens a counter window for seat 0 after Blake's 4 and returns to phase 0 seat 0 after the counter; L5 ends phase 4 winner 0 with threshold 14 and 15 points)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier. This is the executable check that every coach rule statement matches engine v0.2.1 (tutorial-design §5, citations per lesson)."
+
+  - id: R25.3
+    prd: R25
+    title: "Wrong moves are never played, and no lesson can dead-end"
+    acceptance:
+      - "unit-test: at every move step, committing any legal move that fails the step's predicate leaves the engine unchanged (seq, envelope and bridge snapshot identical), clears staging to idle, and shows that step's nudge; the expected move still completes the step afterwards (S3)"
+      - "unit-test: a fuzz walk making up to N wrong commits before each right one finishes every lesson; every move step has a nudge; an engine or script error shows Restart lesson and Leave (S4)"
+      - "unit-test: the apply gate is TutorialTable.apply only; the legal-move list GameScreen receives is the engine's, unfiltered (R11 invariant, tutorial-design §6.2)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier. Mutants: let a wrong move through; drop the predicate's card check; drop its target check."
+
+  - id: R25.4
+    prd: R25
+    title: "The tutorial never touches the real game and shows only the learner's view"
+    acceptance:
+      - "unit-test: with a saved mid-game position and a tally stored, running all five lessons then Resume leaves cuttle-web:game and cuttle-web:tally byte-identical and restores the same seq and curtain through the real wasm; session names are unchanged; no storage key other than cuttle-web:tutorial is written (S5)"
+      - "unit-test: TutorialTable's envelope is always viewer 0; opponent.hand is null except after glasses in lesson 5; Blake's legal-move envelope is never assigned to a field or rendered (S6)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier. The bridge holds one game (SPEC §2.4); tutorial-design §6.5 says why a tutorial restore is safe."
+
+  - id: R25.5
+    prd: R25
+    title: "Lesson progress is saved locally and storage failure is harmless"
+    acceptance:
+      - "unit-test: progress is cuttle-web:tutorial = {v: 1, done: [lesson numbers]} only, written when a lesson's done sheet appears; there is no seen or nudge flag (tutorial-design §10)"
+      - "unit-test: storage that throws keeps progress in memory and the tutorial and game work normally; malformed JSON, a wrong v and unknown lesson numbers read as nothing done (unknown numbers dropped) (S7)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier."
+
+  - id: R25.6
+    prd: R25
+    title: "The player can leave from any step; the menu stays available"
+    acceptance:
+      - "unit-test: Leave in the coach bubble returns to the lessons screen from every step; menu Home returns Home; the menu keeps Rules and Card style during the tutorial and hides New game (TableSource.allowsNewGame false), while pass-and-play and online menus are unchanged (S8, tutorial-design §4.3, §6.3)"
+      - "unit-test: the tutorial table passes its own names (TableSource.names) and never writes the session's names; existing GameScreen suites stay green with the two optional fields absent"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier (routing and the GameScreen seam)."
+
+  - id: R25.7
+    prd: R25
+    title: "Coach overlay: spotlight, bubble and demo"
+    acceptance:
+      - "unit-test: each move step's spotlight follows the staging pipeline read from the DOM (idle: the card; selected: card and target; staged: Confirm); next steps show Next, move steps don't; Show me replays the demo; the overlay takes no input outside the bubble and fades while the menu, Rules, the scrap browser or a card popover is open (tutorial-design §7.1-§7.2, L1)"
+      - "e2e-test: at 393×852, 430×932 and 393×660, for every step the bubble intersects no spotlight hole, staging-bar, menu-button or counter option; no horizontal scroll; every new testid is ≥ 44×44 (L2)"
+      - "e2e-test: all five lessons complete by touch (drag and tap) at 393×852 (L3)"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier."
+
+  - id: R25.8
+    prd: R25
+    title: "Motion: deal, flights, flips and wins, without blocking play"
+    acceptance:
+      - "unit-test: every tutorial animation uses transform and opacity only (WAAPI or Svelte transitions); no state change awaits an animation: the gate and Blake's reply timer complete with WAAPI stubbed to never finish (L5, SPEC §5.9)"
+      - "unit-test: each move kind in a lesson has a flight plan or the arrive fallback (tutorial-design §8.4); a tap during the deal finishes it at once"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier. No three.js and no motion library in v1 (tutorial-design §8.7-§8.8)."
+
+  - id: R25.9
+    prd: R25
+    title: "Reduced motion: calm and fully usable"
+    acceptance:
+      - "e2e-test: with prefers-reduced-motion forced (and separately with settings.reducedMotion), no animation is running once each step settles (document.getAnimations()), the numbered demo markers show, and all five lessons complete (L4, tutorial-design §8.2-§8.6)"
+    verify: [e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier."
+
+  - id: R25.10
+    prd: R25
+    title: "Accessible coach and keyboard-complete lessons"
+    acceptance:
+      - "unit-test: coach copy, nudges, success lines and Blake's narration are in a polite live region; the scrim, rings, ghost and flights are aria-hidden; focus goes to the bubble copy at lesson start, to Next on a next step only after key input, and to the done sheet's heading (tutorial-design §9)"
+      - "e2e-test: all five lessons complete with the keyboard only (L3)"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier."
+
+  - id: R25.11
+    prd: R25
+    title: "The tutorial looks and feels alive and stays readable"
+    acceptance:
+      - "screenshot-judge: at 393×852 the judge reviews the lesson 1 deal, a scuttle flight, the lesson 5 glasses flip and the lesson 5 win, and rules on legibility, pacing, liveliness, and whether the spotlight or bubble ever hides what the copy talks about (L6)"
+    verify: [screenshot-judge]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Light tier."
+
+  - id: R25.12
+    prd: R25
+    title: "The app never prompts or suggests the tutorial"
+    acceptance:
+      - "unit-test: with empty storage (a first visit), Home shows only the static Learn to play control; no dialog, toast, banner, badge or overlay about the tutorial appears on Home, in a game, on the result screen or after a reload (S9, PRD A-8, decision by ApisMellow 2026-10-24)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+    notes: "Strict tier. Decided non-goal: the first-visit nudge in the original brief was withdrawn."
