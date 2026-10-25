@@ -1115,8 +1115,8 @@ requirements:
       - "unit-test: Home shows a static 'Learn to play' control (learn-to-play, ≥ 44 px) under the title, with 'Five short lessons', 'N of 5 done' or 'All 5 lessons done' from saved progress; it carries no animation or badge (tutorial-design §4.1)"
       - "unit-test: the lessons screen lists the five lessons in order with done marks; any row starts that lesson; the primary pill reads Start, 'Continue: lesson N' (first unfinished) or 'Play again from lesson 1'; Back and Escape return Home (§4.2)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T7 (PR #88): vitest web/tests/unit/home-learn-to-play.svelte.test.ts 'Home: Learn to play (R25.1)' (directly under the title and above Pass and play; 'Five short lessons', '3 of 5 done' and 'All 5 lessons done' from storage; 'the control has no animation, transition or pulse, and meets the tap floor'); tutorial-lessons.svelte.test.ts 'TutorialLessons' (five rows in order; the ochre check and 'done' for screen readers; every row starts its lesson; Continue reads Start, 'Continue: lesson N' or 'Play again from lesson 1'; Back and Escape return Home; rows at least 56 px). e2e (T12, PR #97): tutorial-geometry.spec.ts 'the home and lessons screens: every new testid is at least 44x44 with no sideways scroll'."
     fails: 0
     notes: "Light tier (L1), except the progress wording, which reads R25.5's store (strict)."
 
@@ -1127,8 +1127,8 @@ requirements:
       - "unit-test: each lesson position restores ok through the real wasm (createWasmEngine), holds 52 unique cards, and is Active 0, Phase 0 with empty history (tutorial-design §6.1, S2)"
       - "unit-test: walking every lesson through the real wasm, every expected move (and every alternative its predicate allows) is legal where it is met, every scripted Blake reply resolves to exactly one legal move, the engine descriptions match a golden list kept in the test file, and the §11 S1 checkpoints hold (L1 ends phase 4 winner 0; L4 opens a counter window for seat 0 after Blake's 4 and returns to phase 0 seat 0 after the counter; L5 ends phase 4 winner 0 with threshold 14 and 15 points)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T3 (PR #85): vitest web/tests/unit/tutorial-positions.test.ts 'S2 lesson N: the position is valid' ('positionCards holds all 52 cards, each once'; 'restores through the real bridge: Alice to move, phase 0, empty history, the design deck count'); tutorial-lessons-wasm.test.ts 'S1 lesson N replays through the real wasm' (one walk per predicate alternative, golden engine descriptions kept in the test file, the S1 checkpoints), 'golden coach lines', 'every nudge rule is reachable (no dead copy)', 'copy fits'. Every checkpoint passed against engine v0.2.1 on the first data run; the Opus review killed every position, predicate, Blake-script and data-rule mutant."
     fails: 0
     notes: "Strict tier. This is the executable check that every coach rule statement matches engine v0.2.1 (tutorial-design §5, citations per lesson)."
 
@@ -1142,8 +1142,8 @@ requirements:
       - "unit-test: a fuzz walk of wrong stagings, wrong commits and repeated 'Let it resolve' taps before each right move finishes every lesson, with an enabled control leading forward after every action; every move step has a nudge; an engine or script error shows Restart lesson and Leave (S4)"
       - "unit-test: the apply gate is TutorialTable.apply only; the legal-move list GameScreen receives is the engine's, unfiltered (R11 invariant, tutorial-design §6.2)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T5 (PR #89): vitest web/tests/unit/tutorial-table.test.ts 'S3a refuses every wrong move at every move step', 'refuses every commit outside a move step (Review focus 2, plan P1)', 'S3c step 4.2 at the store', 'S4 fuzz finishes every lesson', 'errors are never a dead end', 'the apply gate is apply only (R25.3)', 'the legal list is the engine's'. T6 (PR #87): tutorial-staged-match.svelte.test.ts 'S3b lesson N: every staging at every move step', 'expected setups are never unknown'; tutorial-staged-match.test.ts 'classifyStaged (fixture envelopes)', 'reads no store'. T9 (PR #92): coach-overlay.svelte.test.ts 'S3b: the coach follows staging (R25.3)', 'S3c: step 4.2 in the DOM (design §5.5.1)', 'S4: always a way forward (R25.3)', 'errors are never a dead end', 'no store reads'; coach-controller.svelte.test.ts 'staged-wrong, refused and the tap route', 'step 4.2: the counter window (design §5.5.1)'. T2 (PR #84): game-screen-tutorial-seam.svelte.test.ts 'a refused Decline remounts a fresh prompt'. e2e (T13, PR #99): tutorial-walkthrough.spec.ts (one wrong staging per lesson, one 'Let it resolve' in lesson 4). Mutants recorded as killed in review: the predicate's card and target checks (T3), the CounterPrompt key (T2), the Confirm line on staged-wrong and a staging-store read (T9)."
     fails: 0
     notes: "Strict tier. Mutants: let a wrong move through; drop the predicate's card check; drop its target check; remove the CounterPrompt key; show the Confirm line on a wrong staged move."
 
@@ -1154,8 +1154,8 @@ requirements:
       - "unit-test: with a saved mid-game position and a tally stored, running all five lessons then Resume leaves cuttle-web:game and cuttle-web:tally byte-identical and restores the same seq and curtain through the real wasm; session names are unchanged; no storage key other than cuttle-web:tutorial is written (S5)"
       - "unit-test: TutorialTable's envelope is always viewer 0; opponent.hand is null except after glasses in lesson 5; Blake's legal-move envelope is never assigned to a field or rendered (S6)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T5 (PR #89): vitest web/tests/unit/tutorial-isolation.test.ts 'S5 the tutorial never touches the real game' ('runs all five lessons with no storage write, then Resume lands where the game was'); tutorial-table.test.ts 'S6 seat-0 view only' (every lesson and alternative; the walk is shown to find a planted seat-1 envelope, and Blake's Move, legal list or a seat-1 view passed to a hook), 'Blake flight hooks (T11)' ('Blake's hidden draw (2.2): the entry names no card, and no hook argument reaches the card he drew'). T7 (PR #88): tutorial-store.test.ts 'never calls settings.setLastNames or writes cuttle-web:settings through a whole run'. T2 (PR #84): game-screen-tutorial-seam.svelte.test.ts 'shows the source names, and leaves the session names as they were'. T10 (PR #90): flight-layer.svelte.test.ts 'captureReply (no Move for Blake)'."
     fails: 0
     notes: "Strict tier. The bridge holds one game (SPEC §2.4); tutorial-design §6.5 says why a tutorial restore is safe."
 
@@ -1166,8 +1166,8 @@ requirements:
       - "unit-test: progress is cuttle-web:tutorial = {v: 1, done: [lesson numbers]} only, written when a lesson's done sheet appears; there is no seen or nudge flag (tutorial-design §10)"
       - "unit-test: storage that throws keeps progress in memory and the tutorial and game work normally; malformed JSON, a wrong v and unknown lesson numbers read as nothing done (unknown numbers dropped) (S7)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T7 (PR #88): vitest web/tests/unit/tutorial-progress.test.ts (decodeProgress: null, malformed JSON, a wrong or missing version, a non-object and unknown numbers; encodeProgress 'writes exactly the keys v and done'; loadProgress 'reads nothing done when getItem throws'; saveProgress 'returns false and does not throw when setItem throws'); tutorial-store.test.ts 'TutorialStore: progress' ('finishLesson adds the lesson and writes only cuttle-web:tutorial', 'with storage that throws, progress lives in memory and nothing throws', 'open, start, leave, nextLesson and exitHome write nothing (no seen flag, D1)'); home-learn-to-play.svelte.test.ts 'blocked site data: the localStorage getter throws'. T9 (PR #92): coach-overlay.svelte.test.ts 'R25.5: cuttle-web:tutorial is written when the done sheet mounts, not before' (lesson 1, and lesson 2 ending on Next)."
     fails: 0
     notes: "Strict tier."
 
@@ -1178,8 +1178,8 @@ requirements:
       - "unit-test: Leave in the coach bubble returns to the lessons screen from every step; menu Home returns Home; the menu keeps Rules and Card style during the tutorial and hides New game (TableSource.allowsNewGame false), while pass-and-play and online menus are unchanged (S8, tutorial-design §4.3, §6.3)"
       - "unit-test: the tutorial table passes its own names (TableSource.names) and never writes the session's names; GameScreen keys CounterPrompt on TableSource.refusals, and with refusals absent (pass-and-play, online) the prompt is never remounted; existing GameScreen suites stay green with the three optional fields absent (tutorial-design §6.3)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T9 (PR #92): vitest web/tests/unit/app-tutorial.svelte.test.ts 'S8: exits (R25.6)' ('Leave from every step of lesson N lands on the lessons screen', 'menu Home lands on Home with the tutorial closed; the tutorial menu has no New game'), 'Leave works on its first tap during a beat (review B1)'. T7 (PR #88): tutorial-store.test.ts 'the table's onHome (menu Home) is exitHome (R25.6 routing half)'. T2 (PR #84): game-screen-tutorial-seam.svelte.test.ts 'T2: source names win over session names', 'T2: menu hides New game when allowsNewGame is false', 'T2: the refusals key on the counter prompt' ('no remount without refusals: pending and an equal history keep the same, still-staged prompt'); counter-prompt, game-screen*, online-game-screen and game-menu suites unchanged and green. Opus review of T2: 10 mutants, one survivor (dropping !== false), equivalent because GameMenu's newGame defaults to true. e2e (T12, PR #97): tutorial-geometry.spec.ts 'menu then Home returns to Home, and the overlay fades while the menu is up'."
     fails: 0
     notes: "Strict tier (routing and the GameScreen seam). The CounterPrompt key touches counter-window code and needs an Opus review (ruling, ApisMellow, 2026-10-24)."
 
@@ -1191,8 +1191,8 @@ requirements:
       - "e2e-test: at 393×852, 430×932 and 393×660, for every step the bubble intersects no spotlight hole, staging-bar, menu-button or counter option; no horizontal scroll; every new testid is ≥ 44×44 (L2)"
       - "e2e-test: all five lessons complete by touch (drag and tap) at 393×852, each with one deliberate wrong staging (staged-wrong bubble, Cancel, then the right move) and, in lesson 4, one 'Let it resolve' tap answered by a fresh prompt (L3)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). Unit, T9 (PR #92): coach-controller.svelte.test.ts 'the stage machine at a board move step (1.5)', 'spotlight targets (design §7.2)', 'the fade rule: every covering sheet', 'the ghost demo timeline (design §8.3)'; coach-overlay.svelte.test.ts 'review focus 1: the overlay fades for every sheet, and their controls take clicks', 'controls' ('Show me plays the demo again'), 'layers (design §7.1)'. T4 (PR #82): coach-bubble.svelte.test.ts 'shows Next only when showNext is set, and forwards the tap'; coach-spotlight.svelte.test.ts 'is aria-hidden and takes no pointer events'. L2, T12 (PR #97): e2e tutorial-geometry.spec.ts 'lesson N: bubble geometry at every step and stage' at 393x852, 430x932 and 393x660. L3, T13 (PR #99): e2e tutorial-walkthrough.spec.ts 'Home to You've learned Cuttle: all five lessons by drag and tap' at 393x852 and 430x932, each lesson with one wrong staging and lesson 4 with one 'Let it resolve'. T12b (coach polish, PR #100, merged @ a0a38b3 after this gate) extends the placement and spotlight tests without changing a criterion."
     fails: 0
     notes: "Light tier."
 
@@ -1203,8 +1203,8 @@ requirements:
       - "unit-test: every tutorial animation uses transform and opacity only (WAAPI or Svelte transitions); no state change awaits an animation: the gate and Blake's reply timer complete with WAAPI stubbed to never finish (L5, SPEC §5.9)"
       - "unit-test: each move kind in a lesson has a flight plan or the arrive fallback (tutorial-design §8.4); a tap during the deal finishes it at once"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T11 (PR #98): vitest web/tests/unit/tutorial-no-await.svelte.test.ts 'L5: no state path awaits an animation' (every lesson finishes with WAAPI stubbed never to finish; every phase change lands on its timer); tutorial-motion-wiring.svelte.test.ts 'flights (design §8.4)', 'the lesson-1 deal (design §8.5)' ('a tap during the deal calls finish() on every deal animation and clears the clones'), 'win beats (design §8.6)'. T10 (PR #90): flight-layer.svelte.test.ts 'flightPlan' ('gives all ten engine kinds, for both seats, a plan that exists'; 'every other kind arrives, including a SevenPick with or without a sub-move'), 'flightScript' ('every keyframe on every plan animates transform and opacity only'). T8 (PR #86): tutorial-motion.test.ts, ghost-demo.svelte.test.ts ('animates only transform and opacity')."
     fails: 0
     notes: "Light tier. No three.js and no motion library in v1 (tutorial-design §8.7-§8.8)."
 
@@ -1214,8 +1214,8 @@ requirements:
     acceptance:
       - "e2e-test: with prefers-reduced-motion forced (and separately with settings.reducedMotion), no animation is running once each step settles (document.getAnimations()), the numbered demo markers show, and all five lessons complete (L4, tutorial-design §8.2-§8.6)"
     verify: [e2e-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T13 (PR #99): e2e web/tests/e2e/tutorial-reduced-motion.spec.ts 'reduced motion by the OS media query: five lessons, no animation left running, numbered markers', 'reduced motion by the setting alone: five lessons, no animation left running, numbered markers'. Unit support: ghost-demo.svelte.test.ts 'GhostDemo, motion off (reduced-motion markers)'; tutorial-motion-wiring.svelte.test.ts 'reduced motion'; flight-layer.svelte.test.ts 'FlightLayer, motion off (reduced-motion rings)'. Accepted exception (orchestrator ruling, T13): at step 4.2 staged-right no Confirm '3' marker shows, so the spec skips that one marker check."
     fails: 0
     notes: "Light tier."
 
@@ -1226,8 +1226,8 @@ requirements:
       - "unit-test: coach copy, nudges, success lines and Blake's narration are in a polite live region; the scrim, rings, ghost and flights are aria-hidden; focus goes to the bubble copy at lesson start, to Next on a next step only after key input, and to the done sheet's heading (tutorial-design §9)"
       - "e2e-test: all five lessons complete with the keyboard only (L3)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T9 (PR #92): vitest web/tests/unit/coach-overlay.svelte.test.ts 'a11y (design §9)' ('the copy is a polite live region and takes focus at lesson start; the overlay layers are aria-hidden', 'Next takes focus on a next step only after key input', 'the done sheet's heading takes focus'). T4 (PR #82): coach-bubble.svelte.test.ts 'puts the copy in a polite live region that can take programmatic focus'; lesson-done-sheet.svelte.test.ts 'focuses its heading on arrival'. T10/T11: flight-layer.svelte.test.ts 'every clone is aria-hidden and pointer-transparent and no node in the layer carries a staging marker'; tutorial-motion-wiring.svelte.test.ts 'deal clones and the landing flash carry no testid, and their layer is aria-hidden'. e2e (T13, PR #99): tutorial-keyboard.spec.ts 'keyboard only: Home to You've learned Cuttle, Escape on a done sheet goes to Lessons'. T12b (PR #100, merged @ a0a38b3 after this gate) puts the win headline in the same live region (coach-bubble.svelte.test.ts 'announces the headline with the copy')."
     fails: 0
     notes: "Light tier."
 
@@ -1237,8 +1237,8 @@ requirements:
     acceptance:
       - "screenshot-judge: at 393×852 the judge reviews the lesson 1 deal, a scuttle flight, the lesson 5 glasses flip and the lesson 5 win, and rules on legibility, pacing, liveliness, and whether the spotlight or bubble ever hides what the copy talks about (L6)"
     verify: [screenshot-judge]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24 (T14 judge, Opus, at 393x852 in a real browser; L6 moments: the lesson 1 deal, a lesson 3 scuttle flight, the lesson 5 glasses flip, the lesson 5 win). First pass REVISE: legibility ACCEPT, liveliness ACCEPT; pacing, whether the bubble hides what the copy talks about, and first-impression clarity REVISE. Must-fixes: M1 the bubble covered the staged card after a real drag; M2 the bubble hid the opponent's points row during success beats (the 3.1 scuttle); M3 the beats were too fast at 1.2 s; M4 Show me rendered with no demo. Fixed in T14fix (Opus developer and review). Judge re-check: M1-M4 fixed at 393x852, and ACCEPT on all five criteria. Verdict and reasons: docs/loop-log/tutorial-build.md (T14, T14fix)."
     fails: 0
     notes: "Light tier."
 
@@ -1248,7 +1248,7 @@ requirements:
     acceptance:
       - "unit-test: with empty storage (a first visit), Home shows only the static Learn to play control; no dialog, toast, banner, badge or overlay about the tutorial appears on Home, in a game, on the result screen or after a reload (S9, PRD A-8, decision by ApisMellow 2026-10-24)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: verified
+    evidence: "VERIFIED 2026-10-24, post-integration: feat/tutorial @ 4141ce4 (T1-T13 merged), CI push run green (scripts/ci.sh, every row). T7 (PR #88): vitest web/tests/unit/home-learn-to-play.svelte.test.ts 'Home: never prompts (R25.12 Home half, D1)' ('with empty storage shows only the static control: no live region, dialog, badge or status about the tutorial'; 'mounting Home writes nothing to storage (no seen flag) and does not open the tutorial'; 'the control has no animation, transition or pulse, and meets the tap floor'). T9 (PR #92): app-tutorial.svelte.test.ts 'S9: no prompt, ever — App half (R25.12)' ('with empty storage, Home, a whole pass-and-play game and its result screen show nothing about the tutorial')."
     fails: 0
     notes: "Strict tier. Decided non-goal: the first-visit nudge in the original brief was withdrawn."
