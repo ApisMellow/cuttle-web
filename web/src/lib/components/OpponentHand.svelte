@@ -30,7 +30,7 @@
   // a curtain or viewer change unmounts it and the sheet with it (#94).
   let sheetOpen = $state(false);
 
-  const backSlots =$derived(Array.from({ length: handCount }, (_, i) => i));
+  const backSlots = $derived(Array.from({ length: handCount }, (_, i) => i));
 </script>
 
 <div class="opponent-hand" data-testid="opp-hand" data-revealed={hand !== null ? 'true' : 'false'}>
