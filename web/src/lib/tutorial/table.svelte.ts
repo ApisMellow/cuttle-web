@@ -11,6 +11,10 @@
 //   - Blake's legal-move envelope (`legalMoves()` while he is active, viewer
 //     1) lives only in a local variable inside `#blakeMove`. It is never
 //     assigned to a field, passed to a hook or rendered.
+//   - The motion hooks (T11) get only seat-0 data: Alice's own move and view
+//     (`beforeApply`), the seat-0 view on show (`beforeReply`) and the
+//     seat-0 log entry for Blake's move (`afterReply`). Each runs inside a
+//     try/catch: a motion failure never breaks a lesson.
 //
 // The gate (R11, design §6.2): the move list GameScreen gets is the engine's,
 // unfiltered. Only the commit is checked. A refused commit applies nothing,
@@ -80,6 +84,18 @@ export interface TutorialTableDeps {
   beforeApply?(move: Move, view: PlayerView): void;
   /** Learner moves only: runs after the new state is set (T11). */
   afterApply?(): void;
+  /**
+   * Blake's replies only (T11): runs just before his move applies, with the
+   * table's current seat-0 view, the one on show. Never his Move, his legal
+   * list, or anything from seat 1's view.
+   */
+  beforeReply?(view: PlayerView): void;
+  /**
+   * Blake's replies only (T11): runs after his move applies and the new state
+   * is set, with the new LAST entry of seat 0's history (`by === 1`), already
+   * redacted for seat 0 by the bridge.
+   */
+  afterReply?(entry: AppliedMove): void;
 }
 
 export const SUCCESS_BEAT_MS = 1200;
@@ -332,11 +348,11 @@ export class TutorialTable implements TableSource {
   }
 
   #accept(index: number, move: Move, view: PlayerView, step: MoveStep): void {
-    this.#deps.beforeApply?.(move, view);
+    this.#motion(() => this.#deps.beforeApply?.(move, view));
     // The mover's envelope comes back; it is dropped unread (design §6.2 step 3).
     if (!this.#engine.apply(index).ok) return this.#fail();
     if (!this.#showAliceView()) return;
-    this.#deps.afterApply?.();
+    this.#motion(() => this.#deps.afterApply?.());
     this.#lastNudge = null;
     this.#phase = 'success';
     this.#line = { text: step.success, tone: 'success' };
@@ -386,9 +402,15 @@ export class TutorialTable implements TableSource {
     if (!legal.ok || legal.state.viewer !== 1) return this.#fail();
     const matches = matchingIndices(legal, reply.move);
     if (matches.length !== 1) return this.#fail();
+    // The flight hooks see only what Alice sees: the seat-0 view on show now,
+    // then the public log entry for his move. `legal` never leaves this scope.
+    const shown = this.#envelope;
+    if (shown) this.#motion(() => this.#deps.beforeReply?.(shown.state));
     // Blake's envelope comes back from apply; it is dropped unread.
     if (!this.#engine.apply(matches[0]).ok) return this.#fail();
     if (!this.#showAliceView()) return;
+    const entry = this.#envelope?.history.at(-1);
+    if (entry?.by === 1) this.#motion(() => this.#deps.afterReply?.(entry));
     if (k === total - 1) this.#pending = false;
     if (reply.done === undefined) {
       this.#afterReply(k + 1);
@@ -414,6 +436,15 @@ export class TutorialTable implements TableSource {
     this.#stepIndex = nextIndex;
     this.#phase = 'step';
     this.#line = this.#mainLine();
+  }
+
+  /** Runs a motion hook. Motion is decoration: whatever it throws, the lesson goes on (T11). */
+  #motion(hook: () => void): void {
+    try {
+      hook();
+    } catch {
+      // A failed flight never breaks a lesson.
+    }
   }
 
   #fail(): void {

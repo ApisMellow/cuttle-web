@@ -14,6 +14,7 @@ import {
   TutorialStore,
   learnerName,
   tutorial,
+  type LessonMotion,
   type LessonTableDeps,
 } from '../../src/lib/tutorial/tutorial.svelte';
 import type { Lesson, LessonId } from '../../src/lib/tutorial/types';
@@ -478,5 +479,90 @@ describe('the tutorial singleton', () => {
     store.start(2);
     expect(store.snag).toBe(false);
     expect(store.lessonId).toBe(2);
+  });
+});
+
+// T11: the store forwards each table's flight hooks to the motion the coach
+// overlay attached FOR THAT TABLE, and to nothing else (a replaced or left
+// table's late hook must never drive a newer lesson's overlay).
+describe('TutorialStore: attachMotion (T11)', () => {
+  /** A motion sink that counts every hook it receives. */
+  function sink() {
+    const calls: string[] = [];
+    const motion: LessonMotion = {
+      beforeApply: () => void calls.push('beforeApply'),
+      afterApply: () => void calls.push('afterApply'),
+      beforeReply: () => void calls.push('beforeReply'),
+      afterReply: () => void calls.push('afterReply'),
+    };
+    return { motion, calls };
+  }
+
+  /** Fires all four of a table's hooks, as the table would. */
+  function fireAll(table: FakeTable): void {
+    table.deps.beforeApply?.({} as never, {} as never);
+    table.deps.afterApply?.();
+    table.deps.beforeReply?.({} as never);
+    table.deps.afterReply?.({} as never);
+  }
+
+  it('the table hands every hook to the motion attached for it', () => {
+    const { store, made } = makeStore();
+    store.start(1);
+    const a = sink();
+    store.attachMotion(made[0], a.motion);
+    fireAll(made[0]);
+    expect(a.calls).toEqual(['beforeApply', 'afterApply', 'beforeReply', 'afterReply']);
+  });
+
+  it('a replaced table\'s late hooks reach no sink, even after the old overlay\'s stale detach; the new one\'s reach its own', () => {
+    const { store, made } = makeStore();
+    store.start(1);
+    const a = sink();
+    const detachA = store.attachMotion(made[0], a.motion);
+    store.start(2);
+    // Lesson 2's overlay hasn't attached yet: neither table's hooks reach A's sink for lesson 2.
+    fireAll(made[1]);
+    expect(a.calls).toEqual([]);
+    const b = sink();
+    store.attachMotion(made[1], b.motion);
+    detachA(); // the old overlay unmounts AFTER the new one attached
+    fireAll(made[0]);
+    expect(a.calls).toEqual([]);
+    expect(b.calls).toEqual([]);
+    fireAll(made[1]);
+    expect(b.calls).toEqual(['beforeApply', 'afterApply', 'beforeReply', 'afterReply']);
+  });
+
+  it('after leave() or exitHome() and the detach, the old table\'s hooks reach nothing', () => {
+    const { store, made } = makeStore();
+    store.start(1);
+    const a = sink();
+    const detachA = store.attachMotion(made[0], a.motion);
+    store.leave();
+    detachA();
+    fireAll(made[0]);
+    expect(a.calls).toEqual([]);
+
+    store.start(3);
+    const c = sink();
+    const detachC = store.attachMotion(made[1], c.motion);
+    store.exitHome();
+    detachC();
+    fireAll(made[1]);
+    expect(c.calls).toEqual([]);
+  });
+
+  it('a detach clears only its own attach', () => {
+    const { store, made } = makeStore();
+    store.start(4);
+    const a = sink();
+    const b = sink();
+    const detachA = store.attachMotion(made[0], a.motion);
+    store.attachMotion(made[0], b.motion); // a remount of the same lesson's overlay
+    detachA();
+    fireAll(made[0]);
+    expect(a.calls).toEqual([]);
+    expect(b.calls).toEqual(['beforeApply', 'afterApply', 'beforeReply', 'afterReply']);
   });
 });
