@@ -142,7 +142,10 @@ function targets(): string[] {
 /** Stages legal move `i` by taps (the T6 walk). */
 async function stage(env: Envelope, i: number): Promise<void> {
   const m: Move = env.legalMoves[i];
-  if (m.Kind === MoveKind.Counter) return click(`counter-option-${i}`);
+  if (m.Kind === MoveKind.DiscardPair) {
+    await click(`hand-card-${m.DiscardA}`);
+    return click(`hand-card-${m.DiscardB}`);
+  }
   if (m.Kind === MoveKind.Draw) return click('deck-pile');
   await click(`hand-card-${m.HandIndex}`);
   const key = boardTargetKey(m);
@@ -210,6 +213,7 @@ const BOARD_STEPS: [LessonId, string][] = [
   [3, '3.1'],
   [3, '3.2'],
   [4, '4.1'],
+  [4, '4.2'],
   [5, '5.1'],
   [5, '5.2'],
   [5, '5.4'],
@@ -302,39 +306,41 @@ describe('S3b: a staged-wrong line is the step nudge for that setup', () => {
 // S3c: step 4.2 in the DOM
 // ---------------------------------------------------------------------------
 
-describe('S3c: step 4.2 in the DOM (design §5.5.1)', () => {
-  it('Let it resolve is refused, a fresh prompt mounts, the board never shows, counter then Confirm finishes', async () => {
+describe('S3c: step 4.2 in the DOM (design §5.5.1, issue #93)', () => {
+  it('on the board at curtain none; a discard is refused with the nudge and the board stays live; the 2 on the marker finishes', async () => {
     const table = startAt(4, '4.2');
     await mountLesson(table);
     const step = table.step as MoveStep;
-    const noBoard = () => expect(q('board'), 'no board during the counter window').toBeNull();
-    noBoard();
-    const prompt1 = q('counter-prompt');
-    expect(prompt1).not.toBeNull();
+    expect(table.curtain).toEqual({ kind: 'none' });
+    const board = q('board');
+    expect(board).not.toBeNull();
+    expect(q('counter-prompt')).toBeNull();
+    expect(q('discard-picker')).not.toBeNull();
     expect(bubble().dataset.stage).toBe('idle');
     expect(copy()).toBe(step.main);
-    const option = host!.querySelector<HTMLElement>('[data-testid^="counter-option-"]')!;
-    expect(targets()).toEqual([option.dataset.testid]);
+    const two = table.envelope!.state.you.hand.findIndex((h) => h.Rank === 2);
+    expect(targets()).toEqual([`hand-card-${two}`]);
 
-    await click('counter-resolve');
-    noBoard();
-    expect(table.curtain).toEqual({ kind: 'ack', to: 0 });
-    const prompt2 = q('counter-prompt');
-    expect(prompt2).not.toBeNull();
-    expect(prompt2).not.toBe(prompt1);
+    // The wrong move: pay the discard. Refused, nothing applied.
+    const discard = table.envelope!.legalMoves.findIndex((m) => m.Kind === MoveKind.DiscardPair);
+    await stage(table.envelope!, discard);
+    expect(bubble().dataset.stage).toBe('staged-wrong');
+    await click('staging-confirm');
+    expect(table.refusals).toBe(1);
     expect(bubble().dataset.stage).toBe('refused');
     expect(copy()).toBe(step.nudges[0].text);
-    const fresh = host!.querySelector<HTMLButtonElement>('[data-testid^="counter-option-"]')!;
-    expect(fresh.disabled).toBe(false);
-    expect((q('counter-resolve') as HTMLButtonElement).disabled).toBe(false);
+    expect(q('board')).toBe(board);
+    expect(q('staging-confirm')).toBeNull();
+    expect(table.envelope!.state.you.hand).toHaveLength(2);
+    for (const i of [0, 1]) expect(enabled(q(`hand-card-${i}`)), `hand-card-${i}`).toBe(true);
+    expect(enabled(q('coach-show-me'))).toBe(true);
 
-    await click('counter-resolve');
-    noBoard();
-    expect(q('counter-prompt')).not.toBe(prompt2);
-    expect(copy()).toBe(step.tapRoute); // two refusals: the tap route (§5.5.1, §7.4)
-
-    await click(host!.querySelector<HTMLElement>('[data-testid^="counter-option-"]')!.dataset.testid!);
-    noBoard();
+    // The tap route: the 2, the marker, Confirm.
+    await click(`hand-card-${two}`);
+    expect(bubble().dataset.stage).toBe('selected');
+    expect(copy()).toBe(step.tapRoute); // staged-wrong plus the refusal: two tries (§7.4)
+    expect(targets()).toEqual([`hand-card-${two}`, 'counter-link']);
+    await click('counter-link');
     expect(bubble().dataset.stage).toBe('staged-right');
     expect(copy()).toBe(step.staged);
     expect(targets()).toEqual(['staging-confirm']);
@@ -342,8 +348,8 @@ describe('S3c: step 4.2 in the DOM (design §5.5.1)', () => {
     await click('staging-confirm');
     expect(bubble().dataset.stage).toBe('done');
     expect(copy()).toBe(step.success);
-    expect(q('counter-prompt')).toBeNull();
     expect(q('board')).not.toBeNull();
+    expect(q('discard-picker')).toBeNull();
   });
 });
 
@@ -381,10 +387,6 @@ function expectWayForward(table: TutorialTable, label: string): void {
     expect(enabled(q('staging-cancel')), `${label}: Cancel`).toBe(true);
     return;
   }
-  if (q('counter-prompt')) {
-    expect(enabled(host!.querySelector<HTMLElement>('[data-testid^="counter-option-"]')), `${label}: the counter option`).toBe(true);
-    return;
-  }
   const m = table.envelope!.legalMoves[expectedIndex(table)];
   const id = m.Kind === MoveKind.Draw ? 'deck-pile' : `hand-card-${m.HandIndex}`;
   expect(enabled(q(id)), `${label}: ${id}`).toBe(true);
@@ -395,15 +397,6 @@ async function randomAction(table: TutorialTable, rand: () => number): Promise<s
   const env = table.envelope!;
   const pickOf = <T,>(xs: T[]): T => xs[Math.floor(rand() * xs.length)];
   const step = table.step!;
-  if (q('counter-prompt')) {
-    if (rand() < 0.6) {
-      await click('counter-resolve');
-      return 'Let it resolve';
-    }
-    await click(host!.querySelector<HTMLElement>('[data-testid^="counter-option-"]')!.dataset.testid!);
-    await click('staging-cancel');
-    return 'stage the 2, Cancel';
-  }
   const legal = (step.kind === 'move' ? wrongIndices(table) : env.legalMoves.map((_, i) => i)).filter((i) => {
     const k = env.legalMoves[i].Kind;
     return k !== MoveKind.Pass && k !== MoveKind.Decline;
@@ -411,9 +404,15 @@ async function randomAction(table: TutorialTable, rand: () => number): Promise<s
   const r = rand();
   if (r < 0.2) {
     const hand = env.state.you.hand.length;
-    await click(`hand-card-${Math.floor(rand() * hand)}`);
+    const card = Math.floor(rand() * hand);
+    await click(`hand-card-${card}`);
     if (q('card-detail-popover')) await click('card-detail-popover-close');
     if (step.kind === 'appear') return 'tap a card';
+    // At an owed discard (4.2) a tap is a pick; tapping it again drops it.
+    if (q('discard-picker')) {
+      await click(`hand-card-${card}`);
+      return 'pick a card, unpick it';
+    }
     // tap it again or another: either way, drop the selection
     const board = q('board');
     board?.click();
@@ -550,7 +549,7 @@ describe('review focus 1: the overlay fades for every sheet, and their controls 
 // ---------------------------------------------------------------------------
 
 describe('review focus 4: table mode on', () => {
-  it('data-table-rotated is "false" at every step of lesson 4, the counter prompt included', async () => {
+  it('data-table-rotated is "false" at every step of lesson 4, the owed discard included', async () => {
     settings.tableMode = true;
     const table = startAt(4, null);
     await mountLesson(table);
@@ -560,7 +559,7 @@ describe('review focus 4: table mode on', () => {
       seen.push(label);
     };
     for (let guard = 0; guard < 10 && table.phase === 'step'; guard++) {
-      check(`${table.step!.id}${q('counter-prompt') ? ' (counter prompt)' : ''}`);
+      check(`${table.step!.id}${q('discard-picker') ? ' (owed discard)' : ''}`);
       await playExpected(table);
       check(`${table.step?.id} success`);
       const inBeat = (): boolean => (table.phase as string) === 'success' || (table.phase as string) === 'blake';
@@ -570,7 +569,7 @@ describe('review focus 4: table mode on', () => {
         check(`${table.step?.id} ${table.phase}`);
       }
     }
-    expect(seen).toContain('4.2 (counter prompt)');
+    expect(seen).toContain('4.2 (owed discard)');
     expect(table.phase).toBe('finished');
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // T9 CoachController (docs/tutorial-plan.md T9; docs/tutorial-design.md §7.1,
 // §7.2, §7.4, §8.3, §5.5.1). The coach's state machine, read from the page:
-// the REAL GameScreen on the REAL wasm bridge (engine v0.2.1), driven by the
+// the REAL GameScreen on the REAL wasm bridge (engine v0.3.0), driven by the
 // REAL TutorialTable. No StagingStore is ever read: the controller sees only
 // the game-screen root's DOM and the table.
 //
@@ -169,7 +169,10 @@ async function click(id: string): Promise<void> {
 /** Stages legal move `i` by taps, as a player would (the T6 walk). */
 async function stage(env: Envelope, i: number): Promise<void> {
   const m: Move = env.legalMoves[i];
-  if (m.Kind === MoveKind.Counter) return click(`counter-option-${i}`);
+  if (m.Kind === MoveKind.DiscardPair) {
+    await click(`hand-card-${m.DiscardA}`);
+    return click(`hand-card-${m.DiscardB}`);
+  }
   if (m.Kind === MoveKind.Draw) return click('deck-pile');
   await click(`hand-card-${m.HandIndex}`);
   const key = boardTargetKey(m);
@@ -265,7 +268,7 @@ describe('the stage machine at a board move step (1.5)', () => {
     root().setAttribute('data-poke', '1'); // a mutation inside the root, so the page is re-read
     await settle();
     expect(c.stage).toBe('idle');
-    expect(c.page).toEqual({ selectedHand: null, source: null, target: null, confirm: false, counter: null });
+    expect(c.page).toEqual({ selectedHand: null, source: null, target: null, confirm: false, pair: null });
     decoy.remove();
   });
 });
@@ -430,39 +433,77 @@ describe('the verdict is held while the move is in flight', () => {
   });
 });
 
-describe('step 4.2: the counter window (design §5.5.1)', () => {
-  it('fresh, staged, refused Decline (nudge, then the tap route), counter staged again', async () => {
+describe('step 4.2: countering from the board (design §5.5.1, issue #93)', () => {
+  it('fresh, selected (the marker lights), staged by tap, Cancel, then the counter', async () => {
     const table = newTable(4);
     walkTo(table, '4.2');
     const c = await mountWith(table);
     const step = moveStep(table);
-    const option = () => host!.querySelector<HTMLElement>('[data-testid^="counter-option-"]')!.dataset.testid!;
-    expect(table.curtain).toEqual({ kind: 'ack', to: 0 });
+    const two = handIndexOf(table, { Rank: 2, Suit: 2 });
+    expect(table.curtain).toEqual({ kind: 'none' });
+    expect(q('board')).not.toBeNull();
+    expect(q('counter-prompt')).toBeNull();
+    expect(q('discard-picker')).not.toBeNull();
     expect(c.stage).toBe('idle');
-    expect(c.page.counter).toBe('fresh');
-    expect(c.targets).toEqual([option()]);
+    expect(c.page).toEqual({ selectedHand: null, source: null, target: null, confirm: false, pair: null });
+    expect(c.targets).toEqual([`hand-card-${two}`]);
     expect(c.text).toBe(step.main);
 
-    await click(option());
-    expect(c.page.counter).toBe('staged');
+    await click(`hand-card-${two}`);
+    expect(c.stage).toBe('selected');
+    expect(q('counter-link')!.dataset.state).toBe('highlighted');
+    expect(c.targets).toEqual([`hand-card-${two}`, 'counter-link']);
+    expect(c.text).toBe(step.main);
+
+    await click('counter-link');
+    expect(c.page.target).toBe('counter-link');
     expect(c.stage).toBe('staged-right');
     expect(c.text).toBe(step.staged);
     expect(c.targets).toEqual(['staging-confirm']);
     await click('staging-cancel');
     expect(c.stage).toBe('idle');
 
-    await click('counter-resolve');
+    await click(`hand-card-${two}`);
+    await click('counter-link');
+    await click('staging-confirm');
+    expect(table.refusals).toBe(0);
+    expect(c.stage).toBe('done');
+    expect(c.text).toBe(step.success);
+  });
+
+  it('a discard is staged-wrong, then refused with the nudge; the board stays usable and two tries bring the tap route', async () => {
+    const table = newTable(4);
+    walkTo(table, '4.2');
+    const c = await mountWith(table);
+    const step = moveStep(table);
+    const env = table.envelope!;
+    const two = handIndexOf(table, { Rank: 2, Suit: 2 });
+    const discard = env.legalMoves.findIndex((m) => m.Kind === MoveKind.DiscardPair);
+    expect(discard).toBeGreaterThanOrEqual(0);
+
+    await stage(env, discard);
+    expect(c.page.pair).not.toBeNull();
+    expect(c.stage).toBe('staged-wrong');
+    expect(c.text).toBe(step.nudges[0].text + CANCEL_SUFFIX);
+    expect(c.targets).toEqual(['staging-cancel']);
+
+    await click('staging-confirm');
     expect(table.refusals).toBe(1);
+    expect(table.lastNudge).toBe(step.nudges[0].text);
     expect(c.stage).toBe('refused');
     expect(c.text).toBe(step.nudges[0].text);
-    expect(c.targets).toEqual([option()]);
+    expect(c.targets).toEqual([`hand-card-${two}`]);
+    // Nothing applied: Alice still owes the discard, and every control is live.
+    expect(table.envelope!.state.you.hand).toHaveLength(2);
+    expect(table.curtain).toEqual({ kind: 'none' });
+    expect(q('staging-confirm')).toBeNull();
+    for (const i of [0, 1]) expect((q(`hand-card-${i}`) as HTMLButtonElement).disabled).toBe(false);
 
-    await click('counter-resolve');
-    expect(table.refusals).toBe(2);
-    expect(c.stage).toBe('refused');
+    await click(`hand-card-${two}`);
+    expect(table.wrongTries).toBe(2);
+    expect(c.stage).toBe('selected');
     expect(c.text).toBe(step.tapRoute);
-
-    await click(option());
+    await click('counter-link');
     expect(c.stage).toBe('staged-right');
     await click('staging-confirm');
     expect(c.stage).toBe('done');
@@ -685,7 +726,7 @@ describe('the ghost demo timeline (design §8.3)', () => {
     expect(c.playKey).toBe(start + DEMO_AUTO_PLAYS + 1);
   });
 
-  it('a tap demo at 2.2 taps the deck twice; at 4.2 the counter option', async () => {
+  it('a tap demo at 2.2 taps the deck twice; at 4.2 a drag of the 2 onto the last-turn marker', async () => {
     const t2 = newTable(2);
     walkTo(t2, '2.2');
     const c2 = await mountWith(t2);
@@ -698,7 +739,7 @@ describe('the ghost demo timeline (design §8.3)', () => {
     walkTo(t4, '4.2');
     const c4 = await mountWith(t4);
     frames.run();
-    expect(c4.demo?.kind === 'tap' && c4.demo.at).toHaveLength(1);
+    expect(c4.demo).toMatchObject({ kind: 'drag', card: { Rank: 2, Suit: 2 } });
   });
 
   it('no demo while staged wrong; reduced motion keeps the markers with Confirm once staged right', async () => {
@@ -1438,8 +1479,9 @@ describe('T14 M2: the bubble keeps clear of the cards in flight during a beat', 
   });
 });
 
-// T14 judge nice-to-have 3: at 4.2 Blake's 4 flies into the counter prompt;
-// the entry demo waits until it has landed (the overlay says how long).
+// T14 judge nice-to-have 3: at 4.2 Blake's 4 crosses the middle spot on its
+// way to the scrap; the entry demo waits until it has landed (the overlay
+// says how long).
 describe('T14: the entry demo can wait for a flight to land', () => {
   it('entryDelay holds the first demo back; it never shortens it', async () => {
     let hold = 990;
@@ -1458,7 +1500,7 @@ describe('T14: the entry demo can wait for a flight to land', () => {
     expect(c.playKey).toBe(start + 1);
     expect(frames.pending(), 'the demo is measured again once the hold ends').toBe(1);
     frames.run();
-    expect(c.demo?.kind).toBe('tap');
+    expect(c.demo?.kind).toBe('drag');
     cleanup();
 
     hold = 10;
@@ -1466,7 +1508,7 @@ describe('T14: the entry demo can wait for a flight to land', () => {
     walkTo(t2, '4.2');
     const c2 = await mountWith(t2, { entryDelay: () => hold });
     frames.run();
-    expect(c2.demo?.kind, 'a short hold holds nothing back').toBe('tap');
+    expect(c2.demo?.kind, 'a short hold holds nothing back').toBe('drag');
     const s2 = c2.playKey;
     clock.advance(DEMO_ENTRY_MS - 1);
     expect(c2.playKey).toBe(s2);
@@ -1514,7 +1556,7 @@ describe('T14 review B1: Show me releases the entry hold', () => {
     const before = c.playKey;
     c.showMe();
     frames.run();
-    expect(c.demo?.kind).toBe('tap');
+    expect(c.demo?.kind).toBe('drag');
     expect(c.playKey).toBeGreaterThan(before);
   });
 });

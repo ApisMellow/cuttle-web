@@ -1,9 +1,10 @@
 // R25.2 (docs/tutorial-plan.md T3, design §11 S1/S2): every lesson replays
-// exactly as the design says through the real wasm bridge (engine v0.2.1),
+// exactly as the design says through the real wasm bridge (engine v0.3.0),
 // every nudge rule is reachable, and the lesson copy fits the bubble.
 //
-// Engine v0.2.1 rules the checkpoints rely on (module
-// github.com/ApisMellow/cuttle@v0.2.1, read-only):
+// Engine rules the checkpoints rely on (module github.com/ApisMellow/cuttle,
+// read-only; line numbers are v0.2.1's, the one-off and counter rules are
+// v0.3.0's, issue #93):
 //   - Legal move enumeration in PhaseNormal: engine/apply.go:15-135.
 //     Draw needs a deck and a hand under 8: apply.go:11, :34-36.
 //     A, 4, 5, 6 one-offs: apply.go:41-43. A 2 targets only permanents and
@@ -20,13 +21,13 @@
 //     apply.go:174-192, :232-242; checkWin apply.go:817-826;
 //     Threshold (21, 14 with one King) engine/win.go:5-18, HasWon win.go:38-40.
 //   - A Jack steal transplants the point entry: apply.go:201-230.
-//   - A one-off opens a counter window only if the opponent holds an
-//     unfrozen 2: apply.go:324-341, hasLegalCounter apply.go:489-497; the
-//     window offers Decline plus one Counter per 2: apply.go:576-586.
+//   - A one-off resolves at once (v0.3.0). A 4 leaves the opponent an owed
+//     discard that opens their turn in phase 3 with no pending, and a held 2
+//     adds a Counter beside the discard pairs.
 //   - The Ace scraps every point card on both sides: apply.go:626-634.
-//   - A Counter that leaves the chain odd cancels the one-off and passes the
-//     turn back: apply.go:342-365, resolvePending apply.go:591-608,
-//     endTurn apply.go:837-841.
+//   - A Counter, the first move of a turn, rewinds the opponent's turn to
+//     the end of the counterer's own last turn; the 2 goes to the scrap and
+//     the counterer plays on (v0.3.0).
 //   - Draw takes the deck top: apply.go:144-153.
 //   - Glasses (an 8 permanent) show the opponent's hand to its owner:
 //     internal/game/view.go:78-88, :163-166.
@@ -66,13 +67,12 @@ const keys = (xs: Card[]) => xs.map(key).sort();
 
 /**
  * The staging slot a move occupies on the page (plan P4, design §7.2 data
- * rule): its source (a hand index, the deck, or the counter option) and its
- * board target key. Pass, Decline and DiscardPair are never staged from the
- * board, so they have no slot.
+ * rule): its source (a hand index or the deck) and its board target key (a
+ * Counter's is `counter-link`). Pass, Decline and DiscardPair are never
+ * staged from a board target, so they have no slot.
  */
 function slotOf(m: Move): string | null {
   if (m.Kind === MoveKind.Draw) return 'deck';
-  if (m.Kind === MoveKind.Counter) return `counter:${m.HandIndex}`;
   const target = boardTargetKey(m);
   if (target === null) return null;
   return `hand:${m.HandIndex}|${target}`;
@@ -244,19 +244,24 @@ const CHECKPOINTS: Record<LessonId, (t: Trace) => void> = {
     expect(after41.opponent.points).toEqual([]);
     expect(after41.phase).toBe(0);
     expect(after41.active).toBe(1);
-    const ack = step(t, '4.1').afterBlake[0].state;
-    expect(ack.phase).toBe(1);
-    expect(ack.active).toBe(0);
-    // 4.2: "Blake played a 4."
-    expect(ack.pending?.card).toEqual(c(4, 'D'));
-    expect(ack.pending?.playedBy).toBe(1);
-    expect(step(t, '4.2').arrive.legalMoves.map((m) => m.Kind).sort()).toEqual([MoveKind.Counter, MoveKind.Decline].sort());
+    // 4.2: "Blake's 4 means you throw away 2 cards." It resolved at once:
+    // Alice's turn opens owing a discard of 2, with Counter 2H beside it.
+    const owed = step(t, '4.1').afterBlake[0].state;
+    expect(owed.phase).toBe(3);
+    expect(owed.active).toBe(0);
+    expect(owed.pending).toBeNull();
+    expect(owed.scrap.map(key)).toContain(key(c(4, 'D')));
+    const arrive42 = step(t, '4.2').arrive.legalMoves;
+    expect(arrive42.map((m) => m.Kind).sort()).toEqual([MoveKind.Counter, MoveKind.DiscardPair].sort());
+    expect(arrive42.find((m) => m.Kind === MoveKind.Counter)?.Card).toEqual(c(2, 'H'));
     const end = step(t, '4.2').afterMove!.state;
     expect(end.phase).toBe(0);
     expect(end.active).toBe(0);
     expect(end.pending).toBeNull();
-    // "His 4 does nothing": Alice keeps her 5.
+    // "His 4 never happened, and it's your turn": Alice keeps her 5, and the
+    // 4 and her 2 are both in the scrap.
     expect(end.you.hand).toEqual([c(5, 'C')]);
+    expect(end.scrap.map(key)).toEqual(expect.arrayContaining([key(c(4, 'D')), key(c(2, 'H'))]));
   },
   5: (t) => {
     const after51 = step(t, '5.1').afterMove!.state;
@@ -368,7 +373,7 @@ const WRONG_NUDGES: Record<string, Record<string, string>> = {
     'play 5♣ as point card': GEN_41,
   },
   '4.2': {
-    'decline to counter': 'Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm.',
+    'discard hand[0] and hand[1]': "Discarding costs you 2 cards. Drag your 2 onto Blake's last turn instead.",
   },
   '5.1': {
     'draw a card': GLASSES,
@@ -435,10 +440,10 @@ const STEP_LINES: Record<string, { main: string; staged?: string; success?: stri
     tapRoute: 'Tap your Ace, then the middle spot, then Confirm.',
   },
   '4.2': {
-    main: "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm.",
-    staged: 'Tap Confirm to stop his 4.',
-    success: 'Stopped. His 4 does nothing, and his turn is over.',
-    tapRoute: 'Tap your 2, then Confirm.',
+    main: "Blake's 4 means you throw away 2 cards. You hold a 2: drag it onto his last turn in the middle to undo it.",
+    staged: 'Tap Confirm to undo his 4.',
+    success: "Undone. His 4 never happened, and it's your turn.",
+    tapRoute: 'Tap your 2, then tap his last turn in the middle, then Confirm.',
   },
   '5.1': {
     main: "An 8 can be glasses. Put it in your Permanents row and you'll see Blake's hand.",
@@ -602,7 +607,7 @@ describe('lesson structure', () => {
       'You know the goal: reach 21 first.',
       'One thing per turn: play a card or draw.',
       'Scuttle with a bigger card, or the same number in a higher suit.',
-      'A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off.',
+      'A one-off happens at once, but a 2 at the start of the next turn undoes it. The Rules page in the menu lists every one-off.',
       "That's Cuttle. Jacks steal, Queens protect, Kings lower your goal, and an 8 can be glasses. You're ready to play.",
     ]);
     const blake = LESSONS.flatMap((l) => l.steps.flatMap((s) => (s.kind === 'move' ? s.blake.map((b) => `${s.id}:${b.thinking}|${b.done ?? '-'}`) : [])));

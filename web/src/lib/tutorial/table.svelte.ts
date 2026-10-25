@@ -18,15 +18,16 @@
 //
 // The gate (R11, design §6.2): the move list GameScreen gets is the engine's,
 // unfiltered. Only the commit is checked. A refused commit applies nothing,
-// sets the nudge, adds 1 to `refusals` (GameScreen keys the counter prompt on
-// it, §5.5.1) and resolves normally, so the board returns to idle and nothing
-// is ever stuck.
+// sets the nudge, adds 1 to `refusals` and resolves normally, so the board
+// returns to idle and nothing is ever stuck. The curtain is always `none`:
+// since engine v0.3.0 (issue #93) no lesson position opens a counter window;
+// lesson 4.2's counter is a board move at the start of Alice's turn.
 //
 // Beats (plan P3): success line (2200 ms or a tap) -> if Blake replies,
 // "Blake's turn." with `pending` true, a think pause (700 ms, 400 ms reduced),
 // his move and its narration -> after 2200 ms (or a tap) the next step. A
 // reply with no narration hands straight to the next step (lesson 4's 4,
-// whose window is step 4.2). `pending` runs from the learner's match until
+// whose owed discard opens step 4.2). `pending` runs from the learner's match until
 // Blake's last reply lands (design §6.2). No state path awaits anything:
 // every beat is a timer (SPEC §5.9).
 //
@@ -43,7 +44,6 @@ import {
   view as bridgeView,
 } from '../bridge/engine';
 import type { AppliedMove, BridgeResult, Envelope, Move, PlayerId, PlayerView } from '../bridge/schema';
-import { Phase } from '../enums';
 import type { CurtainState } from '../stores/curtain.svelte';
 import type { TableSource } from '../stores/tableSource';
 import { NEXT_FIRST, SNAG_LINE } from './lessons';
@@ -117,7 +117,6 @@ const defaultClock: TutorialClock = {
 };
 
 const NONE: CurtainState = { kind: 'none' };
-const ACK_TO_ALICE: CurtainState = { kind: 'ack', to: 0 };
 
 export interface CoachLine {
   readonly text: string;
@@ -151,11 +150,6 @@ export class TutorialTable implements TableSource {
   #lastNudge = $state<string | null>(null);
   #wrongTries = $state(0);
   #history = $derived(this.#envelope?.history ?? []);
-  #curtain = $derived<CurtainState>(
-    this.#envelope !== null && this.#envelope.state.phase === Phase.AwaitingCounter && this.#envelope.state.active === 0
-      ? ACK_TO_ALICE
-      : NONE,
-  );
   #step = $derived<Step | null>(this.#stepAt(this.#stepIndex));
 
   // --- TableSource -------------------------------------------------------
@@ -176,19 +170,15 @@ export class TutorialTable implements TableSource {
   get seq(): number {
     return this.#history.length;
   }
-  /**
-   * `ack` to Alice exactly while the engine waits on her counter decision
-   * (lesson 4.2), so GameScreen mounts the real CounterPrompt; refusals
-   * included, it never drops to `none` mid-window (§5.5.1). Else `none`.
-   */
+  /** Always `none`: every lesson plays on the board (issue #93: lesson 4.2 counters from it). */
   get curtain(): CurtainState {
-    return this.#curtain;
+    return NONE;
   }
   /** From the learner's match until Blake's last reply lands: the board is inert. */
   get pending(): boolean {
     return this.#pending;
   }
-  /** +1 for every commit the gate refuses (GameScreen's counter-prompt key). */
+  /** +1 for every commit the gate refuses (the coach's refusal signal; GameScreen's legacy counter-prompt key). */
   get refusals(): number {
     return this.#refusals;
   }

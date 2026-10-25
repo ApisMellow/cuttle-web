@@ -4,20 +4,21 @@
 //
 // `readStagedPage` reads only the attributes design §7.2 lists:
 // `aria-pressed` and `data-staged` on `hand-card-<i>`, `data-state="staged"`
-// on `deck-pile`, on a `zone-*` hit button and on the theme face inside a
-// `point-<o>-<i>` / `perm-<o>-<i>` button, and whether `staging-confirm` and
-// `counter-prompt` are present. The fixture markup mirrors the real
-// components (HandCard, DeckPile, DropZones, PointRow, PermanentRow,
-// StagingBar, CounterPrompt).
+// on `deck-pile`, on a `zone-*` hit button, on `counter-link` and on the
+// theme face inside a `point-<o>-<i>` / `perm-<o>-<i>` button, and whether
+// `staging-confirm` is present. The fixture markup mirrors the real
+// components (HandCard, DeckPile, DropZones, CenterZone, PointRow,
+// PermanentRow, StagingBar).
 //
 // `classifyStaged` groups candidates per plan P4: legal moves with the staged
 // hand index (or Kind Draw for the deck) whose `boardTargetKey` is the staged
-// target; a staged counter is its own source and takes only Counter moves.
-// Move shapes are wire-true for engine v0.2.1 (engine/moves.go:24-34):
+// target (a 2 on `counter-link` is its Counter, issue #93); two staged hand
+// cards take the DiscardPair of those two.
+// Move shapes are wire-true for the engine (engine/moves.go:24-34):
 // a Jack steal is PlayPermanent with JackTarget (apply.go:88-97); Scuttle and
-// a targeted 9 one-off carry Target (apply.go:70-87, :112-123); Decline is
-// Kind 6 with HandIndex 0 and no target (apply.go:576-586), exactly like a
-// Counter of the 2 at hand index 0.
+// a targeted 9 one-off carry Target (apply.go:70-87, :112-123); a Counter
+// carries the 2's HandIndex and no target, and a DiscardPair its two hand
+// indices (v0.3.0).
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,8 @@ interface BoardFixture {
   zones?: Partial<Record<'points' | 'permanents' | 'oneoff', 'normal' | 'highlighted' | 'staged'>>;
   /** testid → the face's data-state, e.g. `{ 'point-1-0': 'staged' }`. */
   faces?: Record<string, string>;
+  /** The last-turn marker's data-state (issue #93). */
+  link?: 'normal' | 'highlighted' | 'staged';
   confirm?: boolean;
 }
 
@@ -81,7 +84,7 @@ function boardHtml(f: BoardFixture): string {
       <div data-testid="center-zone">
         <button data-testid="deck-pile" data-state="${f.deck ?? 'normal'}"><span>${face('normal')}</span></button>
         <button data-testid="scrap-pile" data-state="normal"></button>
-        ${zone('oneoff')}
+        ${zone('oneoff', `<button data-testid="counter-link" data-state="${f.link ?? 'normal'}" aria-label="Last turn"></button>`)}
       </div>
       <div data-testid="player-zone">
         ${zone('points', cardBtn('point-0-0'))}
@@ -99,14 +102,7 @@ function root(html: string): HTMLElement {
   return el;
 }
 
-function counterHtml(staged: boolean): string {
-  const options = staged
-    ? '<div data-testid="staging-bar"><button data-testid="staging-cancel">Cancel</button><button data-testid="staging-confirm">Confirm</button></div>'
-    : '<button data-testid="counter-option-0">Counter with the 2</button>';
-  return `<div data-testid="counter-prompt"><h2>Your response</h2><div class="counter-prompt__options">${options}</div><button data-testid="counter-resolve">Let it resolve</button></div>`;
-}
-
-const NOTHING: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, counter: null };
+const NOTHING: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, pair: null };
 
 describe('readStagedPage (fixture DOM)', () => {
   it('nothing staged → every field null or false', () => {
@@ -134,7 +130,7 @@ describe('readStagedPage (fixture DOM)', () => {
   it('a staged hand card and a staged zone → hand source and zone key', () => {
     for (const z of ['points', 'permanents', 'oneoff'] as const) {
       const page = readStagedPage(root(boardHtml({ pressed: [1], stagedHand: [1], zones: { [z]: 'staged' }, confirm: true })));
-      expect(page).toEqual({ selectedHand: 1, source: { hand: 1 }, target: `zone:${z}`, confirm: true, counter: null });
+      expect(page).toEqual({ selectedHand: 1, source: { hand: 1 }, target: `zone:${z}`, confirm: true, pair: null });
     }
   });
 
@@ -165,8 +161,10 @@ describe('readStagedPage (fixture DOM)', () => {
     expect(readStagedPage(el)).toEqual(NOTHING);
   });
 
-  it('two staged hand cards (a discard pair) give no single source', () => {
-    expect(readStagedPage(root(boardHtml({ stagedHand: [0, 2], confirm: true }))).source).toBeNull();
+  it('two staged hand cards (a discard pair) give no single source; they are the pair', () => {
+    const page = readStagedPage(root(boardHtml({ stagedHand: [0, 2], confirm: true })));
+    expect(page.source).toBeNull();
+    expect(page.pair).toEqual([0, 2]);
   });
 
   it('only exact testids count (no sibling-prefix lookalikes)', () => {
@@ -177,14 +175,15 @@ describe('readStagedPage (fixture DOM)', () => {
     expect(readStagedPage(el)).toEqual(NOTHING);
   });
 
-  it('counter prompt: fresh without staging-confirm inside it; staged with it', () => {
-    expect(readStagedPage(root(counterHtml(false)))).toEqual({ ...NOTHING, counter: 'fresh' });
-    expect(readStagedPage(root(counterHtml(true)))).toEqual({ ...NOTHING, confirm: true, counter: 'staged' });
-  });
-
-  it('a staging-confirm outside the counter prompt does not make it staged', () => {
-    const el = root(counterHtml(false) + '<button data-testid="staging-confirm">Confirm</button>');
-    expect(readStagedPage(el)).toEqual({ ...NOTHING, confirm: true, counter: 'fresh' });
+  it('issue #93: a staged last-turn marker is the target counter-link; a lit one is not', () => {
+    expect(readStagedPage(root(boardHtml({ pressed: [1], stagedHand: [1], link: 'staged', confirm: true })))).toEqual({
+      selectedHand: 1,
+      source: { hand: 1 },
+      target: 'counter-link',
+      confirm: true,
+      pair: null,
+    });
+    expect(readStagedPage(root(boardHtml({ pressed: [1], link: 'highlighted' })))).toEqual({ ...NOTHING, selectedHand: 1 });
   });
 });
 
@@ -257,7 +256,7 @@ const staged = (source: StagedPage['source'], target: StagedPage['target']): Sta
   source,
   target,
   confirm: true,
-  counter: null,
+  pair: null,
 });
 
 describe('classifyStaged (fixture envelopes)', () => {
@@ -384,46 +383,47 @@ describe('classifyStaged (fixture envelopes)', () => {
     });
   });
 
-  describe('the counter window (step 4.2)', () => {
-    // Decline is HandIndex 0 with no target, exactly like the Counter of the 2
-    // at hand index 0 (apply.go:576-586). The Decline is first so a naive
-    // HandIndex grouping would put it in front of the Counter.
-    const counterWindow = envelope({
+  describe('the owed discard with a counter (step 4.2, issue #93)', () => {
+    // Alice holds 2H and 5C and owes a discard of 2 (phase 3, no pending):
+    // the one DiscardPair, and the Counter of the 2 at hand index 0 (its
+    // board target is the last-turn marker).
+    const FIVE_C = card(5, C);
+    const owed = envelope({
       state: playerView({
-        phase: Phase.AwaitingCounter,
-        you: { hand: [TWO_H], frozenHandIndices: [], points: [], permanents: [], watched: false },
-        pending: { playedBy: 1, card: BLAKE_4C, target: null, counterChain: [] },
+        phase: Phase.AwaitingDiscard,
+        you: { hand: [TWO_H, FIVE_C], frozenHandIndices: [], points: [], permanents: [], watched: false },
       }),
-      legalMoves: [move({ Kind: Kind.Decline }), move({ Kind: Kind.Counter, HandIndex: 0, Card: TWO_H })],
-      descriptions: ['decline to counter', 'counter with 2'],
+      legalMoves: [move({ Kind: Kind.DiscardPair, DiscardA: 0, DiscardB: 1 }), move({ Kind: Kind.Counter, HandIndex: 0, Card: TWO_H })],
+      descriptions: ['discard hand[0] and hand[1]', 'counter with 2'],
     });
     const st = step({
       expect: { kind: Kind.Counter, card: TWO_H },
-      nudges: [{ when: { kind: Kind.Decline }, text: 'decline nudge' }],
-      generic: 'decline nudge',
+      nudges: [{ when: { kind: Kind.DiscardPair }, text: 'discard nudge' }],
+      generic: 'discard nudge',
     });
-    const counterStaged: StagedPage = { ...NOTHING, confirm: true, counter: 'staged' };
 
-    it('a staged counter is the Counter alone: right, never merged with the Decline', () => {
-      expect(classifyStaged(counterStaged, counterWindow, st)).toEqual({ verdict: 'right' });
+    it('the 2 staged on counter-link is the Counter alone: right', () => {
+      expect(boardTargetKey(owed.legalMoves[1])).toBe('counter-link');
+      expect(classifyStaged(staged({ hand: 0 }, 'counter-link'), owed, st)).toEqual({ verdict: 'right' });
     });
 
     it('a staged counter that is not the expected one is wrong', () => {
       const wrongTwo = step({ expect: { kind: Kind.Counter, card: card(2, S) }, nudges: [], generic: 'other two' });
-      expect(classifyStaged(counterStaged, counterWindow, wrongTwo)).toEqual({ verdict: 'wrong', nudge: 'other two' });
+      expect(classifyStaged(staged({ hand: 0 }, 'counter-link'), owed, wrongTwo)).toEqual({ verdict: 'wrong', nudge: 'other two' });
     });
 
-    it('two legal 2s: the page cannot tell them apart, so a mixed pair is unknown', () => {
-      const twoTwos = envelope({
-        ...counterWindow,
-        legalMoves: [...counterWindow.legalMoves, move({ Kind: Kind.Counter, HandIndex: 1, Card: card(2, S) })],
-        descriptions: [...counterWindow.descriptions, 'counter with the other 2'],
-      });
-      expect(classifyStaged(counterStaged, twoTwos, st)).toEqual({ verdict: 'unknown' });
+    it('a staged discard pair is the DiscardPair, in either pick order: wrong, with its nudge', () => {
+      expect(classifyStaged({ ...NOTHING, confirm: true, pair: [0, 1] }, owed, st)).toEqual({ verdict: 'wrong', nudge: 'discard nudge' });
+      expect(classifyStaged({ ...NOTHING, confirm: true, pair: [1, 0] }, owed, st)).toEqual({ verdict: 'wrong', nudge: 'discard nudge' });
     });
 
-    it('a fresh prompt has nothing staged: unknown', () => {
-      expect(classifyStaged({ ...NOTHING, counter: 'fresh' }, counterWindow, st)).toEqual({ verdict: 'unknown' });
+    it('a pair with no staging-confirm, or one the engine has no move for, is unknown', () => {
+      expect(classifyStaged({ ...NOTHING, pair: [0, 1] }, owed, st)).toEqual({ verdict: 'unknown' });
+      expect(classifyStaged({ ...NOTHING, confirm: true, pair: [0, 2] }, owed, st)).toEqual({ verdict: 'unknown' });
+    });
+
+    it('a lone 2 picked, nothing staged: unknown', () => {
+      expect(classifyStaged({ ...NOTHING, selectedHand: 0 }, owed, st)).toEqual({ verdict: 'unknown' });
     });
   });
 });

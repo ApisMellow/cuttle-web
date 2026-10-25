@@ -45,12 +45,11 @@
   // one never finishes the deal (the same rule as the coach's beat skip).
   import { CoachController, ownsInput, type CoachClock, type CoachFlights, type CoachFrames } from '../tutorial/coach.svelte';
   import {
-    COUNTER_ONEOFF_MS,
+    ONEOFF_FLIGHT_MS,
     capture,
     captureReply,
     flightBoxes,
     flipFrames,
-    intoPrompt,
     lastIndexed,
     motionOn,
     oppHandSlots,
@@ -185,11 +184,11 @@
   // when the landing spot can be measured.
   let inFlight: CoachFlights | null = null;
 
-  // T14: Blake's one-off that opens the counter window (lesson 4's 4) lands
-  // on the counter prompt's own thumbnail of it; the next step's demo waits
-  // for it. Coupling point: CounterPrompt's line markup (no testid: the
-  // mini face is not a tap target). The played card is the last line's face.
-  let demoHold = 0;
+  // T14: Blake's one-off (lesson 4's 4) crosses the middle spot on its way to
+  // the scrap, where 4.2's demo then drags the 2; when it opens the next step
+  // straight away, that step's demo waits for it to land. The hold is a
+  // deadline, so a narration beat in between uses it up.
+  let demoHoldUntil = 0;
 
   /**
    * The hold is for the one step the flight opens: the coach reads it as that
@@ -197,16 +196,9 @@
    * DEV hook's newGame) can carry it to another step (T14 review N4).
    */
   function takeDemoHold(): number {
-    const hold = demoHold;
-    demoHold = 0;
+    const hold = Math.max(0, demoHoldUntil - Date.now());
+    demoHoldUntil = 0;
     return hold;
-  }
-  const PROMPT_THUMB = '[data-testid="counter-prompt"] .counter-prompt__line:last-child .counter-prompt__face';
-
-  function promptThumb(root: FlightRoot): RectLike | null {
-    if (root.querySelector('[data-testid="board"]')) return null;
-    const r = root.querySelector(PROMPT_THUMB)?.getBoundingClientRect();
-    return r && r.width > 0 && r.height > 0 ? toRect(r) : null;
   }
 
   /** Where the moving card lands, once rendered: the newest card of the mover's row, or Alice's new hand card. */
@@ -231,7 +223,7 @@
     beforeApply(move: Move, view0: PlayerView) {
       learnerCap = null;
       inFlight = null;
-      demoHold = 0;
+      demoHoldUntil = 0;
       if (boardRoot) learnerCap = capture(move, view0, boardRoot);
     },
     afterApply() {
@@ -253,7 +245,7 @@
     },
     beforeReply(view0: PlayerView) {
       inFlight = null;
-      demoHold = 0;
+      demoHoldUntil = 0;
       replySnap = boardRoot ? snapshot(view0, boardRoot) : null;
     },
     afterReply(entry: AppliedMove) {
@@ -261,14 +253,11 @@
       replySnap = null;
       const root = boardRoot;
       if (!snap || !root) return;
-      const captured = captureReply(snap, entry);
+      const cap = captureReply(snap, entry);
       const after = table.envelope?.state ?? null;
-      // A counter window opened: the board is about to unmount under the prompt.
-      if (captured.landing === 'oneOff' && table.curtain.kind === 'ack' && lively()) demoHold = COUNTER_ONEOFF_MS + DEMO_AFTER_LANDING_MS;
-      setInFlight('blake', captured, null);
+      if (cap.landing === 'oneOff' && lively()) demoHoldUntil = Date.now() + ONEOFF_FLIGHT_MS + DEMO_AFTER_LANDING_MS;
+      setInFlight('blake', cap, null);
       afterRender(() => {
-        const thumb = promptThumb(root);
-        const cap = thumb ? intoPrompt(captured, thumb) : captured;
         setInFlight('blake', cap, root);
         layer?.play(cap, root, after);
       });
@@ -294,7 +283,7 @@
 
   const RING_PAD = 6; // the spotlight's hole padding (placement.ts holePad)
   const FLASH_MS = 360;
-  /** After a counter-window flight lands, the demo starts this much later (design §8.3's entry gap). */
+  /** After Blake's one-off lands, the next step's demo starts this much later (design §8.3's entry gap). */
   const DEMO_AFTER_LANDING_MS = 250;
   /** Long enough for his whole hand to turn over (four cards, 70 ms apart, 240 ms each) and a beat to read it. */
   const GLASSES_RING_MS = 720;

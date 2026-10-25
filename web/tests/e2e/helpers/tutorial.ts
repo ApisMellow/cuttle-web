@@ -64,8 +64,6 @@ export interface Reading {
   holes: Box[];
   /** Boxes the bubble must never cover. */
   avoid: { id: string; box: Box }[];
-  /** The counter prompt's own text (heading and played lines), when it is up. */
-  promptText: { id: string; box: Box }[];
   scroll: { id: string; scrollWidth: number; clientWidth: number }[];
   /** Each spotlit target (`data-coach-targets`) and whether a hit-test at its centre or near an edge lands inside it. */
   targets: { id: string; ok: boolean; hit: string }[];
@@ -90,11 +88,12 @@ export async function settled(page: Page): Promise<Reading> {
       const bubbleEl = byId('coach-bubble')[0] ?? null;
       const overlay = document.querySelector<HTMLElement>('[data-coach-overlay]');
       const avoid: { id: string; box: Box }[] = [];
-      for (const id of ['staging-bar', 'menu-button']) {
+      for (const id of ['staging-bar', 'menu-button', 'discard-picker']) {
         for (const el of byId(id)) avoid.push({ id, box: box(el.getBoundingClientRect()) });
       }
-      for (const el of document.querySelectorAll<HTMLElement>('[data-testid^="counter-option-"]')) {
-        avoid.push({ id: el.dataset.testid ?? 'counter-option', box: box(el.getBoundingClientRect()) });
+      // Issue #93: the last-turn marker, once a 2 lights it (it is always in the DOM).
+      for (const el of byId('counter-link')) {
+        if (el.dataset.state !== 'normal') avoid.push({ id: 'counter-link', box: box(el.getBoundingClientRect()) });
       }
       // What is staged: the bubble's line is about that setup (design §7.3), so it stays visible.
       for (const el of document.querySelectorAll('[data-staged="true"], [data-state="staged"]')) {
@@ -106,13 +105,6 @@ export async function settled(page: Page): Promise<Reading> {
           el.closest<HTMLElement>('[data-testid]');
         if (holder && holder.dataset.testid !== 'staging-bar') {
           avoid.push({ id: `staged ${holder.dataset.testid}`, box: box(holder.getBoundingClientRect()) });
-        }
-      }
-      const promptText: { id: string; box: Box }[] = [];
-      const prompt = document.querySelector('[data-testid="counter-prompt"]');
-      if (prompt) {
-        for (const el of prompt.querySelectorAll<HTMLElement>('h2, li')) {
-          promptText.push({ id: el.tagName.toLowerCase(), box: box(el.getBoundingClientRect()) });
         }
       }
       const sizes: { id: string; width: number; height: number }[] = [];
@@ -164,7 +156,6 @@ export async function settled(page: Page): Promise<Reading> {
         bubble: bubbleEl ? layout(bubbleEl) : null,
         holes: Array.from(document.querySelectorAll<HTMLElement>('[data-coach-hole]')).map(layout),
         avoid,
-        promptText,
         targets,
         scroll: scrollTargets.flatMap(([id, el]) => (el ? [{ id, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }] : [])),
         sizes,
@@ -210,9 +201,6 @@ export function geometryProblems(r: Reading, viewport: { width: number; height: 
     });
     for (const a of r.avoid) {
       if (intersects(b, a.box)) out.push(`bubble ${fmt(b)} covers ${a.id} ${fmt(a.box)} by ${overlapOf(b, a.box)}`);
-    }
-    for (const t of r.promptText) {
-      if (intersects(b, t.box)) out.push(`bubble ${fmt(b)} covers the prompt's ${t.id} ${fmt(t.box)} by ${overlapOf(b, t.box)}`);
     }
     if (b.x < -EPS || b.x + b.width > viewport.width + EPS) out.push(`bubble ${fmt(b)} leaves the viewport sideways`);
     if (b.y < -EPS || b.y + b.height > viewport.height + EPS) out.push(`bubble ${fmt(b)} leaves the viewport vertically`);
@@ -307,8 +295,6 @@ export function locateSpot(page: Page, spot: SpotTarget): Locator {
       return handRank(page, spot.rank);
     case 'point':
       return opponentPoint(page, spot.card);
-    case 'counterOption':
-      return page.locator('[data-testid^="counter-option-"]').first();
   }
 }
 
@@ -331,7 +317,7 @@ export async function handIndexOf(card: Locator): Promise<number> {
   return Number(id.replace('hand-card-', ''));
 }
 
-/** Taps the step's source: the card, the deck, or the counter option. */
+/** Taps the step's source: the card or the deck. */
 export async function tapSource(page: Page, step: MoveStep): Promise<void> {
   const el = locateSpot(page, step.source);
   if (step.source.kind === 'hand') {
@@ -340,9 +326,8 @@ export async function tapSource(page: Page, step: MoveStep): Promise<void> {
   await el.click();
 }
 
-/** Taps the step's target: a zone, a point card, the deck again, or (counter) nothing. */
+/** Taps the step's target: a zone, a point card, the last-turn marker (4.2), or (the deck) nothing. */
 export async function tapTarget(page: Page, step: MoveStep): Promise<void> {
-  if (step.source.kind === 'counterOption') return; // staging the option is the whole setup
   if (step.source.kind === 'testid' && step.source.id === 'deck-pile') return; // the first tap staged the draw
   await locateSpot(page, step.target).click();
 }
@@ -361,9 +346,11 @@ export interface WrongSetup {
   source: Card | 'deck';
   /** A zone testid, or an opponent point card. */
   target?: string | Card;
+  /** A second hand card: the two make a discard pair (4.2's owed discard). */
+  also?: Card;
 }
 
-/** One wrong staged setup for every board step. Step 4.2 has none (design §5.5.1). */
+/** One wrong staged setup for every move step. */
 export function wrongSetup(stepId: string): WrongSetup | null {
   const L = (rank: number, suit: 0 | 1 | 2 | 3): Card => ({ Rank: rank as Card['Rank'], Suit: suit });
   const [C, D, H, S] = [0, 1, 2, 3] as const;
@@ -379,6 +366,8 @@ export function wrongSetup(stepId: string): WrongSetup | null {
       return { source: L(8, H), target: 'zone-points' };
     case '4.1':
       return { source: L(1, S), target: 'zone-points' };
+    case '4.2':
+      return { source: L(5, C), also: L(2, H) }; // pay the owed discard instead of countering
     case '5.1':
       return { source: L(8, C), target: 'zone-points' };
     case '5.2':
@@ -401,6 +390,10 @@ export async function stageWrong(page: Page, setup: WrongSetup, via: 'click' | '
     return;
   }
   await press(handCard(page, setup.source));
+  if (setup.also) {
+    await press(handCard(page, setup.also));
+    return;
+  }
   // A real tap: the wrong target is not spotlit, but it is lit (a legal place
   // for the selected card), and at `selected` the bubble keeps clear of every
   // lit target (T12b), so nothing covers it.
@@ -696,7 +689,7 @@ export async function dragCardTo(page: Page, finger: Finger, card: Locator, targ
   await finger.end();
 }
 
-/** The learner's right move on a touch screen: drag a hand card, tap the deck or the counter option, then commit. */
+/** The learner's right move on a touch screen: drag a hand card (4.2: the 2 onto the last-turn marker), or tap the deck twice. */
 export async function touchMove(page: Page, finger: Finger, step: MoveStep): Promise<void> {
   const source = locateSpot(page, step.source);
   if (step.source.kind === 'hand') {
@@ -708,9 +701,7 @@ export async function touchMove(page: Page, finger: Finger, step: MoveStep): Pro
     await waitStage(page, 'staged-right');
     await source.tap(); // the second tap commits it (issue #24)
   } else {
-    await source.tap(); // the counter option: staging it is the whole setup
-    await waitStage(page, 'staged-right');
-    await page.getByTestId('staging-confirm').tap();
+    throw new Error(`step ${step.id}: no touch route for this source`);
   }
 }
 
@@ -735,8 +726,7 @@ export type ActivateKey = 'Enter' | 'Space';
  * The learner's right move from the keyboard: Tab to the source, activate it
  * (focus then lands on a lit target), Tab to the step's target if it is not
  * the one focused, activate it, then activate Confirm (the deck takes a second
- * activation of the staged draw, a hand card or the counter option goes via
- * Confirm).
+ * activation of the staged draw; a hand card goes via Confirm).
  */
 export async function keyMove(page: Page, step: MoveStep, select: ActivateKey, confirmKey: ActivateKey): Promise<void> {
   const source = locateSpot(page, step.source);

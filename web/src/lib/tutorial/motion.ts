@@ -333,7 +333,6 @@ export type FlightPlanName =
   | 'drawBack'
   | 'blakePlays'
   | 'glassesFlip'
-  | 'counter'
   | 'arrive';
 
 /** How the moving card ends up: a plan without the two wrappers that add a source or a follow-up. */
@@ -422,10 +421,11 @@ export function flightLanding(move: FlightMove, side: PlayerId, glasses: boolean
       return isJackPlay(move) ? 'jackSteal' : 'toRow';
     case MoveKind.Scuttle:
       return 'scuttle';
+    // Issue #93: a counter is played on the last-turn marker in the middle,
+    // then goes to the scrap as the rewind happens, like any one-off.
     case MoveKind.OneOff:
-      return 'oneOff';
     case MoveKind.Counter:
-      return 'counter';
+      return 'oneOff';
     default:
       return 'arrive';
   }
@@ -441,7 +441,7 @@ export function flightLanding(move: FlightMove, side: PlayerId, glasses: boolean
  */
 export function flightPlan(move: FlightMove, side: PlayerId, glasses: boolean): FlightPlanName {
   const landing = flightLanding(move, side, glasses);
-  if (landing === 'drawFlip' || landing === 'drawBack' || landing === 'counter' || landing === 'arrive') return landing;
+  if (landing === 'drawFlip' || landing === 'drawBack' || landing === 'arrive') return landing;
   if (side === 1) return 'blakePlays';
   if (isGlassesEight(move) && !glasses) return 'glassesFlip';
   return landing;
@@ -614,7 +614,7 @@ function build(snap: FlightSnapshot, move: FlightMove, by: PlayerId, src: Source
  * hand slot and card come from her own view. Never call it with the opponent's
  * Move: his flights use `snapshot` + `captureReply`. It throws unless it is
  * the learner's turn (`view.active === 0`), which is when it runs, before her
- * apply; a counter window flips `active` to the counterer, still Alice.
+ * apply (an owed discard opens her turn, so a counter there is hers too).
  */
 export function capture(move: Move, view: PlayerView, root: FlightRoot): FlightCapture {
   if (view.active !== 0) throw new Error('capture is for the learner\u2019s own move; use snapshot + captureReply for Blake');
@@ -671,18 +671,6 @@ export function flightAfter(cap: FlightCapture, after: PlayerView | null | undef
 }
 
 /**
- * T14: a one-off that opens a counter window (lesson 4's 4) lands while the
- * board is unmounted, so the one-off spot it was captured against is empty
- * space over the counter prompt. Aim it at the prompt's own thumbnail of the
- * played card instead: it shrinks into it and fades (no scrap leg, as the
- * scrap pile isn't on the page). Any other flight comes back unchanged.
- */
-export function intoPrompt(cap: FlightCapture, thumb: RectLike): FlightCapture {
-  if (cap.landing !== 'oneOff') return cap;
-  return { ...cap, rects: { ...cap.rects, oneoff: toRect(thumb) } };
-}
-
-/**
  * T14 judge M2: what a flight crosses, for the coach bubble to keep clear of
  * during the beat, most important first: the hit card (scuttle, Jack steal),
  * every point card an Ace sweeps, where the card lands (`landing`, measured
@@ -714,7 +702,6 @@ export function ringTargets(cap: FlightCapture): FlightRingTarget[] {
       return ['landing'];
     case 'scuttle':
     case 'oneOff':
-    case 'counter':
       return ['scrap'];
     default:
       return ARRIVE_AT_SCRAP.has(cap.kind) ? ['scrap'] : [];
@@ -738,8 +725,8 @@ const SWEEP_GAP_MS = 50;
 const GLASSES_GAP_MS = 70;
 const FLIP_MS = 240;
 const FADE_OUT_MS = 200;
-/** How long a counter-window one-off takes (`oneOff` with no scrap): in, a short hold, then the fade. */
-export const COUNTER_ONEOFF_MS = ONEOFF_IN_MS + ONEOFF_HOLD_MS + FADE_OUT_MS;
+/** How long a one-off's card takes on the board: into the middle spot, a short hold, then to the scrap. */
+export const ONEOFF_FLIGHT_MS = ONEOFF_IN_MS + ONEOFF_HOLD_MS + SCRAP_MS;
 const LEG_STEPS = 10;
 const STAND_IN_PX = 4;
 
@@ -1063,13 +1050,12 @@ export function flightScript(
     case 'oneOff': {
       const zone = cap.rects.oneoff;
       if (!src || !zone || startCard === undefined) break;
-      // With no scrap on the page (a counter window) the zone may be the
-      // prompt's thumbnail (`intoPrompt`): the card shrinks to fit it.
+      // With no scrap on the page the card shrinks to fit the zone, then fades.
       const spot = scrapSpot ? centredIn(zone, ends.card.width, ends.card.height) : fitInto(zone, ends.card);
       const leaveAt = ONEOFF_IN_MS + ONEOFF_HOLD_MS;
       const away: FlightLeg = scrapSpot
         ? { to: scrapSpot, startMs: leaveAt, ms: SCRAP_MS, ease: easeInOut }
-        : // Board not under the overlay (a counter window): the card just settles, then fades.
+        : // No scrap on the page: the card just settles, then fades.
           { to: spot, startMs: leaveAt, ms: FADE_OUT_MS, ease: easeInOut, opacity: 0 };
       actors.push(
         makeActor('mover', src, [{ to: spot, startMs: 0, ms: ONEOFF_IN_MS, ease: easeLandFn, ...lean }, away], {
@@ -1113,9 +1099,6 @@ export function flightScript(
       holds.push({ target: 'landing', ms: F });
       break;
     }
-    case 'counter':
-      if (ends.scrap) arrives.push('scrap');
-      break;
     default:
       if (ARRIVE_AT_SCRAP.has(cap.kind) && ends.scrap) arrives.push('scrap');
   }
