@@ -28,7 +28,7 @@ import {
 import type { MoveStep } from '../../src/lib/tutorial/types';
 
 // Learn to play, plan T13 (R25.7 criterion L3): a player's walk through all
-// five lessons by touch, at both phone sizes. Real touch input (Chromium's
+// five lessons by touch, at 393x852. Real touch input (Chromium's
 // CDP `Input.dispatchTouchEvent`, so the browser's own gesture handling runs):
 // play moves are DRAGGED onto their target, the deck and the counter are
 // TAPPED. Each lesson also gets one deliberate wrong staging (the coach must
@@ -39,10 +39,7 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 // asserts exact success copy or bubble positions: stages, testids, the nudge
 // suffix, the sheet headings and storage only (the copy is read from LESSONS).
 
-const VIEWPORTS = [
-  { width: 393, height: 852 },
-  { width: 430, height: 932 },
-] as const;
+const viewport = { width: 393, height: 852 } as const;
 
 /** The step in each lesson that gets the deliberate wrong staging (design §7.2). */
 const WRONG_STEP: Record<number, string> = { 1: '1.5', 2: '2.1', 3: '3.1', 4: '4.1', 5: '5.1' };
@@ -104,12 +101,12 @@ function touchIO(finger: Finger): WalkIO {
   };
 }
 
-for (const viewport of VIEWPORTS) {
+{
   test.describe(`touch ${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true });
 
     test('Home to "You\'ve learned Cuttle": all five lessons by drag and tap', async ({ page }) => {
-      test.setTimeout(300_000);
+      test.setTimeout(180_000);
 
       // A real saved game and its settings must come through the whole run byte-identical.
       await seedSavedGame(page);

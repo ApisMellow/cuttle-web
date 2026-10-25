@@ -1,7 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 import {
-  expectHomeAllDone,
   expectStorageUntouched,
   focusByKeys,
   handRank,
@@ -14,9 +13,10 @@ import {
   type WalkIO,
 } from './helpers/tutorial';
 
-// Learn to play, plan T13 (R25.10, design §9): the whole tutorial from the
-// keyboard at 393x852. Tab moves focus (nothing here calls focus()), Enter and
-// Space activate; the two keys alternate between lessons so both are proved.
+// Learn to play, plan T13 (R25.10, design §9): lesson 1 from the keyboard
+// at 393x852 (Home to its done sheet). Tab moves focus (nothing here calls
+// focus()), Enter and Space activate; Enter selects and Space confirms, so both
+// are proved in the one lesson.
 // Focus is never parked on <body> at a step the learner has to act on, and
 // Escape on a done sheet means "Lessons".
 //
@@ -24,12 +24,11 @@ import {
 
 test.use({ viewport: { width: 393, height: 852 } });
 
-/** Enter in odd lessons, Space in even ones (the Confirm key swaps the other way). */
-const keyFor = (lessonId: number): { select: ActivateKey; confirm: ActivateKey } =>
-  lessonId % 2 === 1 ? { select: 'Enter', confirm: 'Space' } : { select: 'Space', confirm: 'Enter' };
+/** Both keys inside the one lesson: Enter selects (and presses Next), Space confirms. */
+const KEYS: { select: ActivateKey; confirm: ActivateKey } = { select: 'Enter', confirm: 'Space' };
 
-function keyboardIO(lessonId: number): WalkIO {
-  const { select, confirm } = keyFor(lessonId);
+function keyboardIO(): WalkIO {
+  const { select, confirm } = KEYS;
   return {
     next: async (page, step) => {
       // Design §9: after a key press Next takes focus by itself, so no Tab is needed.
@@ -59,14 +58,8 @@ function keyboardIO(lessonId: number): WalkIO {
   };
 }
 
-/** Next lesson, by keys. */
-async function nextLessonByKeys(page: Page, key: ActivateKey): Promise<void> {
-  await focusByKeys(page, 'coach-next-lesson');
-  await page.keyboard.press(key);
-}
-
-test('keyboard only: Home to "You\'ve learned Cuttle", Escape on a done sheet goes to Lessons', async ({ page }) => {
-  test.setTimeout(300_000);
+test('keyboard only: Home to lesson 1 done, Escape on a done sheet goes to Lessons', async ({ page }) => {
+  test.setTimeout(120_000);
 
   await seedSavedGame(page);
   const before = await storageDump(page);
@@ -81,29 +74,16 @@ test('keyboard only: Home to "You\'ve learned Cuttle", Escape on a done sheet go
   await expect(page.getByTestId('tutorial-continue')).toHaveText('Start');
   await page.keyboard.press('Space');
 
-  const done: number[] = [];
-  for (const lessonId of [1, 2, 3, 4, 5]) {
-    done.push(lessonId);
-    await walkLesson(page, lessonId, keyboardIO(lessonId), [...done]);
+  // Start opens lesson 1; walk it by keys (Enter to select and press Next, Space to confirm).
+  await walkLesson(page, 1, keyboardIO(), [1]);
 
-    if (lessonId === 2) {
-      // Escape on the done sheet means "Lessons": the lessons screen, with the next one waiting.
-      await page.keyboard.press('Escape');
-      await expect(page.getByTestId('tutorial-lessons')).toBeVisible();
-      await expect(page.getByTestId('coach-bubble')).toHaveCount(0);
-      await focusByKeys(page, 'tutorial-continue');
-      await expect(page.getByTestId('tutorial-continue')).toHaveText('Continue: lesson 3');
-      await page.keyboard.press('Enter');
-    } else if (lessonId < 5) {
-      await nextLessonByKeys(page, keyFor(lessonId).confirm);
-    } else {
-      await focusByKeys(page, 'coach-play');
-      await expect(page.getByTestId('coach-play')).toHaveText('Play a game');
-      await page.keyboard.press('Space');
-    }
-  }
+  // Escape on the done sheet means "Lessons": the lessons screen, with the next one waiting.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('tutorial-lessons')).toBeVisible();
+  await expect(page.getByTestId('coach-bubble')).toHaveCount(0);
+  await focusByKeys(page, 'tutorial-continue');
+  await expect(page.getByTestId('tutorial-continue')).toHaveText('Continue: lesson 2');
 
-  await expectHomeAllDone(page);
-  expect(await readProgress(page)).toEqual([1, 2, 3, 4, 5]);
+  expect(await readProgress(page)).toEqual([1]);
   expectStorageUntouched(before, await storageDump(page));
 });

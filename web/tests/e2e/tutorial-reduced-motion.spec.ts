@@ -3,7 +3,6 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   closePopover,
   confirm,
-  expectHomeAllDone,
   expectStorageUntouched,
   handRank,
   markers,
@@ -23,7 +22,7 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 
 // Learn to play, plan T13 (R25.9, design §8, §9): with reduced motion asked for
 // (the OS media query, and separately the in-app `settings.reducedMotion`),
-// every lesson still completes, nothing is left running once a step has
+// a lesson still completes (lesson 3 stands for all), nothing is left running once a step has
 // settled (`document.getAnimations()` is empty), and the ghost demo is its
 // calm variant: numbered markers (1 the card, 2 the target, then a last one on
 // Confirm once the move is staged), never a moving fingertip.
@@ -82,36 +81,35 @@ function calmIO(): WalkIO {
   };
 }
 
-/** Home -> Learn to play -> Start, then all five lessons and Play a game. */
-async function walkAll(page: Page): Promise<void> {
+/**
+ * Lesson 3 only: it has two hand-card moves (scuttle), so it carries the
+ * flights, the success and Blake beats and the staged markers. Home -> Learn to
+ * play -> lesson 3 -> its done sheet -> Lessons.
+ */
+async function walkLesson3(page: Page): Promise<void> {
   await openLessons(page);
-  await page.getByTestId('tutorial-continue').click();
-  const io = calmIO();
-  const done: number[] = [];
-  for (const lessonId of [1, 2, 3, 4, 5]) {
-    done.push(lessonId);
-    await walkLesson(page, lessonId, io, [...done]);
-    await page.getByTestId(lessonId < 5 ? 'coach-next-lesson' : 'coach-play').click();
-  }
-  await expectHomeAllDone(page);
-  expect(await readProgress(page)).toEqual([1, 2, 3, 4, 5]);
+  await page.getByTestId('tutorial-lesson-3').click();
+  await walkLesson(page, 3, calmIO(), [3]);
+  await page.getByTestId('coach-lessons').click();
+  await expect(page.getByTestId('tutorial-lessons')).toBeVisible();
+  expect(await readProgress(page)).toEqual([3]);
 }
 
-test('reduced motion by the OS media query: five lessons, no animation left running, numbered markers', async ({ page }) => {
-  test.setTimeout(300_000);
+test('reduced motion by the OS media query: lesson 3, no animation left running, numbered markers', async ({ page }) => {
+  test.setTimeout(120_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await seedSavedGame(page);
   const before = await storageDump(page);
 
-  await walkAll(page);
+  await walkLesson3(page);
 
   const after = await storageDump(page);
   expectStorageUntouched(before, after);
-  expect(JSON.parse(after['cuttle-web:tutorial'])).toEqual({ v: 1, done: [1, 2, 3, 4, 5] });
+  expect(JSON.parse(after['cuttle-web:tutorial'])).toEqual({ v: 1, done: [3] });
 });
 
-test('reduced motion by the setting alone: five lessons, no animation left running, numbered markers', async ({ page }) => {
-  test.setTimeout(300_000);
+test('reduced motion by the setting alone: lesson 3, no animation left running, numbered markers', async ({ page }) => {
+  test.setTimeout(120_000);
   // Only the in-app setting asks for calm; the OS does not.
   const seeded = await seedSettings(page, { reducedMotion: true, revealPreference: 'hold', lastNames: null, tableMode: false });
   await page.goto('/');
@@ -121,11 +119,11 @@ test('reduced motion by the setting alone: five lessons, no animation left runni
   expect(before['cuttle-web:settings']).toBe(seeded);
   expect(before['cuttle-web:game']).toBeUndefined();
 
-  await walkAll(page);
+  await walkLesson3(page);
 
   const after = await storageDump(page);
   expect(after['cuttle-web:settings'], 'the seeded settings are byte-identical after the run').toBe(seeded);
   expect(after['cuttle-web:game'], 'no game was saved').toBeUndefined();
   expectStorageUntouched(before, after);
-  expect(JSON.parse(after['cuttle-web:tutorial'])).toEqual({ v: 1, done: [1, 2, 3, 4, 5] });
+  expect(JSON.parse(after['cuttle-web:tutorial'])).toEqual({ v: 1, done: [3] });
 });

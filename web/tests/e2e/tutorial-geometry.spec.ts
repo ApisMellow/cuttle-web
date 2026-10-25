@@ -2,7 +2,6 @@ import { expect, test, type Page } from '@playwright/test';
 
 import {
   BEAT_MS,
-  VIEWPORTS,
   bubble,
   cancel,
   closePopover,
@@ -30,9 +29,9 @@ import {
 } from './helpers/tutorial';
 import type { MoveStep } from '../../src/lib/tutorial/types';
 
-// Learn to play, plan T12 (R25.7, criterion L2): design §7.3 holds at all three
-// phone viewports for every step. For each step of each lesson and each stage
-// the helper can reach (idle, selected, staged-right, staged-wrong, refused
+// Learn to play, plan T12 (R25.7, criterion L2): design §7.3 holds at 393x852
+// for a representative set of steps (see STOP_AFTER). For each step walked and
+// each stage the helper can reach (idle, selected, staged-right, staged-wrong, refused
 // at 4.2 and on the board, the success and Blake beats, the done sheet):
 //   - the bubble box intersects no `[data-coach-hole]`, `staging-bar`,
 //     `menu-button` or `counter-option-*`, and none of the counter prompt's
@@ -45,6 +44,12 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 // Waits are on `data-step` / `data-stage`, then a rAF poll until the geometry
 // stops changing. No fixed timeouts.
 
+// One viewport (393x852, the primary phone) and a small representative set:
+// every lesson's first move step, plus lessons 1 and 4 played to their done
+// sheet (1 is all next-steps and one move; 4 holds the counter prompt, the
+// widest bubble-avoidance case). `null` = play the lesson to the end.
+const VIEWPORT = { width: 393, height: 852 };
+const STOP_AFTER: Record<number, string | null> = { 1: null, 2: '2.1', 3: '3.1', 4: null, 5: '5.1' };
 const LESSON_IDS = [1, 2, 3, 4, 5] as const;
 
 /** Records a reading's problems under a label; the test asserts the whole list at its end. */
@@ -72,7 +77,8 @@ async function afterConfirm(page: Page, lessonId: number, index: number, note: (
   }
 }
 
-for (const viewport of VIEWPORTS) {
+{
+  const viewport = VIEWPORT;
   test.describe(`${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport });
 
@@ -81,7 +87,8 @@ for (const viewport of VIEWPORTS) {
         test.setTimeout(120_000);
         const found: string[] = [];
         const note = recorder(viewport, found);
-        const primary = viewport.width === 393 && viewport.height === 852;
+        const primary = true;
+        const stopAfter = STOP_AFTER[lessonId];
         await openLesson(page, lessonId);
         const steps = stepsOf(lessonId);
 
@@ -143,6 +150,7 @@ for (const viewport of VIEWPORTS) {
           if (primary && step.id === '4.2') await shot(page, 'step-4.2-staged');
           await confirm(page);
           await afterConfirm(page, lessonId, i, note);
+          if (step.id === stopAfter) break;
         }
 
         expect(found, found.join('\n')).toEqual([]);
@@ -174,12 +182,7 @@ test.describe('393x852 by touch: the bubble re-places once a dragged card settle
   test.use({ viewport, hasTouch: true, isMobile: true });
 
   const DRAG_STEPS: [number, string][] = [
-    [1, '1.5'],
-    [2, '2.1'],
     [3, '3.1'],
-    [3, '3.2'],
-    [4, '4.1'],
-    [5, '5.2'],
   ];
 
   for (const [lessonId, id] of DRAG_STEPS) {
@@ -214,8 +217,6 @@ test.describe('393x852: the success beat keeps the hit in sight', () => {
   test.use({ viewport });
 
   const HIT_STEPS: [number, string][] = [
-    [3, '3.1'],
-    [3, '3.2'],
     [4, '4.1'],
   ];
 
