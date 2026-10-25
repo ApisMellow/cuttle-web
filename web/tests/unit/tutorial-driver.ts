@@ -15,7 +15,7 @@ import { vi } from 'vitest';
 
 import type { Card, Envelope, Move } from '../../src/lib/bridge/schema';
 import { c } from '../../src/lib/tutorial/position';
-import type { TutorialTable } from '../../src/lib/tutorial/table.svelte';
+import { TutorialTable, type TutorialTableDeps } from '../../src/lib/tutorial/table.svelte';
 
 interface Oracle {
   /** Engine descriptions of the expected move(s). */
@@ -206,13 +206,14 @@ function children(value: object): [string, unknown][] {
 }
 
 /**
- * S6 (review N1): every path from the table to a card object that is one of
- * Blake's CURRENT hidden hand cards (`hidden`, from `view(1)`; pass [] once
- * glasses show his hand). The authored lesson data is excluded wholesale:
- * it names Blake's starting hand by design and is bundled text, not engine
- * output. A stored copy of his hand, or of his legal list, is found.
+ * S6 (review N1): every path from `root` (the table, or since T11 a motion
+ * hook's argument list) to a card object that is one of Blake's CURRENT
+ * hidden hand cards (`hidden`, from `view(1)`; pass [] once glasses show his
+ * hand). A table's authored lesson data is excluded wholesale: it names
+ * Blake's starting hand by design and is bundled text, not engine output. A
+ * stored copy of his hand, or of his legal list, is found.
  */
-export function hiddenCardPaths(table: TutorialTable, hidden: readonly Card[]): string[] {
+export function hiddenCardPaths(root: object, hidden: readonly Card[], label = 'table'): string[] {
   const found: string[] = [];
   const seen = new Set<object>();
   const exclude = (v: unknown): void => {
@@ -220,7 +221,7 @@ export function hiddenCardPaths(table: TutorialTable, hidden: readonly Card[]): 
     seen.add(v);
     for (const [, child] of children(v)) exclude(child);
   };
-  exclude(table.lesson);
+  if (root instanceof TutorialTable) exclude(root.lesson);
   const visit = (value: unknown, path: string, depth: number): void => {
     if (value === null || typeof value !== 'object' || depth > 14 || seen.has(value)) return;
     seen.add(value);
@@ -230,7 +231,7 @@ export function hiddenCardPaths(table: TutorialTable, hidden: readonly Card[]): 
     }
     for (const [key, child] of children(value)) visit(child, `${path}.${key}`, depth + 1);
   };
-  visit(table, 'table', 0);
+  visit(root, label, 0);
   return found;
 }
 
@@ -240,7 +241,7 @@ export function hiddenCardPaths(table: TutorialTable, hidden: readonly Card[]): 
  * every getter on the prototype chain (Svelte 5 compiles `$state` class
  * fields to private storage behind prototype accessors), recursively.
  */
-export function viewerOnePaths(root: object): string[] {
+export function viewerOnePaths(root: object, label = 'table'): string[] {
   const found: string[] = [];
   const seen = new Set<object>();
   const visit = (value: unknown, path: string, depth: number): void => {
@@ -265,6 +266,50 @@ export function viewerOnePaths(root: object): string[] {
       }
     }
   };
-  visit(root, 'table', 0);
+  visit(root, label, 0);
   return found;
+}
+
+/** The four motion hooks (T11), as `TutorialTableDeps` takes them. */
+export type MotionHooks = Pick<TutorialTableDeps, 'beforeApply' | 'afterApply' | 'beforeReply' | 'afterReply'>;
+
+export interface HookCall {
+  hook: keyof MotionHooks;
+  args: unknown[];
+}
+
+export interface HookAudit {
+  hooks: Required<MotionHooks>;
+  calls: HookCall[];
+  /** One line per leak: a path to a hidden card or a seat-1 object, prefixed with the hook. */
+  findings: string[];
+}
+
+/**
+ * S6 extended to the motion hooks (T11): records every hook call and walks
+ * its arguments AT THE MOMENT OF THE CALL with the same two walks as the
+ * table. `hiddenNow` returns Blake's hand as it is then ([] when glasses show
+ * it). Assertions inside a hook would be swallowed (the table wraps hooks so
+ * motion never breaks a lesson), so findings are collected, never thrown.
+ */
+export function auditHooks(hiddenNow: () => readonly Card[]): HookAudit {
+  const calls: HookCall[] = [];
+  const findings: string[] = [];
+  const record = (hook: keyof MotionHooks, args: unknown[]): void => {
+    calls.push({ hook, args });
+    const hidden = hiddenNow();
+    for (const p of hiddenCardPaths(args, hidden, hook)) findings.push(`hidden card at ${p}`);
+    for (const p of viewerOnePaths(args, hook)) findings.push(`seat-1 object at ${p}`);
+  };
+  return {
+    calls,
+    findings,
+    // Rest args: an extra argument smuggled into a hook call is walked too.
+    hooks: {
+      beforeApply: (...args: unknown[]) => record('beforeApply', args),
+      afterApply: (...args: unknown[]) => record('afterApply', args),
+      beforeReply: (...args: unknown[]) => record('beforeReply', args),
+      afterReply: (...args: unknown[]) => record('afterReply', args),
+    },
+  };
 }

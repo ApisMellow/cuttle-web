@@ -46,6 +46,7 @@ import type { TableSource } from '../../src/lib/stores/tableSource';
 import type { Lesson, LessonId, MoveStep } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
 import {
+  auditHooks,
   driveLesson,
   expectedIndex,
   hiddenCardPaths,
@@ -1009,11 +1010,153 @@ describe('motion hooks', () => {
   });
 });
 
+// T11: Blake's flight hooks. `beforeReply(view)` gets the table's seat-0 view
+// just before his move applies; `afterReply(entry)` gets the new LAST entry
+// of seat 0's history after it. Never his Move, his legal list or anything
+// from seat 1's view (design §8.4 privacy; issue #69's class).
+describe('Blake flight hooks (T11)', () => {
+  /** Blake's hand as hidden from Alice right now ([] while glasses show it). */
+  const hiddenNow = () => (view0().state.opponent.hand === null ? ok(bridge.view(1)).state.you.hand : []);
+
+  it('beforeReply runs before Blake\'s apply with the table\'s seat-0 view; afterReply after, with the new last seat-0 history entry', () => {
+    const log: string[] = [];
+    const ref: { t?: TutorialTable } = {};
+    const seen: { before?: unknown; shownBefore?: unknown; snapBefore?: string; entry?: unknown; lastAfter?: unknown } = {};
+    const beforeReply = vi.fn((view) => {
+      log.push('beforeReply');
+      seen.before = view;
+      seen.shownBefore = ref.t!.envelope!.state;
+      seen.snapBefore = snap();
+    });
+    const afterReply = vi.fn((entry) => {
+      log.push('afterReply');
+      seen.entry = entry;
+      seen.lastAfter = view0().history.at(-1);
+      expect(ref.t!.envelope).toEqual(view0());
+    });
+    const t = make(2, { engine: recordingEngine(log), beforeReply, afterReply });
+    ref.t = t;
+    void t.apply(expectedIndex(t)); // 2.1: Blake answers with his 6
+    expect(beforeReply).not.toHaveBeenCalled();
+    expect(afterReply).not.toHaveBeenCalled();
+    const snapAfterAlice = snap();
+
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+    log.length = 0;
+    vi.advanceTimersByTime(BLAKE_THINK_MS);
+    expect(beforeReply).toHaveBeenCalledTimes(1);
+    expect(afterReply).toHaveBeenCalledTimes(1);
+    const k = log.findIndex((l) => l.startsWith('apply:'));
+    expect(log).toEqual(['legalMoves', 'beforeReply', log[k], 'view:0', 'afterReply']);
+    // Before: the very view the table shows, seat 0's, while the engine is still pre-move.
+    expect(seen.before).toBe(seen.shownBefore);
+    expect((seen.before as { viewer: number }).viewer).toBe(0);
+    expect(seen.snapBefore).toBe(snapAfterAlice);
+    // After: the public log entry for his move, as seat 0 sees it.
+    expect(seen.entry).toEqual(seen.lastAfter);
+    expect(seen.entry).toBe(t.envelope!.history.at(-1));
+    const entry = seen.entry as Record<string, unknown>;
+    expect(entry.by).toBe(1);
+    expect(entry.kind).toBe(MoveKind.PlayPoint);
+    expect(entry.card).toEqual(c(6, 'D'));
+    expect('index' in entry).toBe(false); // mover-only, omitted for seat 0
+    expect('HandIndex' in entry).toBe(false); // never his Move
+  });
+
+  it('run once per Blake reply and never on a learner move; the learner hooks never run on Blake\'s', () => {
+    for (const id of ALL) {
+      const calls: string[] = [];
+      const t = make(id, {
+        beforeApply: () => calls.push('beforeApply'),
+        afterApply: () => calls.push('afterApply'),
+        beforeReply: () => calls.push('beforeReply'),
+        afterReply: () => calls.push('afterReply'),
+      });
+      driveLesson(t, { wrongFirst: 2, seed: 7 });
+      expect(t.phase, `lesson ${id}`).toBe('finished');
+      const moves = lessonOf(id).steps.filter((s) => s.kind === 'move').length;
+      const replies = lessonOf(id).steps.reduce((n, s) => n + (s.kind === 'move' ? s.blake.length : 0), 0);
+      expect(calls.filter((x) => x === 'beforeApply').length, `lesson ${id}`).toBe(moves);
+      expect(calls.filter((x) => x === 'afterApply').length, `lesson ${id}`).toBe(moves);
+      expect(calls.filter((x) => x === 'beforeReply').length, `lesson ${id}`).toBe(replies);
+      expect(calls.filter((x) => x === 'afterReply').length, `lesson ${id}`).toBe(replies);
+      // Pairs, in order: every before is followed by its own after.
+      for (let i = 0; i < calls.length; i += 2) {
+        expect(calls[i + 1], `lesson ${id} call ${i}`).toBe(calls[i].replace('before', 'after'));
+      }
+    }
+  });
+
+  it('Blake\'s hidden draw (2.2): the entry names no card, and no hook argument reaches the card he drew', () => {
+    const audit = auditHooks(hiddenNow);
+    const t = make(2, audit.hooks);
+    walkTo(t, '2.2');
+    const before = ok(bridge.view(1)).state.you.hand.length;
+    void t.apply(expectedIndex(t));
+    settleBeats(t);
+    const blakeHand = ok(bridge.view(1)).state.you.hand;
+    expect(blakeHand.length).toBe(before + 1);
+    const entry = audit.calls.filter((x) => x.hook === 'afterReply').at(-1)!.args[0] as Record<string, unknown>;
+    expect(entry.kind).toBe(MoveKind.Draw);
+    expect(entry.card).toBeNull();
+    expect(hiddenCardPaths([entry], blakeHand, 'entry')).toEqual([]);
+    expect(audit.findings).toEqual([]);
+  });
+
+  it('a throwing hook never breaks a lesson: every lesson still finishes, every move still applies', () => {
+    for (const id of ALL) {
+      const boom = vi.fn(() => {
+        throw new Error('motion failed');
+      });
+      const t = make(id, { beforeApply: boom, afterApply: boom, beforeReply: boom, afterReply: boom });
+      const seen: string[] = [];
+      expect(() =>
+        driveLesson(t, {
+          wrongFirst: 1,
+          observe: (tt, ev) => {
+            seen.push(ev);
+            expect(tt.phase).not.toBe('error');
+            if (ev === 'move' || ev === 'blake') expect(tt.envelope).toEqual(view0());
+          },
+        }),
+      ).not.toThrow();
+      expect(t.phase, `lesson ${id}`).toBe('finished');
+      expect(t.line.tone, `lesson ${id}`).not.toBe('error');
+      expect(boom).toHaveBeenCalled();
+    }
+  });
+
+  it('a throwing hook leaves the beat order as it is without hooks (P3)', () => {
+    const boom = () => {
+      throw new Error('motion failed');
+    };
+    const t = make(2, { beforeApply: boom, afterApply: boom, beforeReply: boom, afterReply: boom });
+    void t.apply(expectedIndex(t));
+    expect(t.phase).toBe('success');
+    expect(t.pending).toBe(true);
+    expect(t.envelope).toEqual(view0());
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+    expect(t.phase).toBe('blake');
+    expect(t.line.text).toBe(BLAKE_THINKING);
+    vi.advanceTimersByTime(BLAKE_THINK_MS);
+    expect(t.envelope).toEqual(view0());
+    expect(t.envelope!.history.at(-1)!.by).toBe(1);
+    expect(t.line.text).toBe('Blake played a 6. He has 10.');
+    vi.advanceTimersByTime(BLAKE_DONE_BEAT_MS);
+    expect(t.phase).toBe('step');
+    expect(t.step?.id).toBe('2.2');
+    expect(t.pending).toBe(false);
+  });
+});
+
 describe('S6 seat-0 view only', () => {
   for (const id of ALL) {
     for (const pick of PICKS[id]) {
       it(`lesson ${id}${PICKS[id].length > 1 ? ` (alternative ${pick})` : ''}`, () => {
-        const t = make(id);
+        // T11: every motion hook argument gets the same two walks, taken at
+        // the moment of the call (Blake's hand as hidden then).
+        const audit = auditHooks(() => (view0().state.opponent.hand === null ? ok(bridge.view(1)).state.you.hand : []));
+        const t = make(id, audit.hooks);
         let replies = 0;
         let glasses = false;
         driveLesson(t, {
@@ -1039,6 +1182,15 @@ describe('S6 seat-0 view only', () => {
         expect(hiddenCardPaths(t, id === 5 ? [] : ok(bridge.view(1)).state.you.hand)).toEqual([]);
         expect(replies).toBe(lessonOf(id).steps.reduce((n, s) => n + (s.kind === 'move' ? s.blake.length : 0), 0));
         expect(viewerOnePaths(t)).toEqual([]);
+        // The hook walk ran on every hook call, Blake's included.
+        expect(audit.calls.filter((x) => x.hook === 'afterReply').length).toBe(replies);
+        expect(audit.calls.filter((x) => x.hook === 'beforeReply').length).toBe(replies);
+        expect(audit.findings).toEqual([]);
+        for (const call of audit.calls.filter((x) => x.hook === 'afterReply')) {
+          const entry = call.args[0] as Record<string, unknown>;
+          expect(entry.by).toBe(1);
+          expect('index' in entry || 'HandIndex' in entry).toBe(false);
+        }
       });
     }
   }
@@ -1052,6 +1204,35 @@ describe('S6 seat-0 view only', () => {
     const planted = make(2) as unknown as Record<string, unknown>;
     planted.leak = { cards: hidden.map((x) => ({ Rank: x.Rank, Suit: x.Suit })) };
     expect(hiddenCardPaths(planted as unknown as TutorialTable, hidden)).toContain('table.leak.cards.0');
+  });
+
+  it('the hook walk finds Blake\'s Move, his legal list or a seat-1 view passed to a hook (the walk works)', () => {
+    const t = make(2);
+    walkTo(t, '2.2');
+    void t.apply(expectedIndex(t));
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+    // Blake to move (his draw): his own envelope, as a leaky hook would see it.
+    const blakeEnv = ok(bridge.legalMoves());
+    expect(blakeEnv.state.viewer).toBe(1);
+    const audit = auditHooks(() => blakeEnv.state.you.hand);
+    audit.hooks.beforeReply(blakeEnv.state);
+    audit.hooks.afterReply(blakeEnv as never);
+    audit.hooks.afterReply({ hand: blakeEnv.state.you.hand.map((x) => ({ ...x })) } as never);
+    expect(audit.findings.some((f) => f.startsWith('seat-1 object at beforeReply'))).toBe(true);
+    expect(audit.findings.some((f) => f.startsWith('hidden card at beforeReply'))).toBe(true);
+    expect(audit.findings.some((f) => f.startsWith('seat-1 object at afterReply'))).toBe(true);
+    expect(audit.findings.some((f) => f.startsWith('hidden card at afterReply.0.hand'))).toBe(true);
+    // An extra argument smuggled into any hook is walked too.
+    const smuggle = new Map<string, (...a: unknown[]) => void>([
+      ['afterApply', audit.hooks.afterApply as (...a: unknown[]) => void],
+      ['beforeApply', audit.hooks.beforeApply as (...a: unknown[]) => void],
+    ]);
+    for (const [name, hook] of smuggle) {
+      const before = audit.findings.length;
+      if (name === 'afterApply') hook(blakeEnv);
+      else hook(t.envelope!.legalMoves[0], t.envelope!.state, blakeEnv);
+      expect(audit.findings.slice(before).some((f) => f.startsWith(`seat-1 object at ${name}.`)), name).toBe(true);
+    }
   });
 
   it('the walk finds a seat-1 envelope planted on a field or behind a getter (the walk works)', () => {

@@ -16,6 +16,7 @@
 // (no engine, a broken lesson) never escapes `start()`: the lessons screen
 // shows the snag line instead.
 
+import type { AppliedMove, Move, PlayerView } from '../bridge/schema';
 import { settings } from '../stores/settings.svelte';
 import { LESSONS } from './lessons';
 import { motionOn } from './motion';
@@ -36,11 +37,25 @@ export interface LessonTable {
 }
 
 /**
- * The deps the store hands the table: the required fields of plan §5's
- * `TutorialTableDeps`. Its other fields are optional, so a factory taking
- * the full `TutorialTableDeps` fits `TableFactory` as is.
+ * The lesson's motion (T11): the four flight hooks `TutorialTable` runs. The
+ * coach overlay owns the flight layer and the board root, so it attaches
+ * itself here while it is mounted; the store forwards the table's hooks to
+ * it. Every argument is seat-0 data (see `TutorialTableDeps`).
  */
-export interface LessonTableDeps {
+export interface LessonMotion {
+  beforeApply(move: Move, view: PlayerView): void;
+  afterApply(): void;
+  beforeReply(view: PlayerView): void;
+  afterReply(entry: AppliedMove): void;
+}
+
+/**
+ * The deps the store hands the table: the required fields of plan §5's
+ * `TutorialTableDeps`, plus the motion hooks (T11). The hooks are optional
+ * there, so a factory taking the full `TutorialTableDeps` fits
+ * `TableFactory` as is.
+ */
+export interface LessonTableDeps extends Partial<LessonMotion> {
   learnerName: string;
   reducedMotion: () => boolean;
   /** Menu Home (design §4.3 exit 2). */
@@ -89,6 +104,8 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
   readonly #createTable: TableFactory<T>;
   readonly #learnerName: () => string;
   readonly #reducedMotion: () => boolean;
+  /** The mounted overlay's motion, and the table it was attached for. */
+  #motion: { table: T; sink: LessonMotion } | null = null;
 
   constructor(deps: TutorialStoreDeps<T>) {
     this.#storage = deps.storage;
@@ -130,11 +147,18 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
       // A replaced or disposed table's late call must not close a newer lesson.
       if (table !== null && this.table === table) this.exitHome();
     };
+    // The flight hooks go to whichever overlay is attached for THIS table; a
+    // replaced table's late call reaches nobody (design §8.4, T11).
+    const motion = (): LessonMotion | null => (table !== null && this.#motion?.table === table ? this.#motion.sink : null);
     try {
       table = this.#createTable(lesson, {
         learnerName: this.#learnerName(),
         reducedMotion: this.#reducedMotion,
         onHome,
+        beforeApply: (move, view) => motion()?.beforeApply(move, view),
+        afterApply: () => motion()?.afterApply(),
+        beforeReply: (view) => motion()?.beforeReply(view),
+        afterReply: (entry) => motion()?.afterReply(entry),
       });
     } catch {
       // Never an uncaught error from a tap: stay on the lessons screen and say so.
@@ -165,6 +189,19 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
     if (!isLessonId(id)) return;
     this.done = normalizeProgress([...this.done, id]);
     saveProgress(this.done, this.#storageNow());
+  }
+
+  /**
+   * The coach overlay attaches its motion for its table while it is mounted
+   * (T11). Returns the detach; a later attach replaces an earlier one, and a
+   * stale detach leaves a newer attach alone.
+   */
+  attachMotion(table: T, sink: LessonMotion): () => void {
+    const entry = { table, sink };
+    this.#motion = entry;
+    return () => {
+      if (this.#motion === entry) this.#motion = null;
+    };
   }
 
   /** Next lesson on the done sheet. Lesson 5 has none (its sheet offers Play a game). */
