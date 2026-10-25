@@ -10,13 +10,15 @@
 // and there is no "seen" flag. The only way in is Home's `learn-to-play`
 // control calling `open()`.
 //
-// The lesson table is built by an injected factory. `TutorialTable` (plan §5,
-// T5) lives in `table.svelte.ts`, which this file does not import; the
-// factory is typed against the slice of it the store uses. T9 wires the real
-// factory into the exported singleton.
+// The lesson table is built by an injected factory, typed against the slice
+// of `TutorialTable` the store uses, so tests can pass a fake. The exported
+// singleton builds the real `TutorialTable` (plan T9). A factory that throws
+// (no engine, a broken lesson) never escapes `start()`: the lessons screen
+// shows the snag line instead.
 
 import { settings } from '../stores/settings.svelte';
 import { LESSONS } from './lessons';
+import { motionOn } from './motion';
 import {
   defaultProgressStorage,
   isLessonId,
@@ -25,6 +27,7 @@ import {
   saveProgress,
   type ProgressStorage,
 } from './progress';
+import { TutorialTable } from './table.svelte';
 import type { Lesson, LessonId } from './types';
 
 /** The part of `TutorialTable` (plan §5) the store relies on. */
@@ -52,7 +55,7 @@ export interface TutorialStoreDeps<T extends LessonTable> {
   createTable: TableFactory<T>;
   /** Defaults to B1 over `settings.lastNames`, read once per lesson start. */
   learnerName?: () => string;
-  /** Defaults to `settings.reducedMotion` or the OS media query. */
+  /** Defaults to `settings.reducedMotion` or the OS media query (`motionOn`, the one reduced-motion rule). */
   reducedMotion?: () => boolean;
 }
 
@@ -69,14 +72,6 @@ export function learnerName(lastNames: readonly [string, string] | null): string
   return name === '' || name === DEFAULT_PLAYER_1 ? 'You' : name;
 }
 
-function osReducesMotion(): boolean {
-  try {
-    return typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
-  } catch {
-    return false;
-  }
-}
-
 export class TutorialStore<T extends LessonTable = LessonTable> {
   /** True from `open()` (or `start()`) until `exitHome()`. */
   active = $state(false);
@@ -85,6 +80,8 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
   /** Finished lessons, sorted and unique. */
   done = $state.raw<readonly LessonId[]>([]);
   table = $state.raw<T | null>(null);
+  /** The last `start()` could not build its lesson: the lessons screen shows the snag line. */
+  snag = $state(false);
 
   readonly nextUnfinished: LessonId | null = $derived(([1, 2, 3, 4, 5] as const).find((id) => !this.done.includes(id)) ?? null);
 
@@ -97,7 +94,7 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
     this.#storage = deps.storage;
     this.#createTable = deps.createTable;
     this.#learnerName = deps.learnerName ?? (() => learnerName(settings.lastNames));
-    this.#reducedMotion = deps.reducedMotion ?? (() => settings.reducedMotion || osReducesMotion());
+    this.#reducedMotion = deps.reducedMotion ?? (() => !motionOn(settings.reducedMotion));
   }
 
   #storageNow(): ProgressStorage | undefined {
@@ -118,6 +115,7 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
     this.#dropTable();
     this.active = true;
     this.lessonId = null;
+    this.snag = false;
   }
 
   start(id: LessonId): void {
@@ -126,16 +124,23 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
     this.#dropTable();
     this.lessonId = null;
     this.active = true;
+    this.snag = false;
     let table: T | null = null;
     const onHome = (): void => {
       // A replaced or disposed table's late call must not close a newer lesson.
       if (table !== null && this.table === table) this.exitHome();
     };
-    table = this.#createTable(lesson, {
-      learnerName: this.#learnerName(),
-      reducedMotion: this.#reducedMotion,
-      onHome,
-    });
+    try {
+      table = this.#createTable(lesson, {
+        learnerName: this.#learnerName(),
+        reducedMotion: this.#reducedMotion,
+        onHome,
+      });
+    } catch {
+      // Never an uncaught error from a tap: stay on the lessons screen and say so.
+      this.snag = true;
+      return;
+    }
     this.table = table;
     this.lessonId = id;
   }
@@ -144,6 +149,7 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
   leave(): void {
     this.#dropTable();
     this.lessonId = null;
+    this.snag = false;
   }
 
   /** Menu Home, Back on the lessons screen, or Play a game: out to Home. */
@@ -151,6 +157,7 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
     this.#dropTable();
     this.lessonId = null;
     this.active = false;
+    this.snag = false;
   }
 
   /** Called when a lesson's done sheet appears (design §4.4, §10). */
@@ -174,13 +181,7 @@ export class TutorialStore<T extends LessonTable = LessonTable> {
   }
 }
 
-/**
- * The app's tutorial. Its table factory throws until T9 wires the real
- * `TutorialTable`; until then Home can open the lessons screen but no lesson
- * can start.
- */
-export const tutorial = new TutorialStore({
-  createTable: (): LessonTable => {
-    throw new Error('Learn to play: no lesson table is wired yet (plan T9).');
-  },
+/** The app's tutorial: each lesson runs on a real `TutorialTable` over the production bridge (plan P9). */
+export const tutorial = new TutorialStore<TutorialTable>({
+  createTable: (lesson, deps) => new TutorialTable(lesson, deps),
 });

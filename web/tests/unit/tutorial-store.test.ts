@@ -439,7 +439,7 @@ describe('the tutorial singleton', () => {
     tutorial.exitHome();
   });
 
-  it('opens and closes with no table factory wired yet', () => {
+  it('opens and closes', () => {
     tutorial.open();
     expect(tutorial.active).toBe(true);
     expect(tutorial.lessonId).toBeNull();
@@ -447,11 +447,36 @@ describe('the tutorial singleton', () => {
     expect(tutorial.active).toBe(false);
   });
 
-  it('refuses to start a lesson until T9 wires the factory, and stays on the lessons screen', () => {
+  // T9 wired the real TutorialTable. With no engine booted here its restore
+  // throws, which is exactly the snag path: start() never throws, and the
+  // lessons screen stays up with the snag line.
+  it('a lesson whose table cannot be built stays on the lessons screen with the snag line', () => {
     tutorial.open();
-    expect(() => tutorial.start(1)).toThrow();
+    expect(() => tutorial.start(1)).not.toThrow();
+    expect(tutorial.snag).toBe(true);
     expect(tutorial.lessonId).toBeNull();
     expect(tutorial.table).toBeNull();
     expect(tutorial.active).toBe(true);
+    tutorial.leave();
+    expect(tutorial.snag).toBe(false);
+  });
+
+  it('a factory that throws sets the snag; the next start clears it', () => {
+    let fail = true;
+    const store = new TutorialStore({
+      storage: memoryStorage(),
+      createTable: (lesson: Lesson) => {
+        if (fail) throw new Error('no engine');
+        return { lesson, dispose: () => {} };
+      },
+    });
+    store.open();
+    expect(() => store.start(2)).not.toThrow();
+    expect(store.snag).toBe(true);
+    expect(store.lessonId).toBeNull();
+    fail = false;
+    store.start(2);
+    expect(store.snag).toBe(false);
+    expect(store.lessonId).toBe(2);
   });
 });

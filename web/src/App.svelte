@@ -16,7 +16,9 @@
   //      `GameStore.newGame()` can set `error` and return before ever
   //      flipping `screen` away from 'home' (game.svelte.ts `newGame()`:
   //      the `!result.ok` branch returns early).
-  //   4. `game.screen === 'home'` -> HomeScreen.
+  //   4. `game.screen === 'home'` -> Learn to play when the tutorial is
+  //      open (it is reached only from Home, so the game stays at 'home'
+  //      underneath), else the online flow or HomeScreen.
   //   5. `game.curtain.kind === 'result'` -> ResultScreen (game.svelte.ts
   //      keeps `envelope` populated at 'result': it is a resting,
   //      non-withheld curtain state, SPEC §5.7).
@@ -24,10 +26,12 @@
   //      round's work — this round ships a skeleton, per the brief).
   import { onMount, untrack } from 'svelte';
 
+  import CoachOverlay from './lib/components/CoachOverlay.svelte';
   import GameScreen from './lib/components/GameScreen.svelte';
   import HomeScreen from './lib/components/HomeScreen.svelte';
   import OnlineFlow from './lib/components/OnlineFlow.svelte';
   import ResultScreen from './lib/components/ResultScreen.svelte';
+  import TutorialLessons from './lib/components/TutorialLessons.svelte';
   import { ensureEngine } from './lib/bridge/wasm';
   import { configureOnlineActions, getOnlineActions, onlineAvailable } from './lib/online/provider';
   import {
@@ -45,6 +49,9 @@
   import { session } from './lib/stores/session.svelte';
   import { settings } from './lib/stores/settings.svelte';
   import { ensureThemeLoaded, loadThemeCatalog } from './lib/theme';
+  import { SNAG_LINE } from './lib/tutorial/lessons';
+  import type { TutorialTable } from './lib/tutorial/table.svelte';
+  import { tutorial } from './lib/tutorial/tutorial.svelte';
   import { SNAPSHOT_KEY, decodeSnapshot } from './lib/stores/snapshot';
   import './lib/styles/tokens.css';
   import './lib/styles/online.css';
@@ -75,12 +82,13 @@
 
   // Two-phone play: `#/join/CODE` opens the join screen with the code filled
   // in. Read on load and on `hashchange`, then cleared so a reload doesn't
-  // reopen it. A link is ignored (but still cleared) while a game is showing
-  // or when online play isn't available in this build.
+  // reopen it. A link is ignored (but still cleared) while a game is showing,
+  // while Learn to play is open (a lesson or the lessons screen), or when
+  // online play isn't available in this build.
   function readJoinLink(): void {
     const hash = location.hash;
     if (!hash.startsWith('#/join/')) return;
-    if (onlineAvailable() && game.screen === 'home' && !onlineGame.attached) online.applyHash(hash);
+    if (onlineAvailable() && game.screen === 'home' && !tutorial.active && !onlineGame.attached) online.applyHash(hash);
     history.replaceState(null, '', location.pathname + location.search);
   }
 
@@ -115,6 +123,7 @@
     | 'boot-failed'
     | 'error'
     | 'home'
+    | 'tutorial'
     | 'online'
     | 'online-game'
     | 'online-result'
@@ -136,13 +145,15 @@
         : game.error !== null
           ? 'error'
           : game.screen === 'home'
-            ? onlineTable
-              ? onlineGame.curtain.kind === 'result'
-                ? 'online-result'
-                : 'online-game'
-              : online.view === 'none'
-                ? 'home'
-                : 'online'
+            ? tutorial.active
+              ? 'tutorial'
+              : onlineTable
+                ? onlineGame.curtain.kind === 'result'
+                  ? 'online-result'
+                  : 'online-game'
+                : online.view === 'none'
+                  ? 'home'
+                  : 'online'
             : game.curtain.kind === 'result'
               ? 'result'
               : 'game',
@@ -154,8 +165,24 @@
   // must not be reloaded away, so those count as in-game; the create and join
   // forms are as safe as Home. An online game, result included, counts as
   // in-game too: a reload there would drop the socket mid-rematch.
+  // Learn to play: the lesson's table, held for the life of its `{#key}`
+  // block. Leave, Lessons and the done sheet's Escape null `tutorial.table`
+  // while GameScreen is still handling that same event (its window keydown
+  // reads `source`), and a GameScreen's `source` must never change under it.
+  // The held table is disposed by then, so it can apply nothing.
+  let heldLessonTable: TutorialTable | null = null;
+  const lessonTable = $derived.by(() => {
+    const table = tutorial.table;
+    if (table !== null) heldLessonTable = table;
+    return heldLessonTable;
+  });
+
+  // Learn to play (design §6.4): the lessons screen is as safe as Home; a
+  // lesson counts as in-game, so a waiting update never reloads one mid-way.
   $effect(() => {
-    if (screen === 'online') {
+    if (screen === 'tutorial') {
+      reportScreen(tutorial.lessonId === null ? 'home' : 'game');
+    } else if (screen === 'online') {
       reportScreen(online.view === 'waiting' || online.view === 'connected' ? 'game' : 'home');
     } else if (screen === 'online-game' || screen === 'online-result') {
       reportScreen('game');
@@ -349,6 +376,25 @@
         </div>
       {/if}
     </div>
+  {:else if screen === 'tutorial'}
+    {#if tutorial.lessonId === null || tutorial.table === null}
+      {#if tutorial.snag}
+        <!-- A lesson that could not start: say so, stay here (never an
+             uncaught error from the tap). -->
+        <p class="tutorial-snag" role="alert">{SNAG_LINE}</p>
+      {/if}
+      <TutorialLessons />
+    {:else}
+      <!-- Every lesson gets a fresh GameScreen (staging, drag and menu state)
+           and a fresh coach, even though every position starts at seq 0. The
+           overlay is GameScreen's sibling, never inside it. -->
+      {#key tutorial.lessonId}
+        {#if lessonTable}
+          <GameScreen source={lessonTable} />
+          <CoachOverlay table={lessonTable} />
+        {/if}
+      {/key}
+    {/if}
   {:else if screen === 'home'}
     <HomeScreen />
   {:else if screen === 'online'}
@@ -404,6 +450,17 @@
 
   .status-screen--error {
     color: var(--cu-pearl);
+  }
+
+  .tutorial-snag {
+    margin: 0;
+    padding: calc(var(--cu-space-3) + var(--cu-safe-top)) var(--cu-gutter-sheet) var(--cu-space-3);
+    border-bottom: 1px solid var(--cu-ink-line);
+    background: var(--cu-ink-raised);
+    color: var(--cu-pearl);
+    font-family: var(--cu-font-ui);
+    font-size: var(--cu-text-sm);
+    text-align: center;
   }
 
   .status-screen__code {
