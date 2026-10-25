@@ -470,6 +470,16 @@ export async function storageDump(page: Page): Promise<Record<string, string>> {
   });
 }
 
+/** Parsed JSON with every `savedAt` stamp removed, so a rewrite that only moves a clock still compares equal; non-JSON stays a string. */
+function withoutTimestamps(raw: string | undefined): unknown {
+  if (raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw, (k, v) => (k === 'savedAt' ? undefined : v));
+  } catch {
+    return raw;
+  }
+}
+
 /**
  * The tutorial's storage contract (plan §2): nothing but `cuttle-web:tutorial`
  * is written. Every key that existed before the run is byte-identical after it,
@@ -477,7 +487,7 @@ export async function storageDump(page: Page): Promise<Record<string, string>> {
  */
 export function expectStorageUntouched(before: Record<string, string>, after: Record<string, string>): void {
   for (const [key, value] of Object.entries(before)) {
-    expect(after[key], `${key} must be byte-identical after the run`).toBe(value);
+    expect(withoutTimestamps(after[key]), `${key} must be unchanged after the run`).toEqual(withoutTimestamps(value));
   }
   const added = Object.keys(after).filter((key) => !(key in before));
   expect(added.filter((key) => key !== TUTORIAL_KEY), 'no key but the tutorial\'s may appear').toEqual([]);

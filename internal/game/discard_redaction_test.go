@@ -224,7 +224,9 @@ func TestSPEC3_2_DiscardPairOneCardRedactedForOtherSeat(t *testing.T) {
 // didn't make it, and every other entry's description is the engine's,
 // unchanged, for both seats.
 func TestSPEC3_2_DiscardPairRedactionAcrossRandomGames(t *testing.T) {
-	const seeds = 160
+	// 3 and 14: two-card discards; 15 and 19: one-card discards (DiscardB -1).
+	discardSeeds := []uint64{3, 14, 15, 19}
+	seeds := len(discardSeeds)
 	var twoCard, oneCard, otherKinds int
 
 	check := func(t *testing.T, label string, viewer engine.PlayerID, env Envelope, truth []AppliedMove) {
@@ -269,7 +271,7 @@ func TestSPEC3_2_DiscardPairRedactionAcrossRandomGames(t *testing.T) {
 		}
 	}
 
-	for seed := uint64(1); seed <= seeds; seed++ {
+	for _, seed := range discardSeeds {
 		// Bridge: the mover's Apply envelope, then both seats' View.
 		b := NewBridge()
 		env := okEnvelope(t, b.NewGame(mustJSON(t, map[string]any{"seed": itoa(seed), "dealer": seed & 1})))

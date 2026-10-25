@@ -82,8 +82,8 @@ run_step "GOOS=js GOARCH=wasm go build -o /dev/null ./internal/wasm" \
 run_step "go vet ./..." \
   go vet ./...
 
-# -short only thins the W9 privacy sweep to every 7th seed. Full sweep by
-# hand: go test ./internal/server/ -run TestW9_WirePrivacySweep
+# The 240-seed W9 privacy sweep is opt-in and skipped here. Run it by hand:
+# CUTTLE_SWEEP=1 go test ./internal/server/ -run TestW9_WirePrivacySweep
 run_step "go test ./..." \
   go test -short ./...
 

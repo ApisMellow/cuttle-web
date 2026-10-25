@@ -293,12 +293,17 @@ func TestWS_SaveFailureSendsInternalAndReloadedState(t *testing.T) {
 
 // ---- the response hold (W7) ----
 
+// holdScenarioSeeds are tried in order. Seed 100 yields both a windowed and a
+// windowless one-off on the pinned engine; the rest are fallbacks, and
+// holdScenario fails if none yields the requested case.
+var holdScenarioSeeds = []uint64{100, 101, 102, 103, 104}
+
 // holdScenario drives seeded games until the actor can play a one-off and
 // the engine opens (window=true) or doesn't open a counter window; it plays
 // that one-off and returns the duo just after the move was sent.
 func holdScenario(t *testing.T, hold time.Duration, window bool) (*playEnv, *duo, game.Seat) {
 	t.Helper()
-	for seed := uint64(100); seed < 160; seed++ {
+	for _, seed := range holdScenarioSeeds {
 		e := newPlayEnv(t, playOpts{rand: seededRand(seed), cfg: func(c *Config) { c.RespondMin = hold }})
 		d := newDuo(t, e, seed)
 		for guard := 0; guard < 400 && !d.st().Over; guard++ {

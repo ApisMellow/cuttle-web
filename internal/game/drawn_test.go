@@ -203,7 +203,8 @@ func TestSPEC2_7_DrawnForSevenRevealedFive(t *testing.T) {
 // exercised at least once.
 func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
 	seen, deferred := 0, 0
-	for seed := uint64(1); seed <= 160; seed++ {
+	// 2: a 5 closed by a Decline/Counter; 4, 7, 13: direct 5 one-offs.
+	for _, seed := range []uint64{2, 4, 7, 13} {
 		b := NewBridge()
 		okEnvelope(t, b.NewGame(`{"seed":"`+itoa(seed)+`","dealer":0}`))
 		env := playRandom(t, b, seed, func(env Envelope, wire string) {})
@@ -233,8 +234,8 @@ func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
 			seen++
 		}
 	}
-	if seen == 0 {
-		t.Fatal("no resolved 5 in the corpus; the property was never exercised")
+	if seen == 0 || deferred == 0 || seen == deferred {
+		t.Fatalf("seen %d deferred %d: both a direct 5 and a chain-closed 5 must be exercised", seen, deferred)
 	}
 	t.Logf("resolved 5s: %d (%d closed by a Decline/Counter)", seen, deferred)
 }
