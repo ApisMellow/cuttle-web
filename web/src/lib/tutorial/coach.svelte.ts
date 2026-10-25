@@ -782,11 +782,15 @@ export class CoachController {
     }
     // T12b. With a card selected, every target the page lights for it is a
     // legal place to drop it: the bubble keeps clear of them all, not only of
-    // the spotlit one.
+    // the spotlit one, when there is room. They are soft, not hard: at 393x660
+    // in 3.1 the lit Points row fills the only gap between the holes, and as a
+    // hard box it left no clear spot, so the dock gave up at the top and
+    // covered the spotlit point cards. A hole always outranks a lit target.
+    const lit: Box[] = [];
     if (stage === 'selected') {
       for (const el of this.#root.querySelectorAll('[data-state="highlighted"]')) {
         const holder = el.closest('[data-testid]');
-        if (holder && this.#root.contains(holder) && LIT_TARGET.test(holder.getAttribute('data-testid') ?? '')) avoid.push(boxOf(holder));
+        if (holder && this.#root.contains(holder) && LIT_TARGET.test(holder.getAttribute('data-testid') ?? '')) lit.push(boxOf(holder));
       }
     }
     // T12b. During the success beat Alice's glasses can turn Blake's hand
@@ -812,6 +816,8 @@ export class CoachController {
         if (el) soft.push(boxOf(el));
       }
     }
+    // Last, so they are the first to go when the board has no room for all.
+    soft.push(...lit);
 
     const board = this.#el('board');
     const scoreBar = this.#el('score-bar') ?? this.#el('menu-button');
