@@ -1,22 +1,19 @@
 name: CI
 
-# Runs the full mechanical gate (scripts/ci.sh, SPEC §7.6) on every pull
-# request into main or a feat/** integration branch, and on every push to
-# those branches, so a PR shows pass/fail before it merges.
+# Runs the full nine-row mechanical gate (FULL=1 scripts/ci.sh, SPEC §7.6)
+# once per pull request into main or a feat/** integration branch. Local runs
+# of scripts/ci.sh are the quick check; there is no push trigger.
 on:
   pull_request:
-    branches: [main, 'feat/**']
-  push:
     branches: [main, 'feat/**']
 
 permissions:
   contents: read
 
-# One run per ref. A new push to a PR cancels the stale run; runs on main
-# are never cancelled so every main commit gets a result.
+# One run per ref. A new push to a PR cancels the stale run.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   gate:
@@ -40,16 +37,31 @@ jobs:
         run: npm ci
         working-directory: web
 
-      # playwright.config.ts has a single chromium project.
+      # playwright.config.ts has a single chromium project. The browser
+      # download is cached per Playwright version; system deps are not
+      # cached, so a hit still installs them.
+      - name: Cache Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
       - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
         working-directory: web
 
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: web
+
       - name: Run the gate
-        run: ./scripts/ci.sh
+        run: FULL=1 ./scripts/ci.sh
 
       # The config uses the list reporter; traces and screenshots from
-      # failed or retried tests land in web/test-results.
+      # failed tests land in web/test-results.
       - name: Upload Playwright results
         if: failure()
         uses: actions/upload-artifact@v7
