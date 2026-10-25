@@ -9,6 +9,7 @@
   import type { Snippet } from 'svelte';
 
   import type { PlayerView } from '../bridge/schema';
+  import { SuitOrder } from '../theme';
 
   interface ScoreBarProps {
     scoreboard: PlayerView['scoreboard'];
@@ -53,6 +54,7 @@
     {/if}
     <span class="score-bar__meter" aria-hidden="true"><span style={`--fill: ${fill(scoreboard.opponent)}`}></span></span>
   </div>
+  <span class="score-bar__suits"><SuitOrder /></span>
   <div class="score-bar__menu">
     {@render menu?.()}
   </div>
@@ -148,6 +150,18 @@
 
   .score-bar__side[data-side='opponent'] .score-bar__meter > span {
     transform-origin: right center;
+  }
+
+  /* #106: out of flow, so the suit strip never narrows the sides (which made
+     them wrap and the bar taller) and adds no height. Centred at the top. */
+  .score-bar__suits {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    height: 14px;
+    overflow: hidden;
+    transform: translateX(-50%);
+    pointer-events: none;
   }
 
   .score-bar__menu {

@@ -53,6 +53,9 @@ export { clearImageFailures };
  */
 export { cardSpokenName } from './names';
 
+/** Issue #106: the suit-ranking reference strip (icons only; a component, not a glyph helper). */
+export { default as SuitOrder } from './SuitOrder.svelte';
+
 /** SPEC §5.6 rule 4: zero external assets, always available, the fallback. */
 export const vectorTheme: CardTheme = {
   id: 'vector',
