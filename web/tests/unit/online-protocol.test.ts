@@ -17,7 +17,7 @@ import { CODE, TOKEN, stateFrame } from './online-fakes';
 describe('client frames', () => {
   it('encodes hello with the protocol version, code, token and lastSeq', () => {
     const raw = encodeClientFrame({ t: 'hello', v: PROTOCOL_VERSION, code: CODE, token: TOKEN, lastSeq: 7 });
-    expect(JSON.parse(raw)).toEqual({ t: 'hello', v: 1, code: CODE, token: TOKEN, lastSeq: 7 });
+    expect(JSON.parse(raw)).toEqual({ t: 'hello', v: 2, code: CODE, token: TOKEN, lastSeq: 7 });
   });
 
   it('encodes move, rematch and ping exactly', () => {

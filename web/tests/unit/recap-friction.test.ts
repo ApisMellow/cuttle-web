@@ -113,10 +113,13 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     expect(lastMoveLine(real, 1, NAMES)).toBe('Alice played 5♥ as a one-off and drew 2 cards.');
   });
 
-  it('a 5 whose counter was countered back: the closing counter, then who drew', () => {
+  // Issue #93: the chains below are legacy (v0.2.x save) shapes. A Counter
+  // now always reads as the rewind; a legacy closing Counter still says who
+  // drew for a 5 it resolved.
+  it('a 5 whose counter was countered back (legacy chain): the closing counter, then who drew', () => {
     const h = [five(0, 1), counter(1, 2, 0), counter(0, 3, 2, 2)];
-    expect(lastMoveLine(h, 1, NAMES)).toBe('Alice countered with 2♥ to stop your 2♣. Alice drew 2 cards.');
-    expect(lastMoveLine(h, 0, NAMES)).toBe("You countered with 2♥ to stop Blake's 2♣. You drew 2 cards.");
+    expect(lastMoveLine(h, 1, NAMES)).toBe('Alice countered with 2♥ and undid your last turn. Alice drew 2 cards.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe("You countered with 2♥ and undid Blake's last turn. You drew 2 cards.");
   });
 
   it('R14 (strict, review B1): a two-counter chain closed by a Decline reads like one closed by the counter, naming the 5\'s player', () => {
@@ -125,22 +128,23 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     for (const viewer of [0, 1] as const) {
       expect(lastMoveLine(byDecline, viewer, NAMES)).toBe(lastMoveLine(byCounter, viewer, NAMES));
     }
-    expect(lastMoveLine(byDecline, 1, NAMES)).toBe('Alice countered with 2♥ to stop your 2♣. Alice drew 2 cards.');
-    expect(lastMoveLine(byDecline, 0, NAMES)).toBe("You countered with 2♥ to stop Blake's 2♣. You drew 2 cards.");
+    expect(lastMoveLine(byDecline, 1, NAMES)).toBe('Alice countered with 2♥ and undid your last turn. Alice drew 2 cards.');
+    expect(lastMoveLine(byDecline, 0, NAMES)).toBe("You countered with 2♥ and undid Blake's last turn. You drew 2 cards.");
   });
 
   it('(review B1) a four-counter chain names the 5\'s player as the drawer, whoever closed it', () => {
     const blakeFive = five(1, 1);
     const h = [blakeFive, counter(0, 2, 0), counter(1, 3, 1), counter(0, 4, 2), counter(1, 5, 3, 2)];
-    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠ to stop your 2♥. Blake drew 2 cards.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠ and undid your last turn. Blake drew 2 cards.');
     const closedByDecline = [blakeFive, counter(0, 2, 0), counter(1, 3, 1), counter(0, 4, 2), counter(1, 5, 3), decline(0, 6, 2)];
-    expect(lastMoveLine(closedByDecline, 0, NAMES)).toBe('Blake countered with 2♠ to stop your 2♥. Blake drew 2 cards.');
-    expect(lastMoveLine(closedByDecline, 1, NAMES)).toBe("You countered with 2♠ to stop Alice's 2♥. You drew 2 cards.");
+    expect(lastMoveLine(closedByDecline, 0, NAMES)).toBe('Blake countered with 2♠ and undid your last turn. Blake drew 2 cards.');
+    expect(lastMoveLine(closedByDecline, 1, NAMES)).toBe("You countered with 2♠ and undid Alice's last turn. You drew 2 cards.");
   });
 
-  it('a cancelled 5 draws nothing and says nothing about a draw (playtest 2026-09-29: it says the 5 was stopped)', () => {
+  it('issue #93: a countered 5 draws nothing, and the Counter reads as the rewind', () => {
     const h = [five(0, 1), counter(1, 2, 0)];
-    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♣: your 5♥ was stopped.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♣ and undid your last turn.');
+    expect(lastMoveLine(h, 1, NAMES)).toBe("You countered with 2♣ and undid Alice's last turn.");
     expect(lastMoveLine(h, 0, NAMES)).not.toMatch(/drew/);
   });
 
@@ -157,8 +161,8 @@ describe('lastMoveLine: the board centre line (SPEC §4.6 idle line, amended 202
     ];
     expect(lines[0].match(CARD_TOKEN)).toEqual(['5♥']);
     expect(lines[1].match(CARD_TOKEN)).toEqual(['5♥']);
-    // The closing 2 and the 2 it stopped, both played face up; never a drawn card.
-    expect(lines[2].match(CARD_TOKEN)).toEqual(['2♥', '2♣']);
+    // The closing 2, played face up; never a drawn card.
+    expect(lines[2].match(CARD_TOKEN)).toEqual(['2♥']);
   });
 });
 

@@ -655,3 +655,68 @@ describe('OnlineGameStore: room events and the seat record', () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe('OnlineGameStore: issue #93 (protocol v2, SPEC §2.12.9, §4.3)', () => {
+  const PENDING_WIN = 5 as const;
+
+  it('Alice\'s win on hold: "Blake is deciding…", and the "Not So Fast!" beat once, cleared by dismiss', () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    expect(store.notSoFast).toBeNull();
+    // Alice's winning move put the game in phase 5 with Blake deciding.
+    const held = envelope({ state: view({ phase: PENDING_WIN, active: 1 }), history: draws(3) });
+    server.send(stateFrame(held));
+    expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.online?.waitingText).toBe('Blake is deciding…');
+    expect(store.notSoFast).toEqual({ to: 0 });
+    store.dismissNotSoFast();
+    expect(store.notSoFast).toBeNull();
+    // A resent identical state (a reconnect) raises no second beat.
+    server.send(stateFrame(held));
+    expect(store.notSoFast).toBeNull();
+    expect(store.online?.waitingText).toBe('Blake is deciding…');
+  });
+
+  it('a first state already at a pending win (a resume) shows the waiting line but no beat', () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(envelope({ state: view({ phase: PENDING_WIN, active: 1 }), history: draws(3) })));
+    expect(store.online?.waitingText).toBe('Blake is deciding…');
+    expect(store.notSoFast).toBeNull();
+  });
+
+  it('the beat goes with the next state that leaves phase 5', () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(aliceToAct()));
+    server.send(stateFrame(envelope({ state: view({ phase: PENDING_WIN, active: 1 }), history: draws(3) })));
+    expect(store.notSoFast).toEqual({ to: 0 });
+    server.send(stateFrame(envelope({ state: view({ phase: Phase.GameOver, winner: 0 }), history: draws(4) })));
+    expect(store.notSoFast).toBeNull();
+    expect(store.curtain).toEqual({ kind: 'result' });
+  });
+
+  it('the decider\'s own phase-5 board has no waiting line, no beat and no curtain', () => {
+    const { store, server } = setup({ seat: 1 });
+    server.open(1);
+    server.send(stateFrame(envelope({ state: view({ viewer: 1, active: 0 }), history: draws(2) })));
+    const deciding = envelope({
+      state: view({ viewer: 1, active: 1, phase: PENDING_WIN, counterable: true }),
+      history: draws(3),
+      legalMoves: [mv({ Kind: Kind.Counter, HandIndex: 0, Card: TWO }), mv({ Kind: Kind.Decline })],
+      descriptions: ['counter with 2♣', 'Let it happen'],
+    });
+    server.send(stateFrame(deciding));
+    expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.online?.waitingText).toBeNull();
+    expect(store.notSoFast).toBeNull();
+  });
+
+  it('an owed discard on the other seat still reads "Blake is choosing what to discard."', () => {
+    const { store, server } = setup();
+    server.open();
+    server.send(stateFrame(envelope({ state: view({ phase: Phase.AwaitingDiscard, active: 1, owedDiscards: { you: 0, opponent: 2 } }), history: draws(3) })));
+    expect(store.online?.waitingText).toBe('Blake is choosing what to discard.');
+  });
+});

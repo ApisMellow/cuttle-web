@@ -83,7 +83,7 @@ describe('handshake', () => {
     expect(s.url).not.toContain('#');
 
     s.serverOpen();
-    expect(s.frames()).toEqual([{ t: 'hello', v: 1, code: CODE, token: TOKEN, lastSeq: 4 }]);
+    expect(s.frames()).toEqual([{ t: 'hello', v: 2, code: CODE, token: TOKEN, lastSeq: 4 }]);
     // Still connecting until the server welcomes us.
     expect(h.conn.status).toEqual({ kind: 'connecting' });
     s.serverSend(welcomeFrame(0));
@@ -653,7 +653,7 @@ describe('resume after a drop', () => {
     expect(h.sockets.sockets).toHaveLength(2);
     expect(s2.url).toBe(WS_URL);
     s2.serverOpen();
-    expect(s2.frames()[0]).toEqual({ t: 'hello', v: 1, code: CODE, token: TOKEN, lastSeq: 5 });
+    expect(s2.frames()[0]).toEqual({ t: 'hello', v: 2, code: CODE, token: TOKEN, lastSeq: 5 });
     s2.serverSend(welcomeFrame(0));
     expect(h.conn.status).toEqual({ kind: 'open' });
     s2.serverSend(stateFrame({ seq: 6 }));

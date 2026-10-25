@@ -78,7 +78,7 @@ export class DragGesture {
   }
 }
 
-/** The testid the board renders for a target key (SPEC §5.1). */
+/** The testid the board renders for a target key (SPEC §5.1); `counter-link` and `let-it-happen` are their own testids. */
 export function testIdForKey(key: TargetKey): string {
   if (key === 'deck') return 'deck-pile';
   if (key === 'scrap') return 'scrap-pile';
@@ -91,6 +91,9 @@ export function testIdForKey(key: TargetKey): string {
 export function targetKeyFromTestId(testId: string): TargetKey | null {
   if (testId === 'deck-pile') return 'deck';
   if (testId === 'scrap-pile') return 'scrap';
+  // Issue #93: the counter marker and the pending win's button share their key's spelling.
+  if (testId === 'counter-link') return 'counter-link';
+  if (testId === 'let-it-happen') return 'let-it-happen';
   let m = /^hand-card-(\d+)$/.exec(testId);
   if (m) return `hand:${Number(m[1])}`;
   m = /^seven-card-(\d+)$/.exec(testId);

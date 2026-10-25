@@ -44,10 +44,10 @@ describe('StagingStore.dimmedHand with handSize (R9.3)', () => {
     expect(store.dimmedHand).toEqual(new Set([0, 1, 2]));
   });
 
-  it('dims a card whose only move is a Counter (not stageable on the board)', () => {
-    const legalMoves = [move({ Kind: 6 }), move({ Kind: 5, HandIndex: 1 })];
-    const store = storeFor({ legalMoves, descriptions: ['decline', 'counter'], handSize: 2 });
-    expect(store.dimmedHand).toEqual(new Set([0, 1]));
+  it('issue #93: at a pending win only the 2 with a Counter stays lit; every other card dims', () => {
+    const legalMoves = [move({ Kind: 5, HandIndex: 1 }), move({ Kind: 6 })];
+    const store = storeFor({ legalMoves, descriptions: ['counter', 'Let it happen'], handSize: 2 });
+    expect(store.dimmedHand).toEqual(new Set([0]));
   });
 
   it('dims nothing when every card has a stageable move', () => {

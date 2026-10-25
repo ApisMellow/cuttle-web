@@ -94,21 +94,28 @@ export function fiveEffect(n: number, full = false): string {
 /** engine/apply.go (v0.2.0) `HandLimit = 8`: the most cards a hand may hold. */
 export const HAND_LIMIT = 8;
 
-/** What a 2 does when played out of turn, as a lower-case clause. */
+/**
+ * What a 2 does as a counter, as a lower-case clause. Issue #93: still the
+ * v0.2 wording, because gallery/site/cards.json carries a copy of this line
+ * (gallery-data.test.ts) and the gallery is outside the web app; both move
+ * together.
+ */
 export const COUNTER_EFFECT = 'stop a one-off as it’s played';
 
 /**
- * The Rules sheet's line on when a one-off takes effect (ruling 2026-09-29,
- * SPEC §4.3): at once, unless the opponent answers with a 2.
+ * The Rules sheet's line on when a one-off takes effect (issue #93, SPEC
+ * §4.3, ApisMellow 2026-10-24): at once, and the opponent may undo the
+ * whole turn with a 2 as the first play of theirs.
  */
-export const ONE_OFF_TIMING = 'A one-off happens right away and ends your turn. Your opponent can answer with a 2 if they have one.';
+export const ONE_OFF_TIMING =
+  'A one-off happens right away and ends your turn. Your opponent can start their turn with a 2 to undo your whole turn.';
 
 /** The Rules sheet's extra detail after each one-off's effect. */
 const ONE_OFF_DETAIL: Readonly<Partial<Record<Rank, string>>> = {
   1: 'Both sides of the table.',
-  2: 'Or play it any time to stop a one-off as it’s played, even on their turn (a 2 can stop a 2).',
+  2: 'Or play it first on your turn to undo their last turn, if it held a one-off (a 2 can undo a 2).',
   3: 'Any one card, into your hand.',
-  4: 'They pick which, or discard all they have if fewer.',
+  4: 'They pick which at the start of their turn, or discard all they have if fewer.',
   5: 'Never past 8 in your hand.',
   6: 'Both sides of the table.',
   7: 'Play it right away; any other goes back on top. If none can be played, scrap one instead.',

@@ -63,7 +63,7 @@ import {
 } from './curtain.svelte';
 import { session as defaultSession, type SessionStore } from './session.svelte';
 import { SNAPSHOT_KEY, SNAPSHOT_VERSION, type Snapshot, decodeSnapshot, encodeSnapshot } from './snapshot';
-import type { TableSource } from './tableSource';
+import type { NotSoFast, TableSource } from './tableSource';
 
 /**
  * The bridge calls this store needs, shaped so a test can inject a fake
@@ -169,6 +169,15 @@ export class GameStore implements TableSource {
   notice = $state<string | null>(null);
   /** SPEC §4.7: the 5's draw reveal on the drawer's own board, or null. Memory only, never saved. */
   drawReveal = $state<DrawReveal | null>(null);
+  /**
+   * Issue #93 (SPEC §4.3): the "Not So Fast!" beat over the would-be
+   * winner's own board, right after the move that made a pending win, or
+   * null. Memory only, never saved: the save already holds the handoff to
+   * the decider, which `dismissNotSoFast()` raises.
+   */
+  notSoFast = $state<NotSoFast | null>(null);
+  /** The saved handoff the beat gives way to; null when no beat is up. */
+  #afterNotSoFast: WithheldCurtain | null = null;
 
   /** W10 (TableSource): a local apply finishes in the calling task, so no move is ever in flight. */
   readonly pending = false;
@@ -283,6 +292,13 @@ export class GameStore implements TableSource {
     const postView: CurtainView = { active: result.state.active, phase: result.state.phase };
     const curtainState = nextCurtainState(preView, mv, postView);
     const beforePass = this.#drawRevealBeforePass(result, curtainState);
+    // Issue #93 (SPEC §4.3): the mover reached their threshold on a
+    // counterable turn and the opponent holds a 2. The mover still holds the
+    // phone; the beat shows over their own board before the pass.
+    const notSoFast =
+      beforePass === null && curtainState.kind === 'handoff' && result.state.phase === Phase.PendingWin && result.state.viewer === mv.by
+        ? curtainState
+        : null;
 
     // 'result' needs no viewer switch either — post.active is meaningless at
     // game over (§4.1), so the current holder simply keeps their own
@@ -322,6 +338,16 @@ export class GameStore implements TableSource {
       this.drawReveal = beforePass.reveal;
       return;
     }
+    if (notSoFast !== null) {
+      // As for the draw reveal above: the save holds the handoff already.
+      this.#afterNotSoFast = notSoFast;
+      this.history = result.history;
+      this.envelope = result;
+      this.viewer = result.state.viewer;
+      this.curtain = { kind: 'none' };
+      this.notSoFast = { to: mv.by };
+      return;
+    }
     this.history = nextHistory;
     // Carry-over 4: this is the ONLY line in apply() that can populate
     // `envelope` with the mover's own view, and only when no handoff follows.
@@ -343,6 +369,24 @@ export class GameStore implements TableSource {
     const after = this.#afterDrawReveal;
     this.#afterDrawReveal = null;
     this.drawReveal = null;
+    if (after === null) return;
+    this.envelope = null;
+    this.viewer = null;
+    this.history = this.history.map(withoutIndex);
+    this.curtain = after;
+  }
+
+  /**
+   * Issue #93 (SPEC §4.3): ends the "Not So Fast!" beat (a tap, or 3 s) and
+   * raises the handoff to the decider that the save already holds, dropping
+   * the mover's envelope, viewer and mover-only `index` keys. Writes nothing.
+   * A no-op when no beat is up.
+   */
+  dismissNotSoFast(): void {
+    if (this.notSoFast === null) return;
+    const after = this.#afterNotSoFast;
+    this.#afterNotSoFast = null;
+    this.notSoFast = null;
     if (after === null) return;
     this.envelope = null;
     this.viewer = null;
@@ -397,12 +441,17 @@ export class GameStore implements TableSource {
     if (this.drawReveal !== null) {
       throw new Error(`GameStore.${call}() is not allowed while the draw reveal is up; dismiss it first (SPEC §4.7)`);
     }
+    if (this.notSoFast !== null) {
+      throw new Error(`GameStore.${call}() is not allowed while "Not So Fast!" is up; dismiss it first (SPEC §4.3)`);
+    }
   }
 
   #clearDrawReveal(seen: Record<PlayerId, number>): void {
     this.drawReveal = null;
     this.#afterDrawReveal = null;
     this.#drawSeen = seen;
+    this.notSoFast = null;
+    this.#afterNotSoFast = null;
   }
 
   /**
@@ -496,10 +545,10 @@ export class GameStore implements TableSource {
   }
 
   /**
-   * SPEC §5.7 restore. R4.4: a snapshot whose `v` is outside {1, 2} (or that
+   * SPEC §5.7 restore. R4.4: a snapshot whose `v` is outside {1, 2, 3} (or that
    * is otherwise malformed) is discarded without a crash, straight to the
    * home screen with a brief notice — `engine.restore()` is never even
-   * called in that case. A v1 save is migrated to v2 by `decodeSnapshot`
+   * called in that case. A v1 or v2 save is migrated to v3 by `decodeSnapshot`
    * (ruling 2026-09-28) and the bridge migrates its engine state. Carry-over 3: a valid snapshot's `dealer`/`names`
    * are pushed back into the session store. Carry-over 7: the persisted
    * `curtain` is re-raised before any view is exposed.

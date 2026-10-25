@@ -89,6 +89,15 @@ export interface OnlineTableInfo {
   leaveGame(): void;
 }
 
+/**
+ * Issue #93 (SPEC §4.3, "Not So Fast!"): the beat on the would-be winner's
+ * screen when their win waits on the opponent's decision (phase 5). `to` is
+ * the would-be winner, whose own board is on show. Memory only, never saved.
+ */
+export interface NotSoFast {
+  readonly to: PlayerId;
+}
+
 /** W13b: an online game stuck at `game`/`seq` (SPEC §2.10). Public room data and a code only. */
 export interface OnlineStuck {
   readonly code: 'ILLEGAL_MOVE' | 'NO_LEGAL_MOVES';
@@ -128,6 +137,17 @@ export interface TableSource {
   readonly drawReveal: DrawReveal | null;
   /** True while an apply is in flight (sent, result not yet in). The local store is never pending. */
   readonly pending: boolean;
+  /**
+   * Issue #93 (SPEC §4.3): the "Not So Fast!" beat, or null. Pass-and-play:
+   * set right after the move that made a pending win, over the mover's own
+   * board (no legal moves), with the handoff to the decider already saved;
+   * `dismissNotSoFast()` (a tap or 3 s) raises it. Online: set when a state
+   * puts this seat's win on hold; dismissing just clears it (the board stays
+   * up with "NAME is deciding…"). Absent means never.
+   */
+  readonly notSoFast?: NotSoFast | null;
+  /** Ends the "Not So Fast!" beat. A no-op when none is up. */
+  dismissNotSoFast?(): void;
 
   // Tutorial T2 (docs/tutorial-design.md §6.3): three optional fields for the
   // tutorial's source. GameStore leaves all three absent. OnlineGameStore

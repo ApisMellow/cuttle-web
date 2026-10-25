@@ -183,7 +183,7 @@ describe('W12 App: online routing', () => {
 
     lastSocket().serverOpen();
     const hello = sent('hello');
-    expect(hello).toEqual([{ t: 'hello', v: 1, code: CODE, token: TOKEN, lastSeq: 0 }]);
+    expect(hello).toEqual([{ t: 'hello', v: 2, code: CODE, token: TOKEN, lastSeq: 0 }]);
     expect(lastSocket().url).not.toContain(TOKEN);
     await server({ t: 'welcome', seat: 0, names: ['Alice', null], status: 'waiting' });
     expect(q('waiting-screen')).not.toBeNull();

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  boardAffordances,
   boardTargetKey,
   deriveDiscardPicker,
   flattenAffordances,
   groupAffordances,
   isAmbiguousSlot,
+  letItHappenIndex,
   slotKey,
   stagingAffordances,
 } from '../../src/lib/affordances';
@@ -441,6 +443,28 @@ describe('deriveDiscardPicker', () => {
     expect(deriveDiscardPicker(PHASE_NORMAL, [])).toBeNull();
   });
 
+  it('issue #93: an owed discard also offers Counters; the picker models only the pairs, by their engine indices', () => {
+    const moves = [
+      move({ Kind: 8, DiscardA: 0, DiscardB: 1 }),
+      move({ Kind: 8, DiscardA: 0, DiscardB: 2 }),
+      move({ Kind: 8, DiscardA: 1, DiscardB: 2 }),
+      move({ Kind: 5, HandIndex: 1, Card: { Rank: 2, Suit: 0 } }),
+    ];
+    expect(deriveDiscardPicker(PHASE_AWAITING_DISCARD, moves)).toEqual({
+      mode: 'select',
+      candidates: [
+        { moveIndex: 0, discardA: 0, discardB: 1 },
+        { moveIndex: 1, discardA: 0, discardB: 2 },
+        { moveIndex: 2, discardA: 1, discardB: 2 },
+      ],
+    });
+  });
+
+  it('issue #93: a one-card owed discard with a Counter still pre-selects its one pair, at its own index', () => {
+    const moves = [move({ Kind: 8, DiscardA: 0, DiscardB: -1 }), move({ Kind: 5, HandIndex: 0, Card: { Rank: 2, Suit: 3 } })];
+    expect(deriveDiscardPicker(PHASE_AWAITING_DISCARD, moves)).toEqual({ mode: 'preselected', moveIndex: 0, discardA: 0, discardB: -1 });
+  });
+
   it('R15.2 (orchestrator cycle 1, point 4 — pinned assumption): a 2-card hand also pre-selects, because it too has exactly one legal unordered pair', () => {
     // ASSUMPTION: `deriveDiscardPicker` pre-selects on `legalMoves.length
     // === 1`, not on "the hand has exactly 1 card." A 2-card hand's own
@@ -454,6 +478,69 @@ describe('deriveDiscardPicker', () => {
 });
 
 // ---------------------------------------------------------------------------
+// boardAffordances / letItHappenIndex — issue #93 (SPEC §4.3, §6.2 totality)
+// ---------------------------------------------------------------------------
+
+describe('issue #93: board affordances in phases 0, 3 and 5', () => {
+  const TWO_CLUBS = { Rank: 2, Suit: 0 } as const;
+  const TWO_SPADES = { Rank: 2, Suit: 3 } as const;
+  // Phase 0 after a counterable turn: the normal moves, then one Counter per unfrozen 2, last.
+  const PHASE0: Move[] = [
+    move({ Kind: 0 }),
+    move({ Kind: 1, HandIndex: 0, Card: TWO_CLUBS }),
+    move({ Kind: 1, HandIndex: 1, Card: TWO_SPADES }),
+    move({ Kind: 5, HandIndex: 0, Card: TWO_CLUBS }),
+    move({ Kind: 5, HandIndex: 1, Card: TWO_SPADES }),
+  ];
+  // An owed discard: the pairs, then the Counters.
+  const PHASE3: Move[] = [
+    move({ Kind: 8, DiscardA: 0, DiscardB: 1 }),
+    move({ Kind: 8, DiscardA: 0, DiscardB: 2 }),
+    move({ Kind: 8, DiscardA: 1, DiscardB: 2 }),
+    move({ Kind: 5, HandIndex: 2, Card: TWO_SPADES }),
+  ];
+  // A pending win: the Counters, then "Let it happen".
+  const PHASE5: Move[] = [move({ Kind: 5, HandIndex: 3, Card: TWO_CLUBS }), move({ Kind: 6 })];
+
+  it('every legal move lands in exactly one board affordance (totality) in phases 0, 3 and 5', () => {
+    for (const [phase, moves] of [
+      [0, PHASE0],
+      [3, PHASE3],
+      [5, PHASE5],
+    ] as [Phase, Move[]][]) {
+      const map = boardAffordances(moves, phase);
+      expect(flattenAffordances(map), `phase ${phase}`).toEqual(moves.map((_, i) => i));
+    }
+  });
+
+  it('a Counter is its own slot per 2, and every one of them targets counter-link', () => {
+    const map = boardAffordances(PHASE0, 0);
+    expect(map['counter:0']).toEqual([3]);
+    expect(map['counter:1']).toEqual([4]);
+    expect(PHASE0.filter((m) => m.Kind === 5).map(boardTargetKey)).toEqual(['counter-link', 'counter-link']);
+  });
+
+  it('phase 5: "Let it happen" is one standalone affordance targeting let-it-happen', () => {
+    const map = boardAffordances(PHASE5, 5);
+    expect(map).toEqual({ 'counter:3': [0], decline: [1] });
+    expect(boardTargetKey(PHASE5[1])).toBe('let-it-happen');
+    expect(letItHappenIndex(5, PHASE5)).toBe(1);
+  });
+
+  it('a legacy counter window (phase 1) keeps Counter and Decline off the board: they are the CounterPrompt\'s', () => {
+    const legacy: Move[] = [move({ Kind: 6 }), move({ Kind: 5, HandIndex: 0, Card: TWO_CLUBS })];
+    expect(boardAffordances(legacy, 1)).toEqual({});
+    expect(letItHappenIndex(1, legacy)).toBeNull();
+  });
+
+  it('letItHappenIndex is null outside phase 5 and when no Decline is offered', () => {
+    expect(letItHappenIndex(0, PHASE0)).toBeNull();
+    expect(letItHappenIndex(3, PHASE3)).toBeNull();
+    expect(letItHappenIndex(5, [PHASE5[0]])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // boardTargetKey — P2 W11 addition (mapping a move to its board target key)
 // ---------------------------------------------------------------------------
 
@@ -462,11 +549,14 @@ describe('boardTargetKey', () => {
     expect(boardTargetKey(move({ Kind: 0 }))).toBe('deck');
   });
 
-  it('Pass, Decline, Counter, and DiscardPair have no board location', () => {
+  it('Pass and DiscardPair have no board location', () => {
     expect(boardTargetKey(move({ Kind: 9 }))).toBeNull();
-    expect(boardTargetKey(move({ Kind: 6 }))).toBeNull();
-    expect(boardTargetKey(move({ Kind: 5, HandIndex: 2 }))).toBeNull();
     expect(boardTargetKey(move({ Kind: 8, DiscardA: 0, DiscardB: 1 }))).toBeNull();
+  });
+
+  it('issue #93: a Counter targets the last-turn marker, a Decline the "Let it happen" button', () => {
+    expect(boardTargetKey(move({ Kind: 5, HandIndex: 2, Card: { Rank: 2, Suit: 0 } }))).toBe('counter-link');
+    expect(boardTargetKey(move({ Kind: 6 }))).toBe('let-it-happen');
   });
 
   it('PlayPoint targets the points zone', () => {
@@ -687,12 +777,12 @@ function walkToJackpot(seed: number, maxPlies: number): JackpotResult | null {
 
 describe('R15.2 (engine half): 4-vs-empty-hand auto-resume against the real WASM engine', () => {
   it(
-    'pinned replay (seed 2, ply 23) reaches the position; a bounded search is the loud-failing fallback if the pin ever drifts',
+    'pinned replay (seed 2, ply 17) reaches the position; a bounded search is the loud-failing fallback if the pin ever drifts',
     async () => {
       await createWasmEngine(); // boots the WASM bridge; we then call engine.ts directly for full Move typing
 
       const PINNED_SEED = 2;
-      const PINNED_PLY = 23;
+      const PINNED_PLY = 17; // re-pinned for engine v0.3.0 (issue #93)
 
       let result = walkToJackpot(PINNED_SEED, PINNED_PLY + 1);
 

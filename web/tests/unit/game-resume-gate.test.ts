@@ -32,7 +32,7 @@ const COUNTER_MOVE = { ...DECLINE_MOVE, Kind: Kind.Counter, Card: TWO, HandIndex
 
 function snapshot(overrides: Partial<Snapshot>): Snapshot {
   return {
-    v: 2,
+    v: 3,
     savedAt: '2026-09-29T00:00:00.000Z',
     engineState: '"opaque-blob"',
     history: [],

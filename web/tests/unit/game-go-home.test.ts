@@ -70,7 +70,7 @@ async function homeAndResume(store: GameStore, storage: Storage): Promise<void> 
 }
 
 describe('Home -> Resume round-trips the save at every curtain kind (real engine)', () => {
-  it('opening curtain, board, turn handoff, response handoff and a real counter window all come back identically and play on', async () => {
+  it('opening curtain, board, turn handoff and a board with a counter available all come back identically and play on', async () => {
     await createWasmEngine();
     const storage = fakeStorage();
     const store = new GameStore({ storage, session: new SessionStore() });
@@ -104,19 +104,22 @@ describe('Home -> Resume round-trips the save at every curtain kind (real engine
     await roundTripAndAdvanceTo('none');
     expect(store.viewer).toBe(1 as PlayerId);
 
-    // Blake: 5 as a one-off. Alice holds 2♥: a real counter window.
+    // Blake: 5 as a one-off. Issue #93: it happens at once (his draw shows
+    // before the pass) and the phone goes to Alice with a turn handoff.
     await store.apply(moveIndex(Kind.OneOff, 5));
-    await roundTripAndAdvanceTo('ack');
-    expect(store.curtain).toEqual({ kind: 'ack', to: 0 });
+    store.dismissDrawReveal();
+    expect(store.curtain).toEqual({ kind: 'handoff', to: 0, reason: 'turn' });
+    await roundTripAndAdvanceTo('none');
+    // Alice holds 2♥: her restored board offers the Counter.
     expect(store.envelope!.legalMoves.some((m) => m.Kind === Kind.Counter)).toBe(true);
 
-    // The restored window still plays: Alice lets it resolve.
-    await store.apply(moveIndex(Kind.Decline));
-    for (let i = 0; i < 6 && store.curtain.kind !== 'none'; i++) await store.advanceCurtain();
+    // The restored board still plays: Alice counters, with no curtain.
+    await store.apply(moveIndex(Kind.Counter));
     expect(store.curtain.kind).toBe('none');
+    expect(store.viewer).toBe(0 as PlayerId);
     await homeAndResume(store, storage);
 
-    expect([...visited].sort()).toEqual(['ack', 'handoff', 'none', 'reveal']);
+    expect([...visited].sort()).toEqual(['handoff', 'none', 'reveal']);
   }, 20_000);
 });
 

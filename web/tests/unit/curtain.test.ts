@@ -27,6 +27,7 @@ const AwaitingCounter: Phase = 1;
 const SevenChoosing: Phase = 2;
 const AwaitingDiscard: Phase = 3;
 const GameOver: Phase = 4;
+const PendingWin: Phase = 5;
 
 const Draw: MoveKind = 0;
 const PlayPoint: MoveKind = 1;
@@ -40,7 +41,7 @@ const DiscardPair: MoveKind = 8;
 const Pass: MoveKind = 9;
 
 const ALL_KINDS: MoveKind[] = [Draw, PlayPoint, PlayPermanent, Scuttle, OneOff, Counter, Decline, SevenPick, DiscardPair, Pass];
-const ALL_PHASES: Phase[] = [Normal, AwaitingCounter, SevenChoosing, AwaitingDiscard, GameOver];
+const ALL_PHASES: Phase[] = [Normal, AwaitingCounter, SevenChoosing, AwaitingDiscard, GameOver, PendingWin];
 const ALL_RANKS: Rank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 
 const A: PlayerId = 0;
@@ -132,7 +133,7 @@ const ROWS: Row[] = [
   { name: 'Normal/PlayPermanent Jack → Normal, O: turn curtain', prePhase: Normal, mv: move(PlayPermanent, { rank: 11 }), postPhase: Normal, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
   { name: 'Normal/PlayPermanent Jack wins → GameOver: result', prePhase: Normal, mv: move(PlayPermanent, { rank: 11 }), postPhase: GameOver, postActive: A, expected: [result] },
   { name: 'Normal/Scuttle → Normal, O: turn curtain', prePhase: Normal, mv: move(Scuttle, { rank: 9 }), postPhase: Normal, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
-  { name: 'Normal/OneOff, O has a 2 → AwaitingCounter, O: counter curtain → counter prompt', prePhase: Normal, mv: move(OneOff, { rank: 9 }), postPhase: AwaitingCounter, postActive: O, expected: [handoff(O, 'counter'), reveal(O), ack(O)] },
+  { name: 'legacy Normal/OneOff, O has a 2 → AwaitingCounter, O: counter curtain → counter prompt', prePhase: Normal, mv: move(OneOff, { rank: 9 }), postPhase: AwaitingCounter, postActive: O, expected: [handoff(O, 'counter'), reveal(O), ack(O)] },
   { name: 'Normal/OneOff rank 4, no 2 → AwaitingDiscard, O: discard curtain → discard picker, no ack', prePhase: Normal, mv: move(OneOff, { rank: 4 }), postPhase: AwaitingDiscard, postActive: O, expected: [handoff(O, 'discard'), reveal(O), none] },
   { name: 'Normal/OneOff rank 4, no 2, O hand empty → Normal, O: turn curtain → live', prePhase: Normal, mv: move(OneOff, { rank: 4 }), postPhase: Normal, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
   { name: 'Normal/OneOff rank 7, no 2 → SevenChoosing, A keeps the phone: no curtain, straight to the seven panel', prePhase: Normal, mv: move(OneOff, { rank: 7 }), postPhase: SevenChoosing, postActive: A, expected: [none] },
@@ -141,7 +142,21 @@ const ROWS: Row[] = [
   { name: 'Normal/Pass reaching 3 → GameOver (stalemate): result', prePhase: Normal, mv: move(Pass), postPhase: GameOver, postActive: O, expected: [result] },
   { name: 'Normal/Pass otherwise → Normal, O: turn curtain', prePhase: Normal, mv: move(Pass), postPhase: Normal, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
 
-  // --- From PhaseAwaitingCounter (1): A is the player offered the counter ---
+  // --- Issue #93 (SPEC §4.3, engine v0.3.0): new play ---
+  { name: '#93 Normal/OneOff, O holds a 2 → Normal, O: the same turn curtain as with no 2', prePhase: Normal, mv: move(OneOff, { rank: 9 }), postPhase: Normal, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
+  { name: '#93 Normal/OneOff rank 4, O holds a 2 → owed discard (AwaitingDiscard), O: discard curtain', prePhase: Normal, mv: move(OneOff, { rank: 4 }), postPhase: AwaitingDiscard, postActive: O, expected: [handoff(O, 'discard'), reveal(O), none] },
+  { name: '#93 Normal/OneOff wins on a counterable turn, O holds a 2 → PendingWin, O decides: turn curtain', prePhase: Normal, mv: move(OneOff, { rank: 6 }), postPhase: PendingWin, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
+  { name: '#93 Normal/PlayPoint after a counter wins, O holds a 2 → PendingWin, O: turn curtain', prePhase: Normal, mv: move(PlayPoint, { rank: 10 }), postPhase: PendingWin, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
+  { name: '#93 Normal/Counter → Normal, the counterer stays active: no curtain', prePhase: Normal, mv: move(Counter, { rank: 2 }), postPhase: Normal, postActive: A, expected: [none] },
+  { name: '#93 Normal/Counter-back restores a winning position, O holds a 2 → PendingWin, O: turn curtain', prePhase: Normal, mv: move(Counter, { rank: 2 }), postPhase: PendingWin, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
+  { name: '#93 Normal/Counter-back restores a win, O holds no 2 → GameOver: result', prePhase: Normal, mv: move(Counter, { rank: 2 }), postPhase: GameOver, postActive: O, expected: [result] },
+  { name: '#93 AwaitingDiscard (owed)/Counter → Normal, the debtor counters and stays active: no curtain', prePhase: AwaitingDiscard, mv: move(Counter, { rank: 2 }), postPhase: Normal, postActive: A, expected: [none] },
+  { name: '#93 AwaitingDiscard (owed 4)/DiscardPair → AwaitingDiscard, debt left, same player: no curtain', prePhase: AwaitingDiscard, mv: move(DiscardPair), postPhase: AwaitingDiscard, postActive: A, expected: [none] },
+  { name: '#93 PendingWin/Counter → Normal, the decider plays on: no curtain', prePhase: PendingWin, mv: move(Counter, { rank: 2 }), postPhase: Normal, postActive: A, expected: [none] },
+  { name: '#93 PendingWin/Decline ("Let it happen") → GameOver: result', prePhase: PendingWin, mv: move(Decline), postPhase: GameOver, postActive: A, expected: [result] },
+  { name: '#93 SevenChoosing/SevenPick(PlayPoint) wins, O holds a 2 → PendingWin, O: turn curtain', prePhase: SevenChoosing, mv: move(SevenPick, { rank: 10, subKind: PlayPoint }), postPhase: PendingWin, postActive: O, expected: [handoff(O, 'turn'), reveal(O), none] },
+
+  // --- From PhaseAwaitingCounter (1), legacy v0.2.x saves only: A is the player offered the counter ---
   { name: 'AwaitingCounter/Decline, even chain, resolves → Normal, A keeps control: no curtain', prePhase: AwaitingCounter, mv: move(Decline), postPhase: Normal, postActive: A, expected: [none] },
   { name: 'AwaitingCounter/Decline, even chain, resolves a 7 → SevenChoosing, O: seven-return curtain', prePhase: AwaitingCounter, mv: move(Decline), postPhase: SevenChoosing, postActive: O, expected: [handoff(O, 'seven-return'), reveal(O), none] },
   { name: 'AwaitingCounter/Decline, even chain, resolves a 4 → AwaitingDiscard, A discards: no curtain', prePhase: AwaitingCounter, mv: move(Decline), postPhase: AwaitingDiscard, postActive: A, expected: [none] },
@@ -171,12 +186,14 @@ const ROWS: Row[] = [
 ];
 
 // SPEC §4.4 unreachable pairs: everything not listed per phase.
+// Issue #93: a Counter opens a turn in phases 0, 3 and 5; phase 5's Decline is "Let it happen".
 const REACHABLE: Record<Phase, MoveKind[]> = {
-  0: [Draw, PlayPoint, PlayPermanent, Scuttle, OneOff, Pass],
+  0: [Draw, PlayPoint, PlayPermanent, Scuttle, OneOff, Pass, Counter],
   1: [Counter, Decline],
   2: [SevenPick],
-  3: [DiscardPair],
+  3: [DiscardPair, Counter],
   4: [],
+  5: [Counter, Decline],
 };
 
 describe('curtain machine — SPEC §4.4 full transition table', () => {
@@ -228,8 +245,9 @@ describe('curtain machine — SPEC §4.4 full transition table', () => {
         }
       }
     }
-    // 4 from Normal, 8 from AwaitingCounter, 9 each from SevenChoosing/AwaitingDiscard, 10 from GameOver.
-    expect(count).toBe(40);
+    // 3 from Normal, 8 from AwaitingCounter, 9 from SevenChoosing, 8 from
+    // AwaitingDiscard, 10 from GameOver, 8 from PendingWin.
+    expect(count).toBe(46);
   });
 
   it('issue #95: the receiving sequence has no recap step, whatever the incoming player missed', () => {

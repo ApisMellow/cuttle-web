@@ -18,14 +18,16 @@ export const SNAPSHOT_KEY = 'cuttle-web:game';
 /**
  * SPEC §5.7: "bump on ANY shape change" — to this shape, or to the engine's
  * state layout. 2 since AppliedMove gained `drawn` (SPEC §2.7, amended
- * 2026-09-28). A v1 save is migrated on read (`decodeSnapshot`, ruling
- * 2026-09-28: the engine state layout is unchanged), so family-beta games
- * survive; the next write is v2.
+ * 2026-09-28). 3 since engine v0.3.0 (issue #93): the opaque engine state
+ * gained the turn-end snapshots and the owed discards; this TS shape is
+ * unchanged. Older saves are migrated on read (`decodeSnapshot`), append-only:
+ * v1 -> v2 (ruling 2026-09-28), then v2 -> v3. The next write is v3.
  */
-export const SNAPSHOT_VERSION = 2 as const;
+export const SNAPSHOT_VERSION = 3 as const;
 
-/** The one older version `decodeSnapshot` upgrades (SPEC §5.7, ruling 2026-09-28). */
-const MIGRATABLE_VERSION = 1;
+/** The versions `decodeSnapshot` upgrades, oldest first (SPEC §5.7). */
+const V1 = 1;
+const V2 = 2;
 
 export interface Snapshot {
   v: typeof SNAPSHOT_VERSION;
@@ -180,7 +182,19 @@ function withNullDrawn(entries: unknown): unknown[] | null {
 function migrateV1(v1: Record<string, unknown>): Record<string, unknown> | null {
   const history = Array.isArray(v1.history) ? withNullDrawn(v1.history) : v1.history;
   if (history === null) return null;
-  return { ...v1, v: SNAPSHOT_VERSION, history };
+  return { ...v1, v: V2, history };
+}
+
+/**
+ * v2 -> v3 (issue #93, SPEC §5.7): only the opaque `engineState` changed
+ * layout, and the bridge's restore reads a v2 engine state as having no
+ * turn-end snapshot and no owed discard (so no counter is offered at that
+ * turn start). A v2 save at a legacy counter window (`ack`) or an old-style
+ * discard finishes through the engine's frozen legacy path. Nothing in this
+ * shape moves: only `v`.
+ */
+function migrateV2(v2: Record<string, unknown>): Record<string, unknown> {
+  return { ...v2, v: SNAPSHOT_VERSION };
 }
 
 export function decodeSnapshot(raw: string | null): DecodeResult {
@@ -200,12 +214,13 @@ export function decodeSnapshot(raw: string | null): DecodeResult {
   // Version check BEFORE any structural check: a v-mismatched record may not
   // even have this shape, so malformed-vs-version-mismatch would otherwise
   // be ambiguous for an old-shaped record that also fails isWellFormed. v1
-  // is the one older version that migrates (SPEC §5.7, ruling 2026-09-28).
-  if (parsed.v !== SNAPSHOT_VERSION && parsed.v !== MIGRATABLE_VERSION) {
+  // and v2 migrate, one step at a time (SPEC §5.7).
+  if (parsed.v !== SNAPSHOT_VERSION && parsed.v !== V1 && parsed.v !== V2) {
     return { ok: false, reason: 'version-mismatch', detail: `found v=${JSON.stringify(parsed.v)}` };
   }
-  const migrated = parsed.v === MIGRATABLE_VERSION ? migrateV1(parsed) : parsed;
-  if (migrated === null) return { ok: false, reason: 'malformed', detail: 'v1 entry already carries drawn' };
+  const asV2 = parsed.v === V1 ? migrateV1(parsed) : parsed;
+  if (asV2 === null) return { ok: false, reason: 'malformed', detail: 'v1 entry already carries drawn' };
+  const migrated = asV2.v === V2 ? migrateV2(asV2) : asV2;
   const current = { ...migrated, curtain: withoutLegacyAck(migrated.curtain) };
 
   if (!isWellFormed(current)) {

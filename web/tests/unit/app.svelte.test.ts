@@ -156,7 +156,7 @@ function click(el: HTMLElement, id: string): void {
 
 function resultSnapshot(): Snapshot {
   return {
-    v: 2,
+    v: 3,
     savedAt: '2026-09-27T00:00:00.000Z',
     engineState: '"fake-engine-state"',
     // A curtain other than `none` needs at least one applied move (snapshot.ts isWellFormed).

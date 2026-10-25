@@ -1,4 +1,6 @@
-// Two-phone wire protocol v1 (docs/two-phone-plan.md §3): the typed frames
+// Two-phone wire protocol v2 (docs/two-phone-plan.md §3; v2 since engine
+// v0.3.0, issue #93, design §7: phase 5, Counters in phases 0 and 3, the
+// view's `counterable` and `owedDiscards`): the typed frames
 // the phone and the game server exchange over the WebSocket at /api/play.
 // JSON text frames, each with a type field `t`.
 //
@@ -12,7 +14,7 @@
 
 import { parseBridgeResult, type Envelope, type PlayerId } from '../bridge/schema';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // --- Client to server ------------------------------------------------------
 
@@ -67,6 +69,11 @@ export interface StateFrame {
   tally: [number, number];
 }
 
+/**
+ * The v1 response hold. Issue #93: a v2 server never sends it (there is no
+ * hold); it is still decoded so a stray one is harmless, and nothing new
+ * depends on it.
+ */
 export interface RespondingFrame {
   t: 'responding';
   by: PlayerId;

@@ -79,7 +79,7 @@ import type { RoomStatus, SeatNames, ServerFrame } from '../online/protocol';
 import { clearSeat, saveSeat, type SeatRecord } from '../online/seat';
 import type { CurtainState } from './curtain.svelte';
 import { online } from './online.svelte';
-import { MoveNotSent, type OnlineStuck, type OnlineTableInfo, type TableSource } from './tableSource';
+import { MoveNotSent, type NotSoFast, type OnlineStuck, type OnlineTableInfo, type TableSource } from './tableSource';
 
 type SeatStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -164,6 +164,14 @@ export class OnlineGameStore implements TableSource {
   viewer = $state<PlayerId | null>(null);
   curtain = $state<CurtainState>({ kind: 'none' });
   drawReveal = $state<DrawReveal | null>(null);
+  /**
+   * Issue #93 (SPEC §4.3): the "Not So Fast!" beat when a state puts this
+   * seat's win on hold (phase 5, the other seat deciding), or null. Memory
+   * only; not raised on a first state (a resume), and gone with the next
+   * state that leaves phase 5. Dismissing it just clears it: the board stays
+   * up with "NAME is deciding…".
+   */
+  notSoFast = $state<NotSoFast | null>(null);
 
   // ---- Room and connection state --------------------------------------------
   /** True from attach() until detach() (or a terminal error). */
@@ -260,6 +268,7 @@ export class OnlineGameStore implements TableSource {
     this.viewer = null;
     this.curtain = { kind: 'none' };
     this.drawReveal = null;
+    this.notSoFast = null;
     this.attached = false;
     this.seat = null;
     this.roomNames = [null, null];
@@ -353,6 +362,11 @@ export class OnlineGameStore implements TableSource {
 
   dismissDrawReveal(): void {
     this.drawReveal = null;
+  }
+
+  /** Issue #93: ends the "Not So Fast!" beat. A no-op when none is up. */
+  dismissNotSoFast(): void {
+    this.notSoFast = null;
   }
 
   /** No curtain online. */
@@ -481,6 +495,10 @@ export class OnlineGameStore implements TableSource {
     const curtain = curtainFor(env, seat);
     if (!sameCurtain(this.curtain, curtain)) this.curtain = curtain;
     if (!newGame) this.#updateMissed(prevSeq, env.seq, seat);
+    // Issue #93: this seat's win now waits on the other seat (phase 5).
+    const held = env.state.phase === Phase.PendingWin && env.state.active !== seat;
+    if (!held) this.notSoFast = null;
+    else if (!newGame && env.seq !== prevSeq) this.notSoFast = { to: seat };
     // SPEC §2.10 rule 1: this seat must act and nothing is offered.
     const view = env.state;
     if (view.viewer === view.active && view.phase !== Phase.GameOver && env.legalMoves.length === 0) {
@@ -623,6 +641,10 @@ export class OnlineGameStore implements TableSource {
         return `${otherName} is choosing from the 7.`;
       case Phase.AwaitingCounter:
         return respondingText(otherName);
+      // Issue #93 (SPEC §2.12.9, §4.3): this seat's win waits on the other
+      // seat's Counter or "Let it happen".
+      case Phase.PendingWin:
+        return `${otherName} is deciding…`;
       default:
         return null;
     }
