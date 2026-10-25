@@ -146,12 +146,44 @@ describe('placeBubble', () => {
     expectClear(i);
   });
 
-  it('under-menu docks under the score bar, centred, whatever the holes say', () => {
+  it('under-menu docks below the prompt text (promptDock under the menu row), centred, whatever the holes say', () => {
     const i = input({ dock: 'under-menu', holes: [{ x: 20, y: 380, width: 60, height: 84 }] });
     const p = placeBubble(i);
-    expect(p.y).toBe(SCORE_BAR_BOTTOM + PLACEMENT.dockGap);
+    expect(p.y).toBe(SCORE_BAR_BOTTOM + PLACEMENT.promptDock);
     expect(p.x).toBe((393 - 320) / 2);
     expect(p.notch).toBeNull();
+  });
+
+  it('slides the dock down past a hole or avoid box it would touch, instead of covering it', () => {
+    // Nothing fits above, below or beside (holes top and bottom, a staged card
+    // pinned top-left), and the plain dock would graze the staged card.
+    const i = input({
+      holes: [{ x: 207, y: 800, width: 90, height: 44 }],
+      avoid: [
+        { x: 14, y: 177, width: 52, height: 68 },
+        { x: 100, y: 697, width: 72, height: 90 },
+      ],
+      bubble: { width: 320, height: 150 },
+    });
+    const p = placeBubble(i);
+    expect(p.notch).toBeNull();
+    expect(p.y).toBeGreaterThan(SCORE_BAR_BOTTOM + PLACEMENT.dockGap);
+    expect(p.y + 150).toBeLessThanOrEqual(ACTION_BAR_TOP - PLACEMENT.clearance);
+    expectClear(i);
+
+    // A hole at the dock position: slid below it, not on it.
+    const hole = input({
+      holes: [
+        { x: 8, y: 60, width: 64, height: 80 },
+        { x: 8, y: 640, width: 64, height: 80 },
+      ],
+    });
+    expectClear(hole);
+  });
+
+  it('stays at the dock when no free spot exists above the action bar', () => {
+    const i = input({ avoid: [{ x: 0, y: 44, width: 393, height: 700 }] });
+    expect(placeBubble(i).y).toBe(SCORE_BAR_BOTTOM + PLACEMENT.dockGap);
   });
 
   it('docks when there are no holes at all', () => {
