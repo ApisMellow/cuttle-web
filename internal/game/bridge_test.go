@@ -456,7 +456,7 @@ func TestSPEC2_9_BadRequest(t *testing.T) {
 		"restore viewer missing":         b.Restore(snapshotOf(t, engine.GameState{}), nil),
 		"restore non-string":             b.Restore(1.0, 0.0),
 		"restore malformed":              b.Restore(`{`, 0.0),
-		"restore wrong version":          b.Restore(`{"v":3,"state":{},"history":[],"seed":"1","dealer":0}`, 0.0),
+		"restore wrong version":          b.Restore(`{"v":4,"state":{},"history":[],"seed":"1","dealer":0}`, 0.0),
 		"restore missing state":          b.Restore(`{"v":2,"history":[],"seed":"1","dealer":0}`, 0.0),
 		"restore bad active":             b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Active":0`, `"Active":5`, 1), 0.0),
 		"restore bad phase":              b.Restore(strings.Replace(snapshotOf(t, engine.GameState{}), `"Phase":0`, `"Phase":9`, 1), 0.0),
@@ -650,7 +650,7 @@ func TestSPEC3_2_IndexRedactedForNonMover(t *testing.T) {
 	for _, oppHasTwo := range []bool{true, false} {
 		oppHand := []card.Card{c(card.Five, card.Diamonds)}
 		if oppHasTwo {
-			oppHand = append(oppHand, c(card.Two, card.Hearts)) // opens a real AwaitingCounter window
+			oppHand = append(oppHand, c(card.Two, card.Hearts)) // P2's turn then offers a counter (engine v0.3.0)
 		}
 		st := engine.GameState{
 			Players: [2]engine.PlayerState{
@@ -672,8 +672,10 @@ func TestSPEC3_2_IndexRedactedForNonMover(t *testing.T) {
 		if mover.LastMove == nil || mover.LastMove.Index == nil || *mover.LastMove.Index != 3 {
 			t.Fatalf("mover must see its own index 3, got %+v", mover.LastMove)
 		}
-		if oppHasTwo && b.game.state.Phase != engine.PhaseAwaitingCounter {
-			t.Fatalf("precondition: expected AwaitingCounter, got %d", b.game.state.Phase)
+		// Engine v0.3.0 (#93): the 3 resolves at once, and P2's turn opens
+		// with a counter as its last legal move.
+		if oppHasTwo && (b.game.state.Phase != engine.PhaseNormal || !engine.CounterAvailable(b.game.state)) {
+			t.Fatalf("precondition: expected a counterable phase 0, got phase %d", b.game.state.Phase)
 		}
 		oppWire := b.View(1.0)
 		opp := decodeGeneric(t, oppWire)
@@ -738,13 +740,16 @@ func TestSPEC2_7_SubKindOnAppliedMove(t *testing.T) {
 	}
 }
 
-// Minor 4: Pending is present iff phase is 1, 2 or 3.
+// Minor 4, updated for engine v0.3.0 (#93): Pending is present in phases 1
+// and 2, absent in 0, 4 and 5, and either in phase 3: present for the
+// legacy in-turn discard, absent for the owed discard, which then needs a
+// debt (Owed[Active] > 0, engine/apply.go:1050-1054).
 func TestSPEC2_9_RestorePendingMatchesPhase(t *testing.T) {
 	b := newGame42(t)
 	before := b.Snapshot()
 	pending := &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Four, card.Clubs)}
 	w := engine.P1
-	for phase := engine.PhaseNormal; phase <= engine.PhaseGameOver; phase++ {
+	for phase := engine.PhaseNormal; phase <= engine.PhasePendingWin; phase++ {
 		needs := phase == engine.PhaseAwaitingCounter || phase == engine.PhaseSevenChoosing || phase == engine.PhaseAwaitingDiscard
 		st := engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{c(card.Ace, card.Clubs)}}, {Hand: []card.Card{c(card.Two, card.Clubs)}}}, Phase: phase}
 		if phase == engine.PhaseGameOver {
@@ -767,6 +772,17 @@ func TestSPEC2_9_RestorePendingMatchesPhase(t *testing.T) {
 		if m := decodeGeneric(t, NewBridge().Restore(snapshotOf(t, good), 0.0)); m["ok"] != true {
 			t.Fatalf("phase %d: consistent pending rejected: %v", phase, m)
 		}
+	}
+	// The owed discard: phase 3, no Pending, a debt for the active player.
+	owed := engine.GameState{Players: [2]engine.PlayerState{{Hand: []card.Card{c(card.Ace, card.Clubs)}}, {Hand: []card.Card{c(card.Two, card.Clubs)}}},
+		Phase: engine.PhaseAwaitingDiscard, Owed: [2]int{2, 0}}
+	if m := decodeGeneric(t, NewBridge().Restore(snapshotOf(t, owed), 0.0)); m["ok"] != true {
+		t.Fatalf("owed-discard phase 3 rejected: %v", m)
+	}
+	owed.Owed = [2]int{0, 2} // the debt is the inactive player's
+	errCode(t, b.Restore(snapshotOf(t, owed), 0.0), "BAD_REQUEST")
+	if b.Snapshot() != before {
+		t.Fatal("held state changed on BAD_REQUEST")
 	}
 }
 

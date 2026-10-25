@@ -265,7 +265,9 @@ func TestSPEC2_7_PlayerViewWireKeys(t *testing.T) {
 	state := statesByPhase()[engine.PhaseAwaitingCounter]
 	view := decodeGeneric(t, mustJSON(t, viewFor(state, engine.P2)))
 	assertKeys(t, "PlayerView", view, "viewer", "active", "phase", "passesInARow", "winner",
-		"stalemate", "you", "opponent", "deckCount", "scrap", "scoreboard", "sevenRevealed", "pending")
+		"stalemate", "you", "opponent", "deckCount", "scrap", "scoreboard", "sevenRevealed", "pending",
+		"counterable", "owedDiscards")
+	assertKeys(t, "owedDiscards", view["owedDiscards"].(map[string]any), "you", "opponent")
 	assertKeys(t, "you", view["you"].(map[string]any), "hand", "frozenHandIndices", "points", "permanents", "watched")
 	assertKeys(t, "opponent", view["opponent"].(map[string]any), "handCount", "hand", "points", "permanents")
 	assertKeys(t, "scoreboard", view["scoreboard"].(map[string]any), "you", "opponent")

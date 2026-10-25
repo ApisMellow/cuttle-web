@@ -64,6 +64,8 @@ function view(active: PlayerId, phase: Phase, viewer: PlayerId = active): Player
     },
     sevenRevealed: null,
     pending: null,
+    counterable: false,
+    owedDiscards: { you: 0, opponent: 0 },
   };
 }
 

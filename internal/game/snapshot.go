@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -77,8 +78,49 @@ func (ServerSnapshot) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, red
 // LogValue keeps the blob out of slog output.
 func (ServerSnapshot) LogValue() slog.Value { return slog.StringValue(redactedSnapshot) }
 
-// 2 since AppliedMove gained `drawn` (SPEC §2.7, §5.7, amended 2026-09-28).
-const snapshotVersion = 2
+// 2 since AppliedMove gained `drawn` (SPEC §2.7, §5.7, amended 2026-09-28);
+// 3 since engine v0.3.0 changed the state layout (Owed, TurnEnd, LastTurn,
+// ThisTurn; SPEC §5.7 v3, issue #93).
+const snapshotVersion = 3
+
+// v3StateKeys are the engine state keys a v3 save may hold and a v2 save
+// cannot (engine/state.go:120-136).
+var v3StateKeys = []string{"Owed", "TurnEnd", "LastTurn", "ThisTurn"}
+
+// migrateSnapshotV2 upgrades a version-2 SnapshotJson to version 3 (SPEC
+// §5.7 v3): the save is accepted unchanged and loads with no turn-end
+// snapshot, no turn records and no debt, so no counter is offered at that
+// turn start, and a legacy counter window or old-style discard finishes
+// through the engine's frozen legacy path. Only `v` is rewritten. A v2
+// state that already carries a v3 key is not a real v2 save and is
+// rejected. Anything that is not a well-formed v2 object is returned
+// unchanged for the strict decode and the version check to reject.
+func migrateSnapshotV2(raw string) (string, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &top); err != nil {
+		return raw, nil
+	}
+	if v, ok := top["v"]; !ok || string(v) != "2" {
+		return raw, nil
+	}
+	if st, ok := top["state"]; ok && string(st) != "null" {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(st, &fields); err != nil {
+			return raw, nil
+		}
+		for _, k := range v3StateKeys {
+			if _, has := fields[k]; has {
+				return "", fmt.Errorf("v2 state already carries %s", k)
+			}
+		}
+	}
+	top["v"] = json.RawMessage("3")
+	out, err := json.Marshal(top)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
 
 // snapshotWire is the full, unredacted SnapshotJson (§2.4, §3.4). `state` is
 // the raw engine.GameState in encoding/json form; it is opaque to TypeScript
@@ -126,12 +168,18 @@ func decodeSnapshot(raw string) (*session, *Error) {
 	if err != nil {
 		return invalid("malformed v1 snapshot: " + err.Error())
 	}
+	// SPEC §5.7 v3 (issue #93): a v2 save (or a v1 save just upgraded to
+	// v2) is accepted unchanged.
+	raw, err = migrateSnapshotV2(raw)
+	if err != nil {
+		return invalid("malformed v2 snapshot: " + err.Error())
+	}
 	var snap restoreWire
 	if err := decodeStrict(raw, &snap); err != nil {
 		return invalid("malformed snapshot: " + err.Error())
 	}
 	if snap.V == nil || *snap.V != snapshotVersion {
-		return invalid(fmt.Sprintf("snapshot version must be 1 or %d", snapshotVersion))
+		return invalid(fmt.Sprintf("snapshot version must be 1, 2 or %d", snapshotVersion))
 	}
 	if snap.State == nil || snap.History == nil || snap.Seed == nil || snap.Dealer == nil {
 		return invalid("snapshot requires state, history, seed and dealer")
@@ -143,6 +191,9 @@ func decodeSnapshot(raw string) (*session, *Error) {
 	if *snap.Dealer != 0 && *snap.Dealer != 1 {
 		return invalid("snapshot dealer must be 0 or 1")
 	}
+	if err := checkStateArrays(raw); err != nil {
+		return invalid("invalid snapshot state: " + err.Error())
+	}
 	if err := validateState(*snap.State); err != nil {
 		return invalid("invalid snapshot state: " + err.Error())
 	}
@@ -150,4 +201,51 @@ func decodeSnapshot(raw string) (*session, *Error) {
 		return invalid("invalid snapshot history: " + err.Error())
 	}
 	return &session{state: *snap.State, history: snap.History, seed: seed, dealer: engine.PlayerID(*snap.Dealer)}, nil
+}
+
+// stateArrays are the engine state's fixed-length arrays
+// (engine/state.go:111-137). encoding/json drops extra elements of a Go
+// array and zero-fills missing ones, so a strict restore checks the
+// lengths itself.
+var stateArrays = []string{"Players", "Owed", "TurnEnd"}
+
+// checkStateArrays requires every fixed-length array in the snapshot's
+// state, and in each TurnEnd snapshot, to hold exactly two elements when
+// present. The strict decode has already accepted raw.
+func checkStateArrays(raw string) error {
+	var top struct {
+		State json.RawMessage `json:"state"`
+	}
+	if err := json.Unmarshal([]byte(raw), &top); err != nil {
+		return err
+	}
+	return checkArrays(top.State, "state", 1)
+}
+
+func checkArrays(st json.RawMessage, label string, depth int) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(st, &fields); err != nil || fields == nil {
+		return nil // null or not an object: the typed decode rules on it
+	}
+	for _, key := range stateArrays {
+		v, ok := fields[key]
+		if !ok || string(v) == "null" {
+			continue
+		}
+		var elems []json.RawMessage
+		if err := json.Unmarshal(v, &elems); err != nil {
+			return fmt.Errorf("%s.%s is not an array", label, key)
+		}
+		if len(elems) != 2 {
+			return fmt.Errorf("%s.%s holds %d entries, want 2", label, key, len(elems))
+		}
+		if key == "TurnEnd" && depth > 0 {
+			for i, e := range elems {
+				if err := checkArrays(e, fmt.Sprintf("%s.TurnEnd[%d]", label, i), depth-1); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

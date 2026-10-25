@@ -85,9 +85,34 @@ func TestSPEC2_7_DrawnSetWhenFiveResolvesImmediately(t *testing.T) {
 	}
 }
 
-// A 5 facing a counter window has not drawn yet; the decline that resolves
-// it carries the count (the 5's own entry stays frozen, null).
-func TestSPEC2_7_DrawnSetOnTheDeclineThatResolvesAFive(t *testing.T) {
+// legacyFiveWindow restores a v0.2.x counter window (phase 1) on Alice's
+// 5♥, as an old save holds it: Blake to answer, the 5's own entry already in
+// history with drawn null. Engine v0.3.0 never opens this window in new
+// play (#93), but keeps the legacy path for old saves (SPEC §5.7 v3).
+func legacyFiveWindow(t *testing.T, p1, p2 []card.Card) *Bridge {
+	t.Helper()
+	st := engine.GameState{
+		Players: [2]engine.PlayerState{{Hand: p1}, {Hand: p2}},
+		Deck:    deckOf(4),
+		Active:  engine.P2,
+		Phase:   engine.PhaseAwaitingCounter,
+		Pending: &engine.PendingOneOff{PlayedBy: engine.P1, Card: c(card.Five, card.Hearts)},
+	}
+	idx := 1
+	five := c(card.Five, card.Hearts)
+	snap := mustJSON(t, snapshotWire{OK: true, V: snapshotVersion, State: st, History: []AppliedMove{{
+		Index: &idx, By: engine.P1, Kind: engine.MoveOneOff, Card: &five, Description: "play 5♥ as one-off", Seq: 1,
+	}}, Seed: "0", Dealer: 0})
+	b := NewBridge()
+	okEnvelope(t, b.Restore(snap, 1.0))
+	return b
+}
+
+// New play (engine v0.3.0, #93): a 5 resolves in its own apply even when
+// the opponent holds a 2, so its own entry carries the count. Blake's
+// counter then rewinds the turn: the Counter entry closes no chain and
+// carries null.
+func TestSPEC2_7_DrawnOnTheFiveItselfInNewPlay(t *testing.T) {
 	st := engine.GameState{
 		Players: [2]engine.PlayerState{
 			{Hand: []card.Card{c(card.Five, card.Hearts), c(card.Three, card.Clubs)}},
@@ -99,11 +124,38 @@ func TestSPEC2_7_DrawnSetOnTheDeclineThatResolvesAFive(t *testing.T) {
 	b := NewBridge()
 	env := okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
 	played := okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
-	if played.State.Phase != engine.PhaseAwaitingCounter {
-		t.Fatalf("precondition: phase %d, want a counter window", played.State.Phase)
+	if played.State.Phase != engine.PhaseNormal || played.State.Active != engine.P2 {
+		t.Fatalf("phase %d active %d, want phase 0 with Blake to act", played.State.Phase, played.State.Active)
 	}
-	wantNullDrawn(t, *played.LastMove)
+	if got := drawnOf(t, *played.LastMove); got != 2 {
+		t.Fatalf("drawn = %d, want 2", got)
+	}
+	blake := okEnvelope(t, b.View(1.0))
+	if !blake.State.Counterable {
+		t.Fatal("Blake's view: counterable must be true after Alice's one-off")
+	}
+	after := okEnvelope(t, b.Apply(float64(indexOfDescription(t, blake.Descriptions, "counter with 2♣"))))
+	if got := after.History[1]; got.Kind != engine.MoveCounter {
+		t.Fatalf("history[1] kind %d, want Counter", got.Kind)
+	}
+	wantNullDrawn(t, after.History[1])
+	if got := drawnOf(t, after.History[0]); got != 2 {
+		t.Fatalf("the 5's own entry is frozen at drawn 2, got %d", got)
+	}
+	// The held history still validates (a Counter after a 5 with no chain).
+	again := okEnvelope(t, NewBridge().Restore(b.Snapshot(), 0.0))
+	if !reflect.DeepEqual(again.History, okEnvelope(t, b.View(0.0)).History) {
+		t.Fatal("history changed across snapshot and restore")
+	}
+}
 
+// Legacy (v0.2.x save, phase 1): a 5 facing a counter window has not drawn
+// yet; the decline that resolves it carries the count (the 5's own entry
+// stays frozen, null).
+func TestSPEC2_7_DrawnSetOnTheDeclineThatResolvesAFive(t *testing.T) {
+	b := legacyFiveWindow(t,
+		[]card.Card{c(card.Three, card.Clubs)},
+		[]card.Card{c(card.Two, card.Clubs), c(card.Six, card.Clubs)})
 	window := okEnvelope(t, b.View(1.0))
 	after := okEnvelope(t, b.Apply(float64(indexOfDescription(t, window.Descriptions, "decline to counter"))))
 	wantNullDrawn(t, after.History[0])
@@ -115,24 +167,14 @@ func TestSPEC2_7_DrawnSetOnTheDeclineThatResolvesAFive(t *testing.T) {
 	}
 }
 
-// A countered 5 draws nothing (odd chain), and a 5 whose counter is
-// countered back resolves (even chain) with its count on the closing Counter.
+// Legacy (phase 1): a countered 5 draws nothing (odd chain), and a 5 whose
+// counter is countered back resolves (even chain) with its count on the
+// closing Counter.
 func TestSPEC2_7_DrawnFollowsCounterChainParity(t *testing.T) {
-	base := func(p1Extra []card.Card) engine.GameState {
-		return engine.GameState{
-			Players: [2]engine.PlayerState{
-				{Hand: append([]card.Card{c(card.Five, card.Hearts)}, p1Extra...)},
-				{Hand: []card.Card{c(card.Two, card.Clubs), c(card.Six, card.Clubs)}},
-			},
-			Deck:   deckOf(4),
-			Active: engine.P1,
-		}
-	}
+	p2 := []card.Card{c(card.Two, card.Clubs), c(card.Six, card.Clubs)}
 
 	t.Run("cancelled", func(t *testing.T) {
-		b := NewBridge()
-		env := okEnvelope(t, b.Restore(snapshotOf(t, base([]card.Card{c(card.Three, card.Clubs)})), 0.0))
-		okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
+		b := legacyFiveWindow(t, []card.Card{c(card.Three, card.Clubs)}, p2)
 		window := okEnvelope(t, b.View(1.0))
 		after := okEnvelope(t, b.Apply(float64(indexOfDescription(t, window.Descriptions, "counter with 2♣"))))
 		if after.State.Phase == engine.PhaseAwaitingCounter {
@@ -144,9 +186,7 @@ func TestSPEC2_7_DrawnFollowsCounterChainParity(t *testing.T) {
 	})
 
 	t.Run("countered back", func(t *testing.T) {
-		b := NewBridge()
-		env := okEnvelope(t, b.Restore(snapshotOf(t, base([]card.Card{c(card.Two, card.Hearts)})), 0.0))
-		okEnvelope(t, b.Apply(float64(indexOfDescription(t, env.Descriptions, "play 5♥ as one-off"))))
+		b := legacyFiveWindow(t, []card.Card{c(card.Two, card.Hearts)}, p2)
 		window := okEnvelope(t, b.View(1.0))
 		okEnvelope(t, b.Apply(float64(indexOfDescription(t, window.Descriptions, "counter with 2♣"))))
 		back := okEnvelope(t, b.View(0.0))
@@ -197,13 +237,13 @@ func TestSPEC2_7_DrawnForSevenRevealedFive(t *testing.T) {
 	}
 }
 
-// Over random games: drawn is set only on an entry that resolved a 5 (a 5's
-// own one-off entry, or a Decline/Counter answering a chain a 5 opened),
-// always 0..2, and the held history passes validateHistory. The property must be
-// exercised at least once.
+// Over random games: drawn is set only on an entry that resolved a 5, always
+// 0..2, and the held history passes validateHistory. In new play (engine
+// v0.3.0, #93) no counter window opens, so every count sits on the 5's own
+// entry; the legacy chain-closed count is covered by the built phase-1
+// tests above. The property must be exercised at least once.
 func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
-	seen, deferred := 0, 0
-	// 2: a 5 closed by a Decline/Counter; 4, 7, 13: direct 5 one-offs.
+	seen := 0
 	for _, seed := range []uint64{2, 4, 7, 13} {
 		b := NewBridge()
 		okEnvelope(t, b.NewGame(`{"seed":"`+itoa(seed)+`","dealer":0}`))
@@ -215,17 +255,11 @@ func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
 		if err := validateHistory(snap.History); err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
-		for i, h := range env.History {
+		for _, h := range env.History {
 			if h.Drawn == nil {
 				continue
 			}
-			if h.Kind == engine.MoveDecline || h.Kind == engine.MoveCounter {
-				o := chainOrigin(env.History, i)
-				if o < 0 || !isFiveEntry(env.History[o]) {
-					t.Fatalf("seed %d: drawn on a %d entry that closes no 5 chain", seed, h.Kind)
-				}
-				deferred++
-			} else if !isFiveEntry(h) {
+			if !isFiveEntry(h) {
 				t.Fatalf("seed %d: drawn on a non-5 entry %+v", seed, h)
 			}
 			if *h.Drawn < 0 || *h.Drawn > 2 {
@@ -234,10 +268,10 @@ func TestSPEC2_7_DrawnOnlyOnResolvedFivesAcrossRandomGames(t *testing.T) {
 			seen++
 		}
 	}
-	if seen == 0 || deferred == 0 || seen == deferred {
-		t.Fatalf("seen %d deferred %d: both a direct 5 and a chain-closed 5 must be exercised", seen, deferred)
+	if seen == 0 {
+		t.Fatal("no resolved 5 was exercised")
 	}
-	t.Logf("resolved 5s: %d (%d closed by a Decline/Counter)", seen, deferred)
+	t.Logf("resolved 5s: %d", seen)
 }
 
 // Restore: the key is required, and a count is only valid on a 5's entry.
@@ -269,9 +303,9 @@ func TestSPEC2_9_RestoreDrawn(t *testing.T) {
 	}
 }
 
-func TestSPEC2_7_SnapshotVersionIsTwo(t *testing.T) {
-	if snapshotVersion != 2 {
-		t.Fatalf("snapshotVersion = %d; the AppliedMove shape gained drawn, so the version is 2 (SPEC §5.7)", snapshotVersion)
+func TestSPEC5_7_SnapshotVersionIsThree(t *testing.T) {
+	if snapshotVersion != 3 {
+		t.Fatalf("snapshotVersion = %d; engine v0.3.0 changed the state layout, so the version is 3 (SPEC §5.7 v3)", snapshotVersion)
 	}
 }
 
@@ -304,14 +338,14 @@ func TestSPEC5_7_RestoreMigratesV1Snapshot(t *testing.T) {
 		if strings.Count(wire, `"drawn":null`) < 3 {
 			t.Fatalf("every migrated entry must carry the drawn key: %s", wire)
 		}
-		// The next snapshot is v2 and restores as-is.
+		// The next snapshot is v3 and restores as-is.
 		snap := decodeGeneric(t, b.Snapshot())
-		if snap["v"].(float64) != 2 {
-			t.Fatalf("snapshot after a v1 restore is v%v, want 2", snap["v"])
+		if snap["v"].(float64) != snapshotVersion {
+			t.Fatalf("snapshot after a v1 restore is v%v, want %d", snap["v"], snapshotVersion)
 		}
 		again := okEnvelope(t, NewBridge().Restore(b.Snapshot(), viewer))
 		if !reflect.DeepEqual(again.History, env.History) {
-			t.Fatal("v2 re-restore changed history")
+			t.Fatal("v3 re-restore changed history")
 		}
 		// The game plays on.
 		okEnvelope(t, b.LegalMoves())
@@ -325,14 +359,14 @@ func TestSPEC5_7_RestoreRejectsBadV1AndUnknownVersions(t *testing.T) {
 	}
 	withDrawn := strings.Replace(string(raw), `"seq":1`, `"seq":1,"drawn":null`, 1)
 	errCode(t, NewBridge().Restore(withDrawn, 0.0), "BAD_REQUEST")
-	v3 := strings.Replace(string(raw), `"v":1`, `"v":3`, 1)
-	errCode(t, NewBridge().Restore(v3, 0.0), "BAD_REQUEST")
+	v4 := strings.Replace(string(raw), `"v":1`, `"v":4`, 1)
+	errCode(t, NewBridge().Restore(v4, 0.0), "BAD_REQUEST")
 	// A v2 snapshot missing drawn is not upgraded.
 	v2NoDrawn := strings.Replace(string(raw), `"v":1`, `"v":2`, 1)
 	errCode(t, NewBridge().Restore(v2NoDrawn, 0.0), "BAD_REQUEST")
 }
 
-// Chains of two and four counters (review B1): the count lands only on the
+// Legacy (phase 1). Chains of two and four counters (review B1): the count lands only on the
 // entry that closed the chain, every earlier entry stays null, and the
 // held history survives Snapshot() -> Restore() (validateHistory walks the
 // chain back to the 5 through every counter).
@@ -350,28 +384,22 @@ func TestSPEC2_7_DrawnOnLongCounterChains(t *testing.T) {
 	}{
 		{
 			name:  "5, counter, counter, closed by a decline",
-			p1:    []card.Card{c(card.Five, card.Hearts), c(card.Two, card.Hearts), c(card.Three, card.Clubs)},
+			p1:    []card.Card{c(card.Two, card.Hearts), c(card.Three, card.Clubs)},
 			p2:    []card.Card{c(card.Two, card.Clubs), c(card.Two, card.Diamonds), c(card.Six, card.Clubs)},
-			steps: []step{{0, "play 5♥ as one-off"}, {1, "counter with 2♣"}, {0, "counter with 2♥"}, {1, "decline to counter"}},
+			steps: []step{{1, "counter with 2♣"}, {0, "counter with 2♥"}, {1, "decline to counter"}},
 			kind:  engine.MoveDecline,
 		},
 		{
 			name:  "5 and four counters, closed by the fourth counter",
-			p1:    []card.Card{c(card.Five, card.Hearts), c(card.Two, card.Hearts), c(card.Two, card.Spades)},
+			p1:    []card.Card{c(card.Two, card.Hearts), c(card.Two, card.Spades)},
 			p2:    []card.Card{c(card.Two, card.Clubs), c(card.Two, card.Diamonds), c(card.Six, card.Clubs)},
-			steps: []step{{0, "play 5♥ as one-off"}, {1, "counter with 2♣"}, {0, "counter with 2♥"}, {1, "counter with 2♦"}, {0, "counter with 2♠"}},
+			steps: []step{{1, "counter with 2♣"}, {0, "counter with 2♥"}, {1, "counter with 2♦"}, {0, "counter with 2♠"}},
 			kind:  engine.MoveCounter,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			st := engine.GameState{
-				Players: [2]engine.PlayerState{{Hand: tc.p1}, {Hand: tc.p2}},
-				Deck:    deckOf(4),
-				Active:  engine.P1,
-			}
-			b := NewBridge()
-			okEnvelope(t, b.Restore(snapshotOf(t, st), 0.0))
+			b := legacyFiveWindow(t, tc.p1, tc.p2)
 			var after Envelope
 			for i, s := range tc.steps {
 				view := okEnvelope(t, b.View(s.viewer))

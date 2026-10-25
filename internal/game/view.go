@@ -59,6 +59,17 @@ type PendingView struct {
 	CounterChain []card.Card     `json:"counterChain"`
 }
 
+// OwedView is the owed discards from 4s, per side (SPEC §2.7, §4.3):
+// state.Owed as public counts.
+type OwedView struct {
+	You      int `json:"you"`
+	Opponent int `json:"opponent"`
+}
+
+// PlayerView is built field by field from the engine state. It never
+// embeds the raw state: TurnEnd holds whole past positions (both hands and
+// the deck order), and LastTurn/ThisTurn are engine bookkeeping, so none of
+// them may cross the boundary (SPEC §3.2, issue #93).
 type PlayerView struct {
 	Viewer        engine.PlayerID  `json:"viewer"`
 	Active        engine.PlayerID  `json:"active"`
@@ -73,6 +84,12 @@ type PlayerView struct {
 	Scoreboard    ScoreboardView   `json:"scoreboard"`
 	SevenRevealed []card.Card      `json:"sevenRevealed"`
 	Pending       *PendingView     `json:"pending"`
+	// Counterable is engine.CounterAvailable(state): whether the opponent's
+	// last turn can be countered right now. It never reads a hand
+	// (engine/apply.go:171), so it is the same for both viewers whatever
+	// anyone holds (SPEC §3.2).
+	Counterable  bool     `json:"counterable"`
+	OwedDiscards OwedView `json:"owedDiscards"`
 }
 
 // viewerHasGlasses reports whether the viewer has a glasses-8 among their
@@ -143,6 +160,8 @@ func viewFor(state engine.GameState, viewer engine.PlayerID) PlayerView {
 		DeckCount:     len(state.Deck),
 		Scrap:         nonNil(state.Scrap),
 		SevenRevealed: nil,
+		Counterable:   engine.CounterAvailable(state),
+		OwedDiscards:  OwedView{You: state.Owed[viewer], Opponent: state.Owed[opp]},
 	}
 
 	// Own hand is always visible to the viewer; opponent's only under glasses.

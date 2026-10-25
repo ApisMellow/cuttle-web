@@ -17,13 +17,14 @@ import type {
   Suit as SuitT,
 } from './bridge/schema';
 
-/** `engine/state.go:60-68`. Exhaustive; `LegalMoves` branches on `Phase` first (`engine/apply.go:15-31`). */
+/** `engine/state.go:61-78` (engine v0.3.0). Exhaustive; `LegalMoves` branches on `Phase` first (`engine/apply.go:15-40`). `AwaitingCounter` is legacy (old saves only); `AwaitingDiscard` with no pending is the owed discard at turn start. */
 export const Phase = {
   Normal: 0,
   AwaitingCounter: 1,
   SevenChoosing: 2,
   AwaitingDiscard: 3,
   GameOver: 4,
+  PendingWin: 5,
 } as const satisfies Record<string, PhaseT>;
 
 /** `engine/moves.go:9-22`. */
