@@ -328,6 +328,8 @@ test.describe('realistic presses on Leave and the menu button', () => {
     test(`during ${name} there is no Show me, and the menu button neither skips the beat nor moves the bubble`, async ({ page }) => {
       await toBeat(page, beat);
       await expect(page.getByTestId('coach-show-me')).toHaveCount(0);
+      // Let the bubble finish placing (rAF poll until the geometry stops changing) before measuring.
+      await settled(page);
       const before = await bubble(page).boundingBox();
       await page.getByTestId('menu-button').click({ delay: 100 });
       await expect(page.getByTestId('game-menu')).toBeVisible();
