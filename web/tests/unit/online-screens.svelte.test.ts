@@ -14,6 +14,7 @@ import {
   type FakeOnlineActions,
   type OnlineErrorCode,
 } from '../../src/lib/online/actions';
+import { QR_QUIET_ZONE, qrMatrix, qrPath } from '../../src/lib/online/qr';
 import { online } from '../../src/lib/stores/online.svelte';
 import { settings } from '../../src/lib/stores/settings.svelte';
 
@@ -130,6 +131,46 @@ describe('WaitingScreen', () => {
     expect(q(el, 'room-code').getAttribute('aria-label')).toBe('Room code K 7 Q X');
     expect(q(el, 'invite-link').textContent).toBe(`${base}#/join/K7QX`);
     expect(q(el, 'waiting-status').textContent).toContain('Waiting for someone to join');
+  });
+
+  it('draws a QR of exactly the invite link, dark on light with a quiet zone', () => {
+    const el = render(WaitingScreen, {
+      actions: createFakeOnlineActions(),
+      code: 'K7QX',
+      onJoined: vi.fn(),
+      onCancel: vi.fn(),
+      shareEnv: {},
+      base,
+    });
+    const qr = q<HTMLElement>(el, 'invite-qr');
+    expect(qr.getAttribute('role')).toBe('img');
+    expect(qr.getAttribute('aria-label')).toBe('QR code for the invite link');
+    const matrix = qrMatrix(`${base}#/join/K7QX`);
+    const n = matrix.length;
+    const box = 2 * QR_QUIET_ZONE + n;
+    expect(qr.getAttribute('viewBox')).toBe(`0 0 ${box} ${box}`);
+    expect(qr.getAttribute('shape-rendering')).toBe('crispEdges');
+    const path = qr.querySelector('path[data-qr-modules]');
+    expect(path?.getAttribute('d')).toBe(qrPath(matrix));
+    expect(path?.getAttribute('transform')).toBe(`translate(${QR_QUIET_ZONE} ${QR_QUIET_ZONE})`);
+    // light background covering the whole box, fixed colours whatever the theme
+    const bg = qr.querySelector('rect');
+    expect(bg?.getAttribute('width')).toBe(String(box));
+    expect(bg?.getAttribute('fill')).toBe('#fff');
+    expect(path?.getAttribute('fill')).toBe('#000');
+    expect(qr.querySelectorAll('path').length).toBe(1);
+  });
+
+  it('subtitle invites showing the code', () => {
+    const el = render(WaitingScreen, {
+      actions: createFakeOnlineActions(),
+      code: 'K7QX',
+      onJoined: vi.fn(),
+      onCancel: vi.fn(),
+      shareEnv: {},
+      base,
+    });
+    expect(el.textContent).toContain('Let your friend scan this, or send the link.');
   });
 
   it('Share uses the share sheet when there is one', async () => {
