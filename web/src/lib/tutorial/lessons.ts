@@ -94,7 +94,8 @@ const LESSON_1: Lesson = {
         },
       ],
       generic: 'Not this one. Your 9 gets you to 21.',
-      success: '21. You win!',
+      // "You win!" is the bubble's headline (announced with this line), never repeated here.
+      success: '21.',
       demo: { kind: 'drag', from: L1_9D, to: ZONE_POINTS, thenConfirm: true },
       blake: [],
     },
@@ -406,7 +407,7 @@ const LESSON_5: Lesson = {
       tapRoute: 'Tap your King, then your Permanents row, then Confirm.',
       nudges: [{ when: { kind: MoveKind.Draw }, text: 'Play your King.' }],
       generic: 'Play your King.',
-      success: 'You need 14, and you have 15. You win!',
+      success: 'You need 14, and you have 15.',
       demo: { kind: 'drag', from: L5_KH, to: ZONE_PERMANENTS, thenConfirm: false },
       blake: [],
     },

@@ -41,7 +41,9 @@
   import type { AppliedMove, Card, Move, PlayerView } from '../bridge/schema';
   import { settings } from '../stores/settings.svelte';
   import { getTheme } from '../theme';
-  import { CoachController, type CoachClock, type CoachFrames } from '../tutorial/coach.svelte';
+  // `ownsInput`: the coach's own controls act on their first tap, so a press on
+  // one never finishes the deal (the same rule as the coach's beat skip).
+  import { CoachController, ownsInput, type CoachClock, type CoachFrames } from '../tutorial/coach.svelte';
   import {
     capture,
     captureReply,
@@ -143,10 +145,6 @@
   const stage = $derived(coach?.stage ?? 'idle');
   const finished = $derived(table.phase === 'finished');
   const doneList = $derived([...new Set<LessonId>([...store.done, lessonId])]);
-  /** The win text is in the live copy too, so a screen reader hears it (the headline isn't announced). */
-  const bubbleText = $derived(
-    coach === null ? '' : headline && !coach.text.includes(headline) ? `${headline} ${coach.text}` : coach.text,
-  );
 
   // =========================================================================
   // Motion (T11)
@@ -350,11 +348,6 @@
   const BLAKE_STAGGER_MS = 70;
   const DEAL_ARC_PX = 18;
 
-  /** Same exclusion as the coach's beat-skip (coach.svelte.ts OWN_CONTROLS): these act on their own first tap. */
-  const OWN_CONTROLS = '[data-testid="coach-bubble"] button, [data-testid="coach-lesson-done"] button, [data-testid="menu-button"]';
-  const ownsInput = (target: EventTarget | null): boolean =>
-    typeof Element !== 'undefined' && target instanceof Element && target.closest(OWN_CONTROLS) !== null;
-
   /** A card leaving the deck: laid out at its destination, it starts over the deck and lands with a small overshoot. */
   function dealFrames(from: RectLike, to: RectLike): Frame[] {
     const dx = from.x + from.width / 2 - (to.x + to.width / 2);
@@ -533,7 +526,7 @@
   bind:this={rootEl}
 >
   {#if coach}
-    <CoachSpotlight holes={[...coach.holes]} ring="iris" visible={coach.targets.length > 0} />
+    <CoachSpotlight holes={[...coach.holes]} keys={coach.holeIds} ring="iris" visible={coach.targets.length > 0} />
     {@render (flights ?? defaultFlights)()}
     <!-- The deal's clones and the landing flash: layer 3 with the flights, aria-hidden, no testid, no input. -->
     <div class="coach-motion" aria-hidden="true" style="pointer-events: none">
@@ -571,8 +564,9 @@
            above it stays live, and so do the bubble's Restart and Leave. -->
       <div class="coach-overlay__block" data-coach-block aria-hidden="true" style:top="{coach.blockTop}px"></div>
     {/if}
+    <!-- The headline sits in the bubble's live region with the copy, so the win is announced once (T12b). -->
     <CoachBubble
-      text={bubbleText}
+      text={coach.text}
       {headline}
       tone={coach.tone}
       stepId={table.step?.id ?? ''}

@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PlayerView } from '../../src/lib/bridge/schema';
 import Board from '../../src/lib/components/Board.svelte';
@@ -584,5 +584,64 @@ describe('OpponentHand redaction — null, [] and face-up all render correctly',
     expect(hand.querySelectorAll('[data-state]').length).toBe(1);
     expect(hand.textContent).toContain('1 card'); // W25: singular
     expect(hand.textContent).not.toContain('1 cards');
+  });
+});
+
+// T12b: the score bar is sticky inside the scrolling board, so the board keeps
+// a scroll padding of the bar's height: `scrollIntoView({block:'nearest'})`
+// then stops a card below the bar, not under it. Nothing else about the board
+// changes (the real-browser check is board-fit.spec.ts B2).
+describe('Board scroll padding under the sticky score bar (T12b)', () => {
+  it('the stylesheet pads the board by the score-bar height token, as a fallback', () => {
+    const src = readFileSync(BOARD_SRC, 'utf8');
+    const rule = /\.board\s*\{([^}]*)\}/.exec(src.slice(src.indexOf('<style>')))?.[1] ?? '';
+    expect(rule).toMatch(/scroll-padding-top:\s*var\(--cu-score-bar-height,\s*var\(--cu-zone-score,\s*44px\)\);/);
+    // Layout and scrolling otherwise as before.
+    expect(rule).toMatch(/overflow-y:\s*auto;/);
+    expect(rule).toMatch(/overflow-x:\s*hidden;/);
+  });
+
+  it('follows the measured score bar: its height lands in --cu-score-bar-height, and the observer stops on unmount', () => {
+    const observers: { cb: () => void; observed: Element[]; disconnected: boolean }[] = [];
+    class FakeResizeObserver {
+      readonly rec: { cb: () => void; observed: Element[]; disconnected: boolean };
+      constructor(cb: () => void) {
+        this.rec = { cb, observed: [], disconnected: false };
+        observers.push(this.rec);
+      }
+      observe(el: Element): void {
+        this.rec.observed.push(el);
+      }
+      disconnect(): void {
+        this.rec.disconnected = true;
+      }
+    }
+    const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver;
+    try {
+      let height = 47;
+      const spy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute('data-testid') === 'score-bar' ? height : 0;
+      });
+      const el = render(baseProps());
+      const board = testid(el, 'board');
+      expect(observers).toHaveLength(1);
+      expect(observers[0].observed.map((o) => o.getAttribute('data-testid'))).toEqual(['score-bar']);
+      expect(board.style.getPropertyValue('--cu-score-bar-height')).toBe('47px');
+      height = 52;
+      observers[0].cb();
+      flushSync();
+      expect(board.style.getPropertyValue('--cu-score-bar-height')).toBe('52px');
+      cleanup();
+      expect(observers[0].disconnected).toBe(true);
+      spy.mockRestore();
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
+  });
+
+  it('without ResizeObserver (or before a measure) the board sets no inline padding', () => {
+    const el = render(baseProps());
+    expect(testid(el, 'board').style.getPropertyValue('--cu-score-bar-height')).toBe('');
   });
 });

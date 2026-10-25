@@ -156,11 +156,29 @@ function clampHole(b: Box, viewport: Box): Box {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-/** Controls that act on their own first tap or key press: the bubble's and the done sheet's buttons, and the menu button. */
-const OWN_CONTROLS = '[data-testid="coach-bubble"] button, [data-testid="coach-lesson-done"] button, [data-testid="menu-button"]';
+/**
+ * Controls that act on their own first tap or key press: the bubble's and the
+ * done sheet's buttons, and the menu button. The one definition: the beat
+ * skip here and the deal skip in CoachOverlay both use it.
+ */
+export const OWN_CONTROLS = '[data-testid="coach-bubble"] button, [data-testid="coach-lesson-done"] button, [data-testid="menu-button"]';
 
-function ownsInput(target: EventTarget | null): boolean {
+/** Whether a press or key landed on one of the coach's own controls (or the menu button). */
+export function ownsInput(target: EventTarget | null): boolean {
   return typeof Element !== 'undefined' && target instanceof Element && target.closest(OWN_CONTROLS) !== null;
+}
+
+/**
+ * Lit targets of the selected card (T12b): a drop zone or a table card the
+ * page marks `data-state="highlighted"`. Read by the holder's testid, so the
+ * drop-zone well (no testid of its own) and a hand card never count.
+ */
+const LIT_TARGET = /^(zone-|point-|perm-)/;
+
+/** A px length from computed style, or 0. */
+function pxOf(raw: string | undefined): number {
+  const n = Number.parseFloat(raw ?? '');
+  return Number.isFinite(n) ? n : 0;
 }
 
 function unique(ids: string[]): string[] {
@@ -201,6 +219,7 @@ export class CoachController {
   #tone = $state<LineTone>('main');
   #targets = $state.raw<readonly string[]>([]);
   #holes = $state.raw<readonly Box[]>([]);
+  #holeIds = $state.raw<readonly string[]>([]);
   #covered = $state(false);
   #shake = $state(0);
   #playKey = $state(0);
@@ -227,6 +246,10 @@ export class CoachController {
   /** Their measured viewport boxes (unpadded). */
   get holes(): readonly Box[] {
     return this.#holes;
+  }
+  /** The testid of each hole in `holes`, in the same order (the spotlight keys its rings by them). */
+  get holeIds(): readonly string[] {
+    return this.#holeIds;
   }
   /** A menu, sheet, popover or chooser is open: fade out, take no input. */
   get covered(): boolean {
@@ -559,6 +582,45 @@ export class CoachController {
     return this.#root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   }
 
+  /**
+   * Scrolls the board so every spotlit target in it shows (T12b): the union of
+   * their boxes, `nearest`-style, below the sticky score bar (the board's
+   * scroll-padding-top, or the bar's own height). When the union can't fit,
+   * the first target alone is brought into view. Targets outside the board
+   * (the action bar, the counter prompt) never scroll.
+   */
+  #scrollToTargets(ids: readonly string[]): void {
+    const els = ids.flatMap((id) => {
+      const el = this.#el(id);
+      return el ? [el] : [];
+    });
+    if (els.length === 0) return;
+    const behavior: ScrollBehavior = this.#reduced() ? 'instant' : 'smooth';
+    const board = this.#el('board');
+    const inBoard = board ? els.filter((el) => board.contains(el)) : [];
+    if (board && inBoard.length > 0) {
+      const view = board.getBoundingClientRect();
+      const bar = this.#el('score-bar');
+      const barHeight = bar && board.contains(bar) ? bar.getBoundingClientRect().bottom - view.top : 0;
+      const padding = pxOf(this.#win?.getComputedStyle(board).getPropertyValue('scroll-padding-top'));
+      const top = view.top + Math.max(padding, barHeight);
+      const bottom = view.bottom;
+      const boxes = inBoard.map((el) => el.getBoundingClientRect());
+      const unionTop = Math.min(...boxes.map((b) => b.top));
+      const unionBottom = Math.max(...boxes.map((b) => b.bottom));
+      if (unionBottom - unionTop <= bottom - top) {
+        const delta = unionTop < top ? unionTop - top : unionBottom > bottom ? unionBottom - bottom : 0;
+        if (delta !== 0) {
+          if (typeof board.scrollBy === 'function') board.scrollBy({ top: delta, behavior });
+          else board.scrollTop += delta;
+        }
+        return;
+      }
+    }
+    const first = els[0];
+    if (typeof first.scrollIntoView === 'function') first.scrollIntoView({ block: 'nearest', behavior });
+  }
+
   #measure(): void {
     this.#frame = null;
     if (this.#disposed) return;
@@ -566,21 +628,21 @@ export class CoachController {
     const win = this.#win;
     const ids = this.#targets;
 
-    // Bring the first target into view once per new target set (design §7.2:
+    // Bring every target into view once per new target set (design §7.2:
     // the board scrolls at 393×660). Instant under reduced motion.
     const key = ids.join(' ');
     if (key !== this.#scrolledFor) {
       this.#scrolledFor = key;
-      const first = ids.length > 0 ? this.#el(ids[0]) : null;
-      if (first && typeof first.scrollIntoView === 'function') {
-        first.scrollIntoView({ block: 'nearest', behavior: this.#reduced() ? 'instant' : 'smooth' });
-      }
+      this.#scrollToTargets(ids);
     }
 
     const viewport: Box = { x: 0, y: 0, width: win?.innerWidth ?? 0, height: win?.innerHeight ?? 0 };
+    const holeIds: string[] = [];
     const holes = ids.flatMap((id) => {
       const el = this.#el(id);
-      return el ? [clampHole(boxOf(el), viewport)] : [];
+      if (!el) return [];
+      holeIds.push(id);
+      return [clampHole(boxOf(el), viewport)];
     });
 
     // The demo: shown while the learner is still to make the move; with motion
@@ -645,6 +707,22 @@ export class CoachController {
         if (el) avoid.push(boxOf(el));
       }
     }
+    // T12b. With a card selected, every target the page lights for it is a
+    // legal place to drop it: the bubble keeps clear of them all, not only of
+    // the spotlit one.
+    if (stage === 'selected') {
+      for (const el of this.#root.querySelectorAll('[data-state="highlighted"]')) {
+        const holder = el.closest('[data-testid]');
+        if (holder && this.#root.contains(holder) && LIT_TARGET.test(holder.getAttribute('data-testid') ?? '')) avoid.push(boxOf(holder));
+      }
+    }
+    // T12b. During the success beat Alice's glasses can turn Blake's hand
+    // over; during his think pause and narration his card leaves that hand
+    // (or a drawn one arrives) and lands in his rows. Keep those in sight.
+    if (stage === 'done' || stage === 'blake') {
+      const el = this.#el(stage === 'blake' ? 'opponent-zone' : 'opp-hand') ?? this.#el('opp-hand');
+      if (el) avoid.push(boxOf(el));
+    }
 
     const board = this.#el('board');
     const scoreBar = this.#el('score-bar') ?? this.#el('menu-button');
@@ -658,6 +736,7 @@ export class CoachController {
     };
 
     this.#holes = holes;
+    this.#holeIds = holeIds;
     this.#blockTop = scoreBarBottom;
     this.#placement = placeBubble({
       viewport,

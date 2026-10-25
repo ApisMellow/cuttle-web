@@ -638,6 +638,27 @@ describe('flightScript', () => {
     }
   });
 
+  it('a glasses 8 becomes the glasses face during its turn, fully shown before it lands (T12b)', () => {
+    const s = script(move(K.PlayPermanent, { Card: eight, HandIndex: 2 }), view());
+    const mover = s.actors.find((a) => a.key === 'mover')!;
+    const g = mover.glassesFrames;
+    expect(g).not.toBeNull();
+    checkFrames(g!);
+    for (const f of g!) expect(Object.keys(f).every((k) => k === 'opacity' || k === 'offset' || k === 'easing')).toBe(true);
+    expect(g![0].opacity).toBe(0);
+    expect(g![g!.length - 1].opacity).toBe(1);
+    // It starts as the plain 8 (the card leaving the hand) and is all glasses by the landing.
+    const firstFull = g!.find((f) => f.opacity === 1)!;
+    expect((firstFull.offset as number) * mover.durationMs).toBeLessThan(420);
+    expect((g!.filter((f) => f.opacity === 0).at(-1)!.offset as number) * mover.durationMs).toBeGreaterThan(0);
+    // Nothing else turns into glasses: a King, an 8 played for points, Blake's cards.
+    expect(script(move(K.PlayPermanent, { Card: king }), view()).actors[0].glassesFrames).toBeNull();
+    expect(script(move(K.PlayPoint, { Card: eight, HandIndex: 2 }), view()).actors[0].glassesFrames).toBeNull();
+    const seen = [card(2, 0), card(1, 3), card(5, 1)];
+    const withFlip = script(move(K.PlayPermanent, { Card: eight, HandIndex: 2 }), view(), {}, { drawn: null, oppHand: seen });
+    for (const a of withFlip.actors.filter((x) => x.key !== 'mover')) expect(a.glassesFrames).toBeNull();
+  });
+
   it('a glasses 8 without Blake’s hand in the after view still flies; nothing turns over', () => {
     const s = script(move(K.PlayPermanent, { Card: eight, HandIndex: 2 }), view());
     expect(s.actors.map((a) => a.key)).toEqual(['mover']);
@@ -997,6 +1018,43 @@ describe('FlightLayer, motion on', () => {
     expect(clones()).toHaveLength(4);
     expect(flipCalls()).toHaveLength(3);
     expect(holdCalls().map((h) => h.options.duration)).toEqual([420, 660, 730, 800]);
+  });
+
+  it('the glasses 8 clone carries the theme’s glasses face, laid out landscape and turned back, so it lands as the row draws it (T12b)', () => {
+    const layer = mountLayer(base());
+    const root = board();
+    const cap = capture(move(K.PlayPermanent, { Card: eight, HandIndex: 2 }), view(), root);
+    add(root, 'perm-0-1', [270, 600, 78, 60]);
+    layer.play(cap, root);
+    const mover = clones().find((c) => c.getAttribute('data-actor') === 'mover')!;
+    expect(mover.style.width).toBe('60px'); // the hand slot, upright
+    expect(mover.style.height).toBe('78px');
+    const g = mover.querySelector<HTMLElement>('[data-part="glasses"]');
+    expect(g).not.toBeNull();
+    // The same face the permanents row draws for a glasses 8: variant glasses, field size.
+    const face = g!.querySelector('[data-variant="glasses"]');
+    expect(face).not.toBeNull();
+    expect(face?.getAttribute('data-size')).toBe('field');
+    // A landscape box (one card-height wide), centred in the upright clone and
+    // turned -90deg, so the clone's own 90deg turn leaves it upright.
+    expect([g!.style.left, g!.style.top, g!.style.width, g!.style.height]).toEqual(['-9px', '9px', '78px', '60px']);
+    expect(g!.style.transform).toBe('rotate(-90deg)');
+    // It fades in on the flight's own timing (opacity only), and stays.
+    const anim = calls.find((c) => c.el === g)!;
+    expect(anim).toBeDefined();
+    expect(anim.options).toMatchObject({ duration: 420, fill: 'both' });
+    expect(anim.frames.at(-1)!.opacity).toBe(1);
+    // No staging marker inside it either.
+    for (const attr of ['data-testid', 'data-staged', 'aria-pressed', 'data-state']) expect(g!.querySelector(`[${attr}]`), attr).toBeNull();
+
+    // An upright permanent's clone has no glasses layer.
+    const layer2 = mountLayer(base());
+    const root2 = board();
+    const kingCap = capture(move(K.PlayPermanent, { Card: king, HandIndex: 0 }), view({ you: { ...view().you, hand: [king, seven, eight] } }), root2);
+    add(root2, 'perm-0-1', [270, 600, 60, 78]);
+    layer2.play(kingCap, root2);
+    expect(clones()).toHaveLength(1);
+    expect(layerEl().querySelector('[data-part="glasses"]')).toBeNull();
   });
 
   it('a counter has no clone; the scrap pile plays the arrive animation (scale 0.92 to 1)', () => {

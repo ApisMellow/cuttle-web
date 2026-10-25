@@ -123,8 +123,9 @@ function bubble(): HTMLElement {
   return el;
 }
 
+/** The line itself; the live region around it also holds the win headline (T12b). */
 function copy(): string {
-  return bubble().querySelector('[aria-live]')?.textContent?.trim() ?? '';
+  return bubble().querySelector('[aria-live] .coach__copy')?.textContent?.trim() ?? '';
 }
 
 function overlayRoot(): HTMLElement {
@@ -274,6 +275,9 @@ describe('S3b: the coach follows staging (R25.3)', () => {
       await playExpected(table);
       expect(bubble().dataset.stage).toBe('done');
       expect(copy()).toBe(step.success);
+      // T12b: the win is announced exactly once, by the headline in the live region.
+      const live = bubble().querySelector('[aria-live]')?.textContent ?? '';
+      expect(live.match(/You win!/g)?.length ?? 0).toBe(stepId === '1.5' || stepId === '5.4' ? 1 : 0);
     });
   }
 });
@@ -896,4 +900,36 @@ describe('the bubble copy is not a control: taps and Enter/Space on it skip a be
       expect(table.step?.id).toBe('2.2');
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// T12b: rings keyed by target; one definition of the coach's own controls
+// ---------------------------------------------------------------------------
+
+describe('T12b wiring', () => {
+  it('each spotlight ring is keyed by the target it rings', async () => {
+    const table = startAt(1, '1.5');
+    const queue: (() => void)[] = [];
+    const run = async () => {
+      while (queue.length) queue.shift()!();
+      await settle();
+    };
+    await mountLesson(table, { frames: { request: (fn: () => void) => queue.push(fn), cancel: () => {} } satisfies CoachFrames });
+    await run();
+    const ringKeys = () => [...overlayRoot().querySelectorAll('[data-coach-hole]')].map((el) => el.getAttribute('data-coach-hole'));
+    const targets = () => (overlayRoot().getAttribute('data-coach-targets') ?? '').split(' ').filter(Boolean);
+    expect(targets()).toHaveLength(1);
+    expect(ringKeys()).toEqual(targets());
+    const nine = table.envelope!.state.you.hand.findIndex((c) => c.Rank === 9 && c.Suit === 1);
+    await click(`hand-card-${nine}`);
+    await run();
+    expect(targets()).toEqual([`hand-card-${nine}`, 'zone-points']);
+    expect(ringKeys()).toEqual(targets());
+  });
+
+  it("the deal skip uses the coach's own-controls rule, not a copy of it", () => {
+    const src = readFileSync(path.join(here, '..', '..', 'src', 'lib', 'components', 'CoachOverlay.svelte'), 'utf8');
+    expect(src).not.toContain('[data-testid="coach-bubble"] button');
+    expect(src).toMatch(/import \{[^}]*\bownsInput\b[^}]*\} from '\.\.\/tutorial\/coach\.svelte'/);
+  });
 });

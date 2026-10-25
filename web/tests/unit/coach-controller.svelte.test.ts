@@ -24,6 +24,8 @@ import {
   DEMO_AUTO_PLAYS,
   DEMO_ENTRY_MS,
   DEMO_IDLE_MS,
+  OWN_CONTROLS,
+  ownsInput,
   type CoachClock,
   type CoachFrames,
 } from '../../src/lib/tutorial/coach.svelte';
@@ -995,6 +997,240 @@ describe("taps on the coach's own controls never skip a beat (Leave always works
       expect(table.step?.id).toBe('2.2');
     } finally {
       bubble.remove();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T12b: what the bubble keeps clear of, and scrolling every target into view
+// ---------------------------------------------------------------------------
+
+/** Fixes the layout boxes (jsdom has none) by testid, at a 393x852 viewport, for the length of `fn`. */
+async function withLayout(rects: Record<string, Box>, fn: () => Promise<void>): Promise<void> {
+  const origWidth = window.innerWidth;
+  const origHeight = window.innerHeight;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 393 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 852 });
+  const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const id = this.getAttribute('data-testid') ?? '';
+    const b = rects[id] ?? { x: 0, y: 0, width: 0, height: 0 };
+    return { ...b, top: b.y, left: b.x, right: b.x + b.width, bottom: b.y + b.height, toJSON: () => b } as DOMRect;
+  });
+  try {
+    await fn();
+  } finally {
+    spy.mockRestore();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: origWidth });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: origHeight });
+  }
+}
+
+/** The bubble's box from its placement (width as at 393 wide, the reserved height). */
+function bubbleBox(c: CoachController): Box {
+  return { x: c.placement.x, y: c.placement.y, width: 320, height: 150 };
+}
+
+/** The 393x852 board, measured from the real app (lesson 5, before the 8). */
+const BOARD_852: Record<string, Box> = {
+  'score-bar': { x: 0, y: 0, width: 393, height: 44 },
+  'menu-button': { x: 339, y: 0, width: 44, height: 44 },
+  board: { x: 0, y: 0, width: 393, height: 792 },
+  'opponent-zone': { x: 0, y: 48, width: 393, height: 197 },
+  'opp-hand': { x: 10, y: 48, width: 373, height: 42 },
+  'point-1-0': { x: 14, y: 175, width: 60, height: 70 },
+  'point-1-1': { x: 78, y: 175, width: 60, height: 70 },
+  'deck-pile': { x: 10, y: 340, width: 60, height: 84 },
+  'zone-oneoff': { x: 84, y: 340, width: 225, height: 84 },
+  'scrap-pile': { x: 323, y: 340, width: 60, height: 84 },
+  'zone-points': { x: 10, y: 519, width: 373, height: 84 },
+  'zone-permanents': { x: 10, y: 607, width: 373, height: 84 },
+  'hand-card-0': { x: 70, y: 705, width: 60, height: 78 },
+  'hand-card-1': { x: 134, y: 705, width: 60, height: 78 },
+  'hand-card-2': { x: 198, y: 705, width: 60, height: 78 },
+  'hand-card-3': { x: 262, y: 705, width: 60, height: 78 },
+  'staging-bar': { x: 0, y: 792, width: 393, height: 60 },
+};
+
+describe("T12b: the bubble stays off Blake's hand during the beats", () => {
+  it("success beat: clear of his hand (the glasses flip plays there); Blake's think pause and narration: clear of his hand and his rows", async () => {
+    const table = newTable(5);
+    walkTo(table, '5.1');
+    const c = await mountWith(table);
+    await withLayout(BOARD_852, async () => {
+      void table.apply(expectedIndex(table));
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('done');
+      expect(intersects(bubbleBox(c), BOARD_852['opp-hand']), 'success beat over his hand').toBe(false);
+
+      vi.advanceTimersByTime(1200);
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('blake');
+      expect(table.line.text).toBe("Blake's turn.");
+      expect(intersects(bubbleBox(c), BOARD_852['opponent-zone']), 'think pause over his side').toBe(false);
+
+      vi.advanceTimersByTime(700);
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('blake');
+      expect(table.line.text).toBe('Blake drew an Ace. You saw it.');
+      expect(intersects(bubbleBox(c), BOARD_852['opponent-zone']), 'narration over his side').toBe(false);
+      // Still above the action bar: the bubble isn't pushed off the board.
+      expect(c.placement.y + 150).toBeLessThanOrEqual(792 - 12);
+    });
+  });
+});
+
+describe('T12b: at `selected` the bubble stays off every lit target of the selected card', () => {
+  it('5.1, the 8 selected: neither the lit Points zone nor his lit point cards are covered', async () => {
+    const table = newTable(5);
+    walkTo(table, '5.1');
+    const c = await mountWith(table);
+    const eight = handIndexOf(table, { Rank: 8, Suit: 0 });
+    await withLayout(BOARD_852, async () => {
+      await click(`hand-card-${eight}`);
+      frames.run();
+      expect(c.stage).toBe('selected');
+      const lit = [...root().querySelectorAll('[data-state="highlighted"]')]
+        .map((el) => el.closest('[data-testid]')?.getAttribute('data-testid') ?? '')
+        .filter((id) => /^(zone-|point-|perm-)/.test(id));
+      // The page really lights them (the precondition for the test to mean anything).
+      expect(lit).toContain('zone-points');
+      expect(lit).toContain('point-1-0');
+      for (const id of new Set(lit)) expect(intersects(bubbleBox(c), BOARD_852[id]), `bubble over lit ${id}`).toBe(false);
+      for (const id of c.targets) expect(intersects(bubbleBox(c), BOARD_852[id]), `bubble over hole ${id}`).toBe(false);
+    });
+  });
+});
+
+describe('T12b: every spotlit target is scrolled into view', () => {
+  function stubScroll(el: HTMLElement): ReturnType<typeof vi.fn> {
+    const scrollBy = vi.fn();
+    Object.defineProperty(el, 'scrollBy', { configurable: true, value: scrollBy });
+    return scrollBy;
+  }
+
+  it('scrolls the board by the union of the targets, below the sticky score bar, when they fit', async () => {
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const c = await mountWith(table);
+    const nine = handIndexOf(table, { Rank: 9, Suit: 1 });
+    const board = q('board')!;
+    const scrollBy = stubScroll(board);
+    const intoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: intoView });
+    try {
+      await withLayout(
+        {
+          ...BOARD_852,
+          board: { x: 0, y: 0, width: 393, height: 600 },
+          // The Points zone is half under the sticky score bar; the 9 is in view.
+          'zone-points': { x: 10, y: 20, width: 373, height: 84 },
+          [`hand-card-${nine}`]: { x: 40, y: 480, width: 60, height: 78 },
+        },
+        async () => {
+          frames.run();
+          scrollBy.mockClear();
+          intoView.mockClear();
+          await click(`hand-card-${nine}`);
+          frames.run();
+          expect(c.targets).toEqual([`hand-card-${nine}`, 'zone-points']);
+          // Up by 24 px: the zone's top (20) to the score bar's bottom (44).
+          expect(scrollBy).toHaveBeenCalledTimes(1);
+          expect(scrollBy.mock.calls[0][0]).toMatchObject({ top: -24 });
+          expect(intoView).not.toHaveBeenCalled();
+        },
+      );
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it('does not scroll when every target is already in view', async () => {
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const c = await mountWith(table);
+    const nine = handIndexOf(table, { Rank: 9, Suit: 1 });
+    const scrollBy = stubScroll(q('board')!);
+    await withLayout({ ...BOARD_852, [`hand-card-${nine}`]: { x: 40, y: 705, width: 60, height: 78 } }, async () => {
+      frames.run();
+      await click(`hand-card-${nine}`);
+      frames.run();
+      expect(c.targets).toHaveLength(2);
+      expect(scrollBy).not.toHaveBeenCalled();
+    });
+  });
+
+  it('when the targets cannot all fit, brings the first one into view (nearest)', async () => {
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const c = await mountWith(table);
+    const nine = handIndexOf(table, { Rank: 9, Suit: 1 });
+    const scrollBy = stubScroll(q('board')!);
+    const calls: Element[] = [];
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: function (this: Element) {
+        calls.push(this);
+      },
+    });
+    try {
+      await withLayout(
+        {
+          ...BOARD_852,
+          board: { x: 0, y: 0, width: 393, height: 300 },
+          'zone-points': { x: 10, y: -400, width: 373, height: 84 },
+          [`hand-card-${nine}`]: { x: 40, y: 200, width: 60, height: 78 },
+        },
+        async () => {
+          frames.run();
+          calls.length = 0;
+          await click(`hand-card-${nine}`);
+          frames.run();
+          expect(c.targets[0]).toBe(`hand-card-${nine}`);
+          expect(calls.map((el) => el.getAttribute('data-testid'))).toEqual([`hand-card-${nine}`]);
+          expect(scrollBy).not.toHaveBeenCalled();
+        },
+      );
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+});
+
+describe('T12b: the spotlight rings are keyed by target', () => {
+  it('holeIds names each measured hole, in the holes order', async () => {
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const c = await mountWith(table);
+    const nine = handIndexOf(table, { Rank: 9, Suit: 1 });
+    await withLayout(BOARD_852, async () => {
+      await click(`hand-card-${nine}`);
+      frames.run();
+      expect(c.holeIds).toEqual([`hand-card-${nine}`, 'zone-points']);
+      expect(c.holes).toHaveLength(2);
+    });
+  });
+});
+
+describe("T12b: one definition of the coach's own controls", () => {
+  it('ownsInput is true inside the bubble and done sheet buttons and the menu button, false elsewhere', () => {
+    const wrap = document.createElement('div');
+    wrap.innerHTML =
+      '<section data-testid="coach-bubble"><button id="a">Leave</button><p id="b">x</p></section>' +
+      '<div data-testid="coach-lesson-done"><button id="c">Next</button></div>' +
+      '<button data-testid="menu-button" id="d"><span id="e"></span></button><button data-testid="deck-pile" id="f"></button>';
+    document.body.append(wrap);
+    try {
+      const at = (id: string) => wrap.querySelector(`#${id}`);
+      expect(['a', 'c', 'd', 'e'].map((id) => ownsInput(at(id)))).toEqual([true, true, true, true]);
+      expect(['b', 'f'].map((id) => ownsInput(at(id)))).toEqual([false, false]);
+      expect(ownsInput(null)).toBe(false);
+      expect(OWN_CONTROLS).toContain('[data-testid="menu-button"]');
+    } finally {
+      wrap.remove();
     }
   });
 });

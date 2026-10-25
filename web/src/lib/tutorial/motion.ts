@@ -848,6 +848,13 @@ export interface FlightActor {
   frames: Keyframe[];
   /** rotateY frames for the inner flipper; null when the card never turns. */
   flipFrames: Keyframe[] | null;
+  /**
+   * A glasses 8 only (T12b): opacity frames for a layer drawing the theme's
+   * glasses face, the face the permanents row shows for it. It fades in
+   * while the card turns on its side, so the clone lands already looking
+   * like the real card. Null for every other card.
+   */
+  glassesFrames: Keyframe[] | null;
 }
 
 export type FlightHoldTarget = 'landing' | 'scrap' | `oppCard:${number}`;
@@ -881,10 +888,25 @@ interface ActorOptions {
   back: boolean;
   face: Card | null;
   flipWindow?: [number, number];
+  /** The glasses face fades in over this window (ms into the actor's timeline). */
+  glassesWindow?: [number, number];
   fromHand?: boolean;
   delayMs?: number;
   durationMs?: number;
 }
+
+/** A layer's opacity: 0 until `startMs`, rising to 1 by `endMs`, then held. */
+function fadeInFrames(startMs: number, endMs: number, durationMs: number): Keyframe[] {
+  return [
+    { offset: 0, opacity: 0, easing: 'linear' },
+    { offset: n2(startMs / durationMs), opacity: 0, easing: 'ease-in-out' },
+    { offset: n2(endMs / durationMs), opacity: 1, easing: 'linear' },
+    { offset: 1, opacity: 1 },
+  ];
+}
+
+/** The glasses face takes over during the middle of the 8's quarter turn, well before it settles. */
+const GLASSES_FADE: [number, number] = [0.3, 0.65];
 
 function makeActor(key: string, start: RectLike, legs: FlightLeg[], o: ActorOptions): FlightActor {
   const upright = [start, ...legs.filter((l) => !l.rotateDeg).map((l) => l.to)];
@@ -902,6 +924,7 @@ function makeActor(key: string, start: RectLike, legs: FlightLeg[], o: ActorOpti
     durationMs,
     frames: actorFrames(box, start, legs, durationMs),
     flipFrames: flip && o.flipWindow ? flipFrames(o.flipWindow[0], o.flipWindow[1] - o.flipWindow[0], durationMs) : null,
+    glassesFrames: o.glassesWindow && o.face !== null ? fadeInFrames(o.glassesWindow[0], o.glassesWindow[1], durationMs) : null,
   };
 }
 
@@ -936,6 +959,8 @@ export function flightScript(
           back,
           face: known,
           flipWindow: [F * 0.3, F * 0.7],
+          // T12b: a glasses 8 lands showing the glasses face, as the row draws it.
+          glassesWindow: cap.sideways ? [F * GLASSES_FADE[0], F * GLASSES_FADE[1]] : undefined,
           fromHand: cap.mine,
         }),
       );
