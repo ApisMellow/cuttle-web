@@ -137,6 +137,11 @@ describe('v1 -> v3 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       await live.newGame({ seed: String(seed), dealer: 0 });
       let x = seed * 2654435761;
       for (let ply = 0; ply < 400 && live.curtain.kind !== 'result'; ply++) {
+        if (live.wipeEffect?.beforePass) {
+          // Issue #53 (SPEC §4.8): an Ace's or 6's show holds the store too.
+          live.dismissWipeEffect();
+          continue;
+        }
         const k = key(live.curtain);
         if (!captured.has(k)) captured.set(k, storage.getItem(SNAPSHOT_KEY)!);
         if (live.drawReveal !== null) {

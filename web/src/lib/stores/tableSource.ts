@@ -24,6 +24,7 @@
 
 import type { AppliedMove, Card, Envelope, PlayerId } from '../bridge/schema';
 import type { DrawReveal } from '../drawReveal';
+import type { WipeEffect } from '../globalEffect';
 import type { CurtainState } from './curtain.svelte';
 
 /**
@@ -148,6 +149,17 @@ export interface TableSource {
   readonly notSoFast?: NotSoFast | null;
   /** Ends the "Not So Fast!" beat. A no-op when none is up. */
   dismissNotSoFast?(): void;
+  /**
+   * Issue #53 (SPEC §4.8): an Ace's or a 6's wipe playing on `to`'s board,
+   * or null. Pass-and-play: the mover's `show` holds before the pass
+   * (`beforePass`, the handoff already saved; dismissing raises it), and the
+   * next player's `replay` plays once at their board. Online: either plays
+   * on the board as the state arrives, and never holds. Memory only. Absent
+   * means never.
+   */
+  readonly wipeEffect?: WipeEffect | null;
+  /** Ends the wipe effect (its timer, or a tap during the hold). A no-op when none is up. */
+  dismissWipeEffect?(): void;
 
   // Tutorial T2 (docs/tutorial-design.md §6.3): three optional fields for the
   // tutorial's source. GameStore leaves all three absent. OnlineGameStore

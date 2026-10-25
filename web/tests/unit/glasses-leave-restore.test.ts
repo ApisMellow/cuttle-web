@@ -61,6 +61,11 @@ beforeAll(async () => {
 async function settle(): Promise<'board' | 'result'> {
   for (let i = 0; i < 24; i++) {
     const c = game.curtain;
+    // Issue #53 (SPEC §4.8): a 6's show holds the mover's board before the pass.
+    if (game.wipeEffect?.beforePass) {
+      game.dismissWipeEffect();
+      continue;
+    }
     if (c.kind === 'none') return 'board';
     if (c.kind === 'result') return 'result';
     if (c.kind === 'ack') {

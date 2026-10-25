@@ -37,6 +37,11 @@
   // error screen (the stand-in for SPEC §2.10's StuckState) takes over,
   // with "New game" as the only action. SPEC §2.9/§2.10: no auto-retry.
   //
+  // Issue #53 global effects (SPEC §4.8): while `source.wipeEffect` is up
+  // for this viewer at curtain `none`, WipeEffect plays over the board: the
+  // mover's show (before the pass it takes the tap and ends early on one) or
+  // the next player's replay. During a replay the board is inert.
+  //
   // P2 W15 pickers, all inside the board branch (curtain `none` only):
   //   - SevenRevealPanel (R16): phase SevenChoosing, and only when the view
   //     is the actor's (`viewer === active`, `sevenRevealed` present). It
@@ -80,6 +85,7 @@
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
   import StagingBar from './StagingBar.svelte';
+  import WipeEffect from './WipeEffect.svelte';
 
   interface GameScreenProps {
     /** The game this screen shows and moves (W10). Fixed for the component's life. */
@@ -162,8 +168,19 @@
   }
 
   const staging = new StagingStore(stagingEnv, applyMove);
+  /**
+   * SPEC §4.8: the wipe to play, only at curtain `none` and only on the board
+   * of the viewer it is addressed to (never behind a curtain).
+   */
+  const wipe = $derived.by(() => {
+    const effect = source.wipeEffect ?? null;
+    if (effect === null || source.curtain.kind !== 'none' || source.envelope === null) return null;
+    if (source.viewer !== effect.to || source.envelope.state.viewer !== effect.to) return null;
+    return effect;
+  });
   // W10: nothing on the board takes a tap while a move is in flight.
-  const boardInert = $derived(staging.inert || source.pending);
+  // SPEC §4.8: nor during a wipe's short replay.
+  const boardInert = $derived(staging.inert || source.pending || wipe !== null);
 
   // SPEC §5.3: staging clears on every apply and every viewer change.
   // The browse sheet closes on the same boundaries.
@@ -1056,6 +1073,23 @@
 
     {#if enlarged !== null}
       <CardEnlarged card={enlarged} {theme} />
+    {/if}
+
+    {#if wipe !== null}
+      <!-- Issue #53 (SPEC §4.8): the wipe over the board. Keyed on the wipe,
+           so a new one restarts it and the same one never plays twice. -->
+      {#key `${wipe.seq}:${wipe.mode}:${wipe.to}`}
+        <WipeEffect
+          {wipe}
+          viewer={wipe.to}
+          root={screenEl}
+          {rotated}
+          reducedMotion={settings.reducedMotion}
+          hold={wipe.beforePass}
+          ondone={() => source.dismissWipeEffect?.()}
+          {theme}
+        />
+      {/key}
     {/if}
 
     {#if source.notSoFast}

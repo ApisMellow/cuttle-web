@@ -5,7 +5,9 @@
   // sheet the panel can open.
   //
   // Items: Rules, Card style (only when there is more than one) with a Card
-  // gallery link under it (a plain same-tab link, see lib/gallery.ts), Home, New
+  // gallery link under it (a plain same-tab link, see lib/gallery.ts), the
+  // "Replay effects" switch (issue #53, SPEC §4.8; a setting, never in the
+  // save, and it touches nothing in the game state), Home, New
   // game (behind a confirm that names the game; not offered online, where
   // the result screen's Rematch is the only new game), Close.
   //
@@ -165,6 +167,16 @@
         <a class="game-menu__item game-menu__link" data-testid="menu-gallery" href={galleryHref()}>{GALLERY_LABEL}</a>
       {/if}
 
+      <label class="game-menu__item game-menu__switch" data-testid="menu-replay-effects">
+        <span>Replay effects</span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={settings.replayEffects}
+          onchange={(event) => settings.setReplayEffects(event.currentTarget.checked)}
+        />
+      </label>
+
       <button type="button" class="game-menu__item" data-testid="menu-home" onclick={onhome}>Home</button>
       {#if newGame}
         <button type="button" class="game-menu__item" data-testid="menu-new-game" onclick={() => (confirming = true)}>
@@ -233,6 +245,26 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  /* Issue #53: a label row with its switch at the end. */
+  .game-menu__switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cu-space-2, 8px);
+  }
+
+  .game-menu__switch input {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    accent-color: var(--cu-ochre, #f0b54a);
+  }
+
+  .game-menu__item:has(input:focus-visible) {
+    outline: 2px solid var(--cu-iris, #5ccfc4);
+    outline-offset: 2px;
   }
 
   .game-menu__link {
