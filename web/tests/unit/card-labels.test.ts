@@ -82,7 +82,7 @@ describe('effects: one source for cards, chooser, staging and the Rules sheet', 
     expect(cardEffectLine(card(5))).toBe('One-off: draw 2 cards.');
     expect(cardEffectLine(card(8))).toBe('Glasses: you see their hand.');
     expect(cardEffectLine(card(10))).toBe('No one-off: play it for points or to scuttle.');
-    expect(cardEffectLine(card(2))).toBe('One-off: scrap one royal or glasses 8, or stop a one-off as it’s played.');
+    expect(cardEffectLine(card(2))).toBe('One-off: scrap one royal or glasses 8, or start your turn by undoing their last one-off turn.');
     expect(cardEffectLine(card(11))).toBe('Permanent: steal one of their point cards.');
     expect(cardEffectLine(card(12))).toBe('Permanent: their 2s, 9s and Jacks can’t target your other cards.');
     expect(cardEffectLine(card(13))).toBe('Permanent: you need fewer points to win.');

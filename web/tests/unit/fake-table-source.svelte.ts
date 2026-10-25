@@ -16,7 +16,7 @@
 import type { AppliedMove, Envelope, PlayerId } from '../../src/lib/bridge/schema';
 import type { DrawReveal } from '../../src/lib/drawReveal';
 import type { CurtainState } from '../../src/lib/stores/curtain.svelte';
-import type { OnlineTableInfo, TableSource } from '../../src/lib/stores/tableSource';
+import type { NotSoFast, OnlineTableInfo, TableSource } from '../../src/lib/stores/tableSource';
 
 export class FakeTableSource implements TableSource {
   envelope = $state<Envelope | null>(null);
@@ -25,6 +25,9 @@ export class FakeTableSource implements TableSource {
   viewer = $state<PlayerId | null>(null);
   curtain = $state<CurtainState>({ kind: 'none' });
   drawReveal = $state<DrawReveal | null>(null);
+  /** Issue #93: the winner's beat; `dismissNotSoFast()` clears it and counts the call. */
+  notSoFast = $state<NotSoFast | null>(null);
+  notSoFastDismissals = 0;
   pending = $state(false);
   online = $state<OnlineTableInfo | null>(null);
   names = $state<[string, string] | undefined>(undefined);
@@ -82,6 +85,11 @@ export class FakeTableSource implements TableSource {
 
   dismissDrawReveal(): void {
     this.drawReveal = null;
+  }
+
+  dismissNotSoFast(): void {
+    this.notSoFastDismissals++;
+    this.notSoFast = null;
   }
 
   async advanceCurtain(): Promise<void> {}

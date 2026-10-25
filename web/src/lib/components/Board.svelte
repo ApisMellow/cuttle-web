@@ -162,6 +162,8 @@
     scrapStaged={staged.has('scrap')}
     oneOffHighlighted={highlighted.has('zone:oneoff')}
     oneOffStaged={staged.has('zone:oneoff')}
+    counterHighlighted={highlighted.has('counter-link')}
+    counterStaged={staged.has('counter-link')}
     {lastMoveText}
     ontap={tap}
     {theme}

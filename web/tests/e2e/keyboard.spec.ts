@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { plainMoveText } from '../../src/lib/recap';
+import { c, positionSnapshot } from '../../src/lib/tutorial/position';
 
 // W25 item 6 (desktop keyboard): every lit target is reachable with Tab and
 // activates with Enter or Space, with a visible focus ring. Reached through
@@ -223,22 +224,49 @@ test('R12: a repeated Enter on the board\'s staged Confirm applies nothing', asy
 });
 
 // r16 (d-16): on a desktop the counter prompt keeps to the 560 px column,
-// centred, and focus starts on its heading.
+// centred, and focus starts on its heading. Issue #93: engine v0.3.0 opens
+// no counter window any more, so the prompt is reached only from a legacy
+// save (a v0.2.x game at phase 1). This one is built by hand, as in
+// counter-rewind-wasm.test.ts's C4 legacy case: Alice has played 6♣ as a
+// one-off and Blake, holding 2♣, is in the window. It resumes from Home.
+function legacyCounterWindowSave(): string {
+  const engine = JSON.parse(
+    positionSnapshot({
+      aliceHand: [c(9, 'H')],
+      alicePoints: [],
+      blakeHand: [c(2, 'C'), c(7, 'D')],
+      blakePoints: [],
+      scrap: [],
+      deckTop: [c(6, 'C')],
+    }),
+  );
+  engine.state.Deck = engine.state.Deck.slice(1); // 6♣ is in the pending one-off, not the deck
+  engine.state.Active = 1;
+  engine.state.Phase = 1;
+  engine.state.Pending = { PlayedBy: 0, Card: c(6, 'C'), Target: null, ScrapIndex: 0, Revealed: null, CounterChain: null };
+  const sixEntry = { by: 0, kind: 4, subKind: null, card: c(6, 'C'), targetCard: null, drawn: null, description: 'play 6♣ as one-off', seq: 1 };
+  engine.history = [{ ...sixEntry, index: 2 }]; // the engine's snapshot holds unredacted history
+  return JSON.stringify({
+    v: 2,
+    savedAt: '2026-10-25T00:00:00.000Z',
+    engineState: JSON.stringify(engine),
+    history: [sixEntry],
+    lastSeenSeq: { 0: 1, 1: 0 },
+    viewer: 1,
+    curtain: { kind: 'ack', to: 1 },
+    names: ['Alice', 'Blake'],
+    seed: '0',
+    dealer: 1,
+  });
+}
+
 test('1440x900: the counter prompt keeps to the board column, with focus on a control', async ({ page }) => {
-  await startGolden(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  // Ruling 2026-09-29: a prompt only for a responder who holds a 2. Alice
-  // draws (keeping her 2♥); Blake plays 5♥ as a one-off into her window.
-  await page.getByTestId('deck-pile').click();
-  await page.getByTestId('staging-confirm').click();
-  await page.getByTestId('reveal-two-step').click();
-  await page.getByTestId('reveal-two-step').click();
-  const moves = await hook(page, (h) => h.moves());
-  const five = moves.find((m) => m.kind === 4 && /^play 5. as one-off$/.test(m.description))!;
-  await page.getByTestId(`hand-card-${five.handIndex}`).click();
-  await page.getByTestId('zone-oneoff').click();
-  await page.getByTestId('staging-confirm').click();
-  // Alice's response: the curtain, then the prompt (no recap: it would only repeat the 5).
+  await page.goto('/');
+  await page.evaluate((value) => localStorage.setItem('cuttle-web:game', value), legacyCounterWindowSave());
+  await page.reload();
+  await page.getByTestId('resume').click();
+  // The resume gate, then Blake's prompt.
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('counter-prompt')).toBeVisible();

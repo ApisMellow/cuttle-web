@@ -95,12 +95,12 @@ export function fiveEffect(n: number, full = false): string {
 export const HAND_LIMIT = 8;
 
 /**
- * What a 2 does as a counter, as a lower-case clause. Issue #93: still the
- * v0.2 wording, because gallery/site/cards.json carries a copy of this line
- * (gallery-data.test.ts) and the gallery is outside the web app; both move
- * together.
+ * What a 2 does as a counter, as a lower-case clause (issue #93, SPEC
+ * §4.3: the counter opens the counterer's own turn and rewinds the other
+ * player's last one). gallery/site/cards.json carries a copy of this line
+ * (gallery-data.test.ts); both move together.
  */
-export const COUNTER_EFFECT = 'stop a one-off as it’s played';
+export const COUNTER_EFFECT = 'start your turn by undoing their last one-off turn';
 
 /**
  * The Rules sheet's line on when a one-off takes effect (issue #93, SPEC
