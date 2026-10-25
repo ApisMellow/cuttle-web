@@ -16,7 +16,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import type { Card } from '../../../src/lib/bridge/schema';
 import { cardSpokenName } from '../../../src/lib/theme/names';
 import { LESSONS } from '../../../src/lib/tutorial/lessons';
-import type { Lesson, MoveStep, SpotTarget, Step } from '../../../src/lib/tutorial/types';
+import type { AppearStep, Lesson, MoveStep, NextStep, SpotTarget, Step } from '../../../src/lib/tutorial/types';
 
 export const VIEWPORTS = [
   { width: 393, height: 852 },
@@ -237,12 +237,13 @@ export async function openLesson(page: Page, lesson: number): Promise<void> {
   await waitStep(page, `${lesson}.1`);
 }
 
-export async function waitStep(page: Page, id: string): Promise<void> {
-  await expect(bubble(page)).toHaveAttribute('data-step', id);
+/** Beats (a success line, Blake's pause and narration) are timers worth several seconds; `timeout` lets a walk wait them out. */
+export async function waitStep(page: Page, id: string, timeout?: number): Promise<void> {
+  await expect(bubble(page)).toHaveAttribute('data-step', id, timeout === undefined ? undefined : { timeout });
 }
 
-export async function waitStage(page: Page, stage: string | RegExp): Promise<void> {
-  await expect(bubble(page)).toHaveAttribute('data-stage', stage);
+export async function waitStage(page: Page, stage: string | RegExp, timeout?: number): Promise<void> {
+  await expect(bubble(page)).toHaveAttribute('data-stage', stage, timeout === undefined ? undefined : { timeout });
 }
 
 /** Waits for a stage (and optionally a step), then returns the settled reading. */
@@ -286,7 +287,7 @@ export function handRank(page: Page, rank: number): Locator {
   return page.locator(`[data-testid^="hand-card-"][aria-label^="${name} of"]`).first();
 }
 
-function locateSpot(page: Page, spot: SpotTarget): Locator {
+export function locateSpot(page: Page, spot: SpotTarget): Locator {
   switch (spot.kind) {
     case 'testid':
       return page.getByTestId(spot.id);
@@ -308,14 +309,14 @@ export function moveStepsOf(lesson: number): MoveStep[] {
 }
 
 /** Whether the DEV hook lists a legal move of this kind from this hand index (sanity check before playing). */
-async function hookHasMove(page: Page, kind: number, handIndex: number): Promise<boolean> {
+export async function hookHasMove(page: Page, kind: number, handIndex: number): Promise<boolean> {
   return page.evaluate(
     ([k, h]) => (window.__cuttleTestHook?.moves() ?? []).some((m) => m.kind === k && m.handIndex === h),
     [kind, handIndex] as const,
   );
 }
 
-async function handIndexOf(card: Locator): Promise<number> {
+export async function handIndexOf(card: Locator): Promise<number> {
   const id = (await card.getAttribute('data-testid')) ?? '';
   return Number(id.replace('hand-card-', ''));
 }
@@ -379,13 +380,17 @@ export function wrongSetup(stepId: string): WrongSetup | null {
   }
 }
 
-/** Taps a wrong setup up to the staging bar (the coach should then be `staged-wrong`). */
-export async function stageWrong(page: Page, setup: WrongSetup): Promise<void> {
+/**
+ * Taps a wrong setup up to the staging bar (the coach should then be
+ * `staged-wrong`). `via: 'tap'` uses touch taps on a touch context.
+ */
+export async function stageWrong(page: Page, setup: WrongSetup, via: 'click' | 'tap' = 'click'): Promise<void> {
+  const press = (target: Locator): Promise<void> => (via === 'tap' ? target.tap() : target.click());
   if (setup.source === 'deck') {
-    await page.getByTestId('deck-pile').click();
+    await press(page.getByTestId('deck-pile'));
     return;
   }
-  await handCard(page, setup.source).click();
+  await press(handCard(page, setup.source));
   // The wrong target is, by definition, not spotlit, and the bubble may sit
   // over unspotlit board (design §7.3), so it is activated the way a key press
   // would, not by a pointer hit-test.
@@ -426,6 +431,333 @@ export async function playThrough(page: Page, lesson: number, upToStepId: string
       await playExpected(page, step);
     }
   }
+}
+
+// =====================================================================================
+// T13: whole-lesson walkthroughs. The three specs (touch, keyboard, reduced motion)
+// share one walker and differ only in how the learner's input is made.
+// =====================================================================================
+
+/** A beat (success line, Blake's pause and narration) is a few seconds of timers. */
+export const BEAT_MS = 20_000;
+
+export const TUTORIAL_KEY = 'cuttle-web:tutorial';
+export const SETTINGS_KEY = 'cuttle-web:settings';
+export const GAME_KEY = 'cuttle-web:game';
+
+// --- storage -------------------------------------------------------------------------
+
+/** Every localStorage entry, raw. */
+export async function storageDump(page: Page): Promise<Record<string, string>> {
+  return page.evaluate(() => {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key !== null) out[key] = localStorage.getItem(key) ?? '';
+    }
+    return out;
+  });
+}
+
+/**
+ * The tutorial's storage contract (plan §2): nothing but `cuttle-web:tutorial`
+ * is written. Every key that existed before the run is byte-identical after it,
+ * and the only key that may be new is the tutorial's.
+ */
+export function expectStorageUntouched(before: Record<string, string>, after: Record<string, string>): void {
+  for (const [key, value] of Object.entries(before)) {
+    expect(after[key], `${key} must be byte-identical after the run`).toBe(value);
+  }
+  const added = Object.keys(after).filter((key) => !(key in before));
+  expect(added.filter((key) => key !== TUTORIAL_KEY), 'no key but the tutorial\'s may appear').toEqual([]);
+}
+
+/** The finished lessons as saved, sorted, or null when nothing is saved. */
+export async function readProgress(page: Page): Promise<number[] | null> {
+  const raw = await page.evaluate((key) => localStorage.getItem(key), TUTORIAL_KEY);
+  if (raw === null) return null;
+  const parsed = JSON.parse(raw) as { v: number; done: number[] };
+  return [...parsed.done].sort((a, b) => a - b);
+}
+
+/** Seeds `cuttle-web:settings` before the page loads (and only if nothing is there yet). */
+export async function seedSettings(page: Page, value: Record<string, unknown>): Promise<string> {
+  const raw = JSON.stringify(value);
+  await page.addInitScript(
+    ([key, text]) => {
+      try {
+        if (localStorage.getItem(key) === null) localStorage.setItem(key, text);
+      } catch {
+        // storage unavailable: the app falls back to defaults
+      }
+    },
+    [SETTINGS_KEY, raw] as const,
+  );
+  return raw;
+}
+
+/**
+ * A real saved pass-and-play game, left at Home: the golden deal, revealed,
+ * then menu -> Home (which keeps the save). A walkthrough that finishes with
+ * this save and the settings (names) byte-identical has proved the tutorial
+ * never touches either.
+ */
+export async function seedSavedGame(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.getByTestId('name-input-0').fill('Alice');
+  await page.getByTestId('name-input-1').fill('Blake');
+  await page.getByTestId('new-game').click();
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  await page.evaluate(() => window.__cuttleTestHook?.newGame('42', 1));
+  await page.getByTestId('reveal-two-step').click();
+  await page.getByTestId('reveal-two-step').click();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.getByTestId('menu-button').click();
+  await expect(page.getByTestId('game-menu')).toBeVisible();
+  await page.getByTestId('menu-home').click();
+  await expect(page.getByTestId('home-screen')).toBeVisible();
+  await expect(page.getByTestId('resume')).toBeVisible();
+}
+
+// --- copy checks (read from LESSONS, never hard-coded) -----------------------------------
+
+/** Appended to a nudge while a wrong move is staged (lessons.ts CANCEL_SUFFIX). */
+export { CANCEL_SUFFIX } from '../../../src/lib/tutorial/lessons';
+
+/** The step's nudge texts and its generic line: whatever a wrong move can be told. */
+export function nudgeTexts(step: MoveStep): string[] {
+  return [...step.nudges.map((n) => n.text), step.generic];
+}
+
+/** The coach's live line, trimmed. */
+export async function coachText(page: Page): Promise<string> {
+  return ((await bubble(page).locator('[aria-live]').textContent()) ?? '').trim();
+}
+
+/** The overlay's spotlit testids (`data-coach-targets`). */
+export async function coachTargets(page: Page): Promise<string[]> {
+  const raw = (await page.locator('[data-coach-overlay]').getAttribute('data-coach-targets')) ?? '';
+  return raw.split(' ').filter(Boolean);
+}
+
+// --- the walker -------------------------------------------------------------------------
+
+export interface WalkIO {
+  /** Activates Next on a `next` step. */
+  next(page: Page, step: NextStep): Promise<void>;
+  /** The learner's right move on a `move` step, through its commit (Confirm, or the deck's second tap). */
+  move(page: Page, step: MoveStep): Promise<void>;
+  /** Step 5.3: the learner taps the other Jack and closes the popover. */
+  appear(page: Page, step: AppearStep): Promise<void>;
+  /** A step at rest: stage `next`, `appear` or `idle`. */
+  atRest?(page: Page, lesson: Lesson, step: Step): Promise<void>;
+  /** A move step at rest, just before the right move (the wrong stagings go here). */
+  beforeMove?(page: Page, lesson: Lesson, step: MoveStep): Promise<void>;
+  /** The done sheet is up and its heading, line and saved progress have been checked. */
+  atDone?(page: Page, lesson: Lesson): Promise<void>;
+}
+
+/** The done sheet's heading (LessonDoneSheet): the final lesson reads "You've learned Cuttle". */
+export function doneHeading(lessonId: number): string {
+  return lessonId === 5 ? "You've learned Cuttle" : `Lesson ${lessonId} done`;
+}
+
+/**
+ * Plays one lesson from its first step to its done sheet. Every wait is on
+ * `data-step` / `data-stage` or the sheet; beats are waited out, never slept.
+ * `expectedDone` is the saved progress the sheet must have written.
+ */
+export async function walkLesson(page: Page, lessonId: number, io: WalkIO, expectedDone: number[]): Promise<void> {
+  const lesson = lessonOf(lessonId);
+  for (const step of lesson.steps) {
+    await waitStep(page, step.id, BEAT_MS);
+    if (step.kind === 'next') {
+      await waitStage(page, 'next', BEAT_MS);
+      await io.atRest?.(page, lesson, step);
+      await io.next(page, step);
+    } else if (step.kind === 'appear') {
+      await waitStage(page, 'appear', BEAT_MS);
+      await io.atRest?.(page, lesson, step);
+      await io.appear(page, step);
+    } else {
+      await waitStage(page, 'idle', BEAT_MS);
+      await io.atRest?.(page, lesson, step);
+      await io.beforeMove?.(page, lesson, step);
+      await io.move(page, step);
+    }
+  }
+  const sheet = page.getByTestId('coach-lesson-done');
+  await expect(sheet).toBeVisible({ timeout: BEAT_MS });
+  await expect(sheet.getByRole('heading')).toHaveText(doneHeading(lessonId));
+  await expect(sheet).toContainText(lesson.done);
+  // R25.5: progress is written when the sheet appears.
+  await expect.poll(() => readProgress(page)).toEqual(expectedDone);
+  await io.atDone?.(page, lesson);
+}
+
+/** After the final lesson's "Play a game": Home reports all five done. */
+export async function expectHomeAllDone(page: Page): Promise<void> {
+  await expect(page.getByTestId('home-screen')).toBeVisible();
+  await expect(page.getByTestId('learn-to-play')).toBeVisible();
+  await expect(page.getByText('All 5 lessons done', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('coach-bubble')).toHaveCount(0);
+}
+
+// --- touch ----------------------------------------------------------------------------
+
+export interface Finger {
+  start(p: { x: number; y: number }): Promise<void>;
+  move(p: { x: number; y: number }): Promise<void>;
+  end(): Promise<void>;
+}
+
+/** A finger on Chromium's real touch pipeline (CDP `Input.dispatchTouchEvent`), as the drag-drop spec does. */
+export async function newFinger(page: Page): Promise<Finger> {
+  const cdp = await page.context().newCDPSession(page);
+  let last = { x: 0, y: 0 };
+  return {
+    async start(p) {
+      last = p;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p.x, y: p.y }] });
+    },
+    async move(p) {
+      const steps = 8; // several small moves, as a finger reports them
+      for (let i = 1; i <= steps; i++) {
+        const x = last.x + ((p.x - last.x) * i) / steps;
+        const y = last.y + ((p.y - last.y) * i) / steps;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      }
+      last = p;
+    },
+    async end() {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    },
+  };
+}
+
+async function centreOf(target: Locator): Promise<{ x: number; y: number }> {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('no box to aim at');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/**
+ * A press that lasts, as a real finger does: touchstart, `holdMs`, touchend,
+ * on the target's centre. The hold is the point of the test (a tap handler
+ * that acts on `pointerdown` or `click` must also survive a press that
+ * lingers), so it is the one fixed delay in these specs.
+ */
+export async function press(page: Page, finger: Finger, target: Locator, holdMs = 100): Promise<void> {
+  await finger.start(await centreOf(target));
+  await page.waitForTimeout(holdMs);
+  await finger.end();
+}
+
+/**
+ * Drags a hand card onto a target: grab the always-visible left slice, move
+ * past the 8 px threshold (which selects the card, as a tap would), wait for
+ * the coach to follow, aim at the target where it is NOW, and release.
+ */
+export async function dragCardTo(page: Page, finger: Finger, card: Locator, target: Locator): Promise<void> {
+  const box = await card.boundingBox();
+  if (!box) throw new Error('hand card has no box');
+  const grip = { x: box.x + 16, y: box.y + box.height / 2 };
+  await finger.start(grip);
+  await finger.move({ x: grip.x, y: grip.y - 30 });
+  await expect(card).toHaveAttribute('data-dragging', 'true');
+  await waitStage(page, 'selected');
+  await finger.move(await centreOf(target));
+  await finger.end();
+}
+
+/** The learner's right move on a touch screen: drag a hand card, tap the deck or the counter option, then commit. */
+export async function touchMove(page: Page, finger: Finger, step: MoveStep): Promise<void> {
+  const source = locateSpot(page, step.source);
+  if (step.source.kind === 'hand') {
+    expect(await hookHasMove(page, step.expect.kind, await handIndexOf(source))).toBe(true);
+    await dragCardTo(page, finger, source, locateSpot(page, step.target));
+    await waitStage(page, 'staged-right');
+    await page.getByTestId('staging-confirm').tap();
+  } else if (step.source.kind === 'testid' && step.source.id === 'deck-pile') {
+    await source.tap(); // stages the draw
+    await waitStage(page, 'staged-right');
+    await source.tap(); // the second tap commits it (issue #24)
+  } else {
+    await source.tap(); // the counter option: staging it is the whole setup
+    await waitStage(page, 'staged-right');
+    await page.getByTestId('staging-confirm').tap();
+  }
+}
+
+// --- keyboard -------------------------------------------------------------------------
+
+export const activeTestId = (page: Page): Promise<string | null> =>
+  page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
+
+/** Presses Tab until `testId` has focus (focus never jumps by script here); returns how many presses it took. */
+export async function focusByKeys(page: Page, testId: string, max = 80): Promise<number> {
+  if ((await activeTestId(page)) === testId) return 0;
+  for (let i = 1; i <= max; i++) {
+    await page.keyboard.press('Tab');
+    if ((await activeTestId(page)) === testId) return i;
+  }
+  throw new Error(`Tab never reached ${testId} in ${max} presses (focus is on ${await activeTestId(page)})`);
+}
+
+export type ActivateKey = 'Enter' | 'Space';
+
+/**
+ * The learner's right move from the keyboard: Tab to the source, activate it
+ * (focus then lands on a lit target), Tab to the step's target if it is not
+ * the one focused, activate it, then activate Confirm (the deck takes a second
+ * activation of the staged draw, a hand card or the counter option goes via
+ * Confirm).
+ */
+export async function keyMove(page: Page, step: MoveStep, select: ActivateKey, confirmKey: ActivateKey): Promise<void> {
+  const source = locateSpot(page, step.source);
+  const sourceId = (await source.getAttribute('data-testid')) ?? '';
+  expect(sourceId).not.toBe('');
+  await focusByKeys(page, sourceId);
+  await page.keyboard.press(select);
+  if (step.source.kind === 'hand') {
+    await expect(source).toHaveAttribute('aria-pressed', 'true');
+    const targetId = step.target.kind === 'testid' ? step.target.id : ((await locateSpot(page, step.target).getAttribute('data-testid')) ?? '');
+    expect(targetId).not.toBe('');
+    await focusByKeys(page, targetId);
+    await page.keyboard.press(select);
+  }
+  await waitStage(page, 'staged-right');
+  await focusByKeys(page, 'staging-confirm');
+  await page.keyboard.press(confirmKey);
+}
+
+// --- reduced motion ---------------------------------------------------------------------
+
+/** Every Web Animation or CSS transition/animation still alive on the page, described. */
+export async function animationsNow(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    document.getAnimations().map((a) => {
+      const target = (a.effect as KeyframeEffect | null)?.target ?? null;
+      const where = target?.closest('[data-testid]')?.getAttribute('data-testid') ?? target?.className?.toString() ?? target?.tagName ?? 'nowhere';
+      const kind =
+        'transitionProperty' in a ? `transition ${String((a as { transitionProperty: unknown }).transitionProperty)}` :
+        'animationName' in a ? `animation ${String((a as { animationName: unknown }).animationName)}` :
+        'script animation';
+      return `${kind} on ${where} (${a.playState})`;
+    }),
+  );
+}
+
+/** The numbered reduced-motion markers on screen, in order. */
+export async function markers(page: Page): Promise<string[]> {
+  const texts = await page.locator('[data-part="marker"]').allTextContents();
+  return texts.map((t) => t.trim()).sort();
+}
+
+/** Waits for the geometry to settle, then for every animation to be gone. */
+export async function settledCalm(page: Page): Promise<void> {
+  await settled(page);
+  await expect.poll(() => animationsNow(page), { message: 'no animation may be running once a step has settled' }).toEqual([]);
 }
 
 /** Writes a screenshot when `TUTORIAL_SHOTS_DIR` is set (before/after evidence for placement work). */
