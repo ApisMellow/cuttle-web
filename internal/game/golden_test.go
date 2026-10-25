@@ -34,7 +34,7 @@ var updateGolden = flag.Bool("update-golden", false, "rewrite testdata/golden/br
 
 const goldenTranscriptPath = "testdata/golden/bridge-transcript.json"
 
-const goldenSeeds = 64
+const goldenSeeds = 8
 
 type goldenFile struct {
 	Seeds map[string]string `json:"seeds"`

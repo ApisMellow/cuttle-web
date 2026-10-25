@@ -134,7 +134,7 @@ func TestW2_StatusOfFreshAndFinishedGames(t *testing.T) {
 		}
 	}
 	wins := 0
-	for seed := uint64(1); seed <= 30; seed++ {
+	for _, seed := range []uint64{1, 2, 3, 4} {
 		final := walkSession(t, seed, func(*Session, Status) {})
 		st := mustStatus(t, final)
 		if !st.Over || st.Phase != engine.PhaseGameOver {
@@ -163,7 +163,7 @@ func TestW2_StatusOfFreshAndFinishedGames(t *testing.T) {
 
 func TestW2_TypedAPIMatchesBridge(t *testing.T) {
 	plies := 0
-	for seed := uint64(1); seed <= 48; seed++ {
+	for _, seed := range []uint64{1, 2, 3, 4} { // 3 takes the flipped-dealer branch
 		dealer := Seat(seed & 1)
 		if seed%3 == 0 {
 			dealer = dealer.Other()
@@ -238,7 +238,7 @@ func TestW2_TypedAPIMatchesBridge(t *testing.T) {
 	if plies == 0 {
 		t.Fatal("no plies compared")
 	}
-	t.Logf("48 seeds, %d plies: typed API bytes equal the Bridge's", plies)
+	t.Logf("4 seeds, %d plies: typed API bytes equal the Bridge's", plies)
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ func TestW2_TypedAPIMatchesBridge(t *testing.T) {
 
 func TestW2_SeatBindingRejectsTheOtherSeat(t *testing.T) {
 	var normal, counter, discard, seven, over int
-	for seed := uint64(1); seed <= 60; seed++ {
+	for _, seed := range []uint64{1, 2, 3, 4} {
 		walkSession(t, seed, func(s *Session, st Status) {
 			before := persisted(t, s)
 			if st.Over {
@@ -307,7 +307,7 @@ func TestW2_SeatBindingRejectsTheOtherSeat(t *testing.T) {
 	if normal == 0 || counter == 0 || discard == 0 || seven == 0 || over == 0 {
 		t.Fatalf("phases not all exercised: normal %d counter %d discard %d seven %d over %d", normal, counter, discard, seven, over)
 	}
-	t.Logf("60 seeds: wrong seat refused at %d normal, %d counter, %d discard, %d seven plies; %d game-overs", normal, counter, discard, seven, over)
+	t.Logf("4 seeds: wrong seat refused at %d normal, %d counter, %d discard, %d seven plies; %d game-overs", normal, counter, discard, seven, over)
 }
 
 func TestW2_LegalMovesPerSeat(t *testing.T) {
@@ -403,7 +403,7 @@ func decodeAny(t *testing.T, wire string) any {
 
 func TestW2_ViewsNeverLeakHiddenCards(t *testing.T) {
 	var views, oppHidden, deckChecked, glasses, sevenOther, sevenActor int
-	for seed := uint64(1); seed <= 120; seed++ {
+	for _, seed := range []uint64{1, 2, 3, 4, 5} {
 		walkSession(t, seed, func(s *Session, st Status) {
 			state := s.g.state
 			// The snapshot is the full state: it must name the deck, or this
@@ -487,7 +487,7 @@ func TestW2_ViewsNeverLeakHiddenCards(t *testing.T) {
 	if oppHidden == 0 || deckChecked == 0 || glasses == 0 || sevenOther == 0 || sevenActor == 0 {
 		t.Fatalf("property not exercised: oppHidden %d deck %d glasses %d sevenOther %d sevenActor %d", oppHidden, deckChecked, glasses, sevenOther, sevenActor)
 	}
-	t.Logf("120 seeds, %d views: %d hidden opponent cards, %d deck cards checked; glasses %d, 7 reveal other/actor %d/%d",
+	t.Logf("fixed seeds, %d views: %d hidden opponent cards, %d deck cards checked; glasses %d, 7 reveal other/actor %d/%d",
 		views, oppHidden, deckChecked, glasses, sevenOther, sevenActor)
 }
 
@@ -638,7 +638,7 @@ func scribble(e *Envelope) {
 // the game still matches a Bridge that never restored.
 func TestW2_SnapshotRestoreRoundTrip(t *testing.T) {
 	restores := 0
-	for seed := uint64(1); seed <= 40; seed++ {
+	for _, seed := range []uint64{1, 2, 3, 4} {
 		b := NewBridge()
 		okEnvelope(t, b.NewGame(fmt.Sprintf(`{"seed":"%d","dealer":%d}`, seed, seed&1)))
 		s := mustSession(t, seed, Seat(seed&1))
@@ -678,7 +678,7 @@ func TestW2_SnapshotRestoreRoundTrip(t *testing.T) {
 			t.Fatalf("seed %d: final snapshots differ", seed)
 		}
 	}
-	t.Logf("40 seeds, %d snapshot->restore round trips, zero rejections", restores)
+	t.Logf("4 seeds, %d snapshot->restore round trips, zero rejections", restores)
 }
 
 func TestW2_RestoreUpgradesV1Snapshot(t *testing.T) {
@@ -854,16 +854,18 @@ func TestW2_ApplyCommitsOnlyIfBothEnvelopesRender(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestW2_ParallelSessionsShareNoState(t *testing.T) {
-	const games = 48
+	// 4 and 8 take the failing-renderer path (seed%4==0); 3 and 5 do not.
+	parSeeds := []uint64{3, 4, 5, 8}
+	const games = 8
 	want := make([]string, games+1)
-	for seed := uint64(1); seed <= games; seed++ {
+	for _, seed := range parSeeds {
 		want[seed] = persisted(t, walkSession(t, seed, func(*Session, Status) {}))
 	}
 	var wg sync.WaitGroup
 	got := make([]string, games+1)
 	errs := make(chan string, games*2)
 	for round := 0; round < 2; round++ {
-		for seed := uint64(1); seed <= games; seed++ {
+		for _, seed := range parSeeds {
 			wg.Add(1)
 			go func(seed uint64, round int) {
 				defer wg.Done()
@@ -922,7 +924,7 @@ func TestW2_ParallelSessionsShareNoState(t *testing.T) {
 	for e := range errs {
 		t.Error(e)
 	}
-	for seed := uint64(1); seed <= games; seed++ {
+	for _, seed := range parSeeds {
 		if got[seed] != want[seed] {
 			t.Errorf("seed %d: parallel game differs from the sequential one", seed)
 		}

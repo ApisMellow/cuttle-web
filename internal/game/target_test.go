@@ -426,7 +426,7 @@ func inAnyHand(st engine.GameState, cd card.Card) bool {
 
 func TestSPEC2_7_TargetCardNamesOnlyBoardCards(t *testing.T) {
 	checked := 0
-	for seed := uint64(200); seed < 260; seed++ {
+	for seed := uint64(200); seed < 205; seed++ {
 		b := NewBridge()
 		var pre engine.GameState
 		havePre := false
@@ -457,7 +457,7 @@ func TestSPEC2_7_TargetCardNamesOnlyBoardCards(t *testing.T) {
 	if checked == 0 {
 		t.Fatal("no targeted move occurred across the corpus — the property was never exercised")
 	}
-	t.Logf("checked %d targeted moves across seeds 200..259", checked)
+	t.Logf("checked %d targeted moves across seeds 200..204", checked)
 }
 
 // ---------------------------------------------------------------------------

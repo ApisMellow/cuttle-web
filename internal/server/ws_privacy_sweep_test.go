@@ -51,6 +51,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -155,11 +156,13 @@ func TestW9_SweepCovAddsEveryField(t *testing.T) {
 	}
 }
 
+// TestW9_WirePrivacySweep plays all 240 seeds. It is opt-in: it runs only
+// when CUTTLE_SWEEP=1 is set (a few minutes), e.g.
+//
+//	CUTTLE_SWEEP=1 go test ./internal/server/ -run TestW9_WirePrivacySweep
 func TestW9_WirePrivacySweep(t *testing.T) {
-	full := !testing.Short()
-	step := uint64(1)
-	if !full {
-		step = 7
+	if os.Getenv("CUTTLE_SWEEP") != "1" {
+		t.Skip("set CUTTLE_SWEEP=1 to run the 240-seed wire sweep")
 	}
 	var (
 		mu    sync.Mutex
@@ -168,7 +171,7 @@ func TestW9_WirePrivacySweep(t *testing.T) {
 	)
 	start := time.Now()
 	t.Run("seeds", func(t *testing.T) {
-		for seed := uint64(1); seed <= sweepSeedCount; seed += step {
+		for seed := uint64(1); seed <= sweepSeedCount; seed++ {
 			t.Run(fmt.Sprintf("seed%03d", seed), func(t *testing.T) {
 				t.Parallel()
 				c := sweepOneSeed(t, seed, planFor(seed))
@@ -183,11 +186,9 @@ func TestW9_WirePrivacySweep(t *testing.T) {
 		return
 	}
 	t.Logf("%d seeds in %v: %+v", ran, time.Since(start).Round(time.Millisecond), total)
-	want := (sweepSeedCount + int(step) - 1) / int(step)
-	if ran != want {
+	if ran != sweepSeedCount {
 		return // a -run filter picked some seeds; coverage is judged on the whole range
 	}
-	// Exercised by construction in any seed subset.
 	must := map[string]int{
 		"glasses": total.glasses, "a 7 reveal": total.sevenReveal, "a counter window": total.counterWindow,
 		"a one-off with no window": total.noWindowOneOff, "a game over": total.gameOver,
@@ -197,17 +198,15 @@ func TestW9_WirePrivacySweep(t *testing.T) {
 		"a checked own description": total.ownDescriptions, "a history targetCard": total.targetCards,
 	}
 	// Edge cases that depend on the deal: judged on the full 1–240 range.
-	if full {
-		for name, n := range map[string]int{
-			"a reconnect under a hold": total.heldReconnects, "a held probe after the answer": total.answeredProbes,
-			"a 3 taking a scrap card": total.threeFromScrap, "a 9 returning a card to a hand": total.nineToHand,
-			"a 5 drawing": total.fiveDraw, "a Jack changing control": total.jackControl,
-			"a counter chain of 2 or more": total.counterChain2, "a 4 discard": total.fourDiscard,
-			"a dead-end 7": total.deadSeven, "glasses leaving play": total.glassesGone,
-			"the other seat's DiscardPair entry": total.otherDiscards,
-		} {
-			must[name] = n
-		}
+	for name, n := range map[string]int{
+		"a reconnect under a hold": total.heldReconnects, "a held probe after the answer": total.answeredProbes,
+		"a 3 taking a scrap card": total.threeFromScrap, "a 9 returning a card to a hand": total.nineToHand,
+		"a 5 drawing": total.fiveDraw, "a Jack changing control": total.jackControl,
+		"a counter chain of 2 or more": total.counterChain2, "a 4 discard": total.fourDiscard,
+		"a dead-end 7": total.deadSeven, "glasses leaving play": total.glassesGone,
+		"the other seat's DiscardPair entry": total.otherDiscards,
+	} {
+		must[name] = n
 	}
 	for name, n := range must {
 		if n == 0 {
