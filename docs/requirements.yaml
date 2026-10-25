@@ -1089,6 +1089,19 @@ requirements:
     evidence: "Written: docs/two-phone-plan.md §11 'Setup checklist for the owner' (10 steps, merged with the plan). Setup script written (W16): deploy/setup.sh, with docs/ops.md covering first setup, updates, restore and CUTTLE_SERVER_ORIGIN. Live 2026-10-18: the product owner set CUTTLE_SERVER_ORIGIN and Play online is on. Open: the checklist itself was not walked from a blank DigitalOcean account (the install used an existing host), so the acceptance as written is not shown; needs the product owner's call."
     fails: 0
 
+  - id: R24.20
+    prd: R24
+    title: "QR code invite on the waiting screen"
+    acceptance:
+      - "unit-test: the waiting screen draws an inline-SVG QR code (invite-qr, role img, label 'QR code for the invite link') that encodes exactly the screen's join link (#/join/CODE) and nothing else; no seat token or name reaches the encoded text or the DOM; it redraws when the code changes (issue #91)"
+      - "unit-test: dark modules on a light background whatever the theme, a quiet zone of at least 4 modules, error correction M (issue #91)"
+      - "e2e-test: the QR is square, 168–200 px, inside the viewport with no horizontal overflow at 393×852, 430×932 and 393×660 (PRD §10 A-5)"
+    verify: [unit-test, e2e-test]
+    status: implemented
+    evidence: "IMPLEMENTED 2026-10-24 (feat/qr-invite, issue #91). Encoder: web/src/lib/online/qr.ts on uqr 0.1.3 (exact pin, no dependencies). vitest web/tests/unit/online-qr.test.ts (size, finder patterns, determinism, ecc M pinned both ways: 15 bytes overflow v1 and 14 bytes stay at 21 modules, qrPath); online-screens.svelte.test.ts 'draws a QR of exactly the invite link, dark on light with a quiet zone' (the path equals qrPath(qrMatrix(link)), so nothing but the link is encoded), 'subtitle invites showing the code'; waiting-qr.svelte.test.ts 'redraws when the code prop changes'. e2e web/tests/e2e/online-home.spec.ts 'create flow reaches the waiting screen…' across the three viewports, and at 393×660 the share-status line stays above the fold after Copy link (a short-height gap rule in online.css). Review: a screenshot of the rendered QR decoded with jsQR equals the invite-link text at all three viewports, DPR 1 and 3; matrix orientation checked against the ISO dark module. Gate 9/9."
+    fails: 0
+    notes: "Light tier (docs/loop-workflow.md §4.5) with one privacy check: the QR carries only the join link. The phone's own camera opens the link; there is no in-app scanner."
+
   # ---------------------------------------------------------------------
   # R25 — Learn to play tutorial (PRD §10 amendment A-8, docs/tutorial-design.md)
   # ---------------------------------------------------------------------

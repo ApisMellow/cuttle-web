@@ -129,6 +129,27 @@
   user-select: all;
 }
 
+/* Short view (toolbars up): tighten the column gap so the Copy-link
+   feedback line stays above the fold. (.ol-code's own vertical margin is
+   already 0: `.ol-screen p` out-specifies it.) */
+@media (max-height: 700px) {
+  .ol-screen {
+    gap: var(--cu-space-3);
+  }
+}
+
+/* The invite QR: square, fixed size, never shrunk by the flex column. */
+.ol-qr {
+  align-self: center;
+  flex: none;
+  display: block;
+  width: 176px;
+  height: auto;
+  aspect-ratio: 1;
+  max-width: 100%;
+  border-radius: var(--cu-radius-well);
+}
+
 .ol-link {
   overflow-wrap: anywhere;
   color: var(--cu-muted);

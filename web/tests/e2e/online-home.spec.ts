@@ -78,6 +78,34 @@ test('create flow reaches the waiting screen with the code, Share and Cancel', a
   expect(box?.width ?? 0).toBeLessThanOrEqual(393);
   await fits(page, 'waiting-screen');
 
+  // The invite QR: square, 168-200 px, fully on screen horizontally, and the
+  // page never overflows sideways, at each target viewport.
+  await expect(page.getByTestId('invite-qr')).toBeVisible();
+  for (const [width, height] of [
+    [393, 852],
+    [430, 932],
+    [393, 660],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    const qr = await page.getByTestId('invite-qr').boundingBox();
+    expect(qr).not.toBeNull();
+    expect(Math.abs(qr!.width - qr!.height)).toBeLessThanOrEqual(0.5);
+    expect(qr!.width).toBeGreaterThanOrEqual(168);
+    expect(qr!.width).toBeLessThanOrEqual(200);
+    expect(qr!.x).toBeGreaterThanOrEqual(0);
+    expect(qr!.x + qr!.width).toBeLessThanOrEqual(width);
+    await fits(page, 'waiting-screen');
+    test.info().annotations.push({ type: `qr-${width}x${height}`, description: `${qr!.width}x${qr!.height}` });
+  }
+  // Still at 393x660: the feedback line after Copy link must stay on screen.
+  await page.getByTestId('copy-link').click();
+  await expect(page.getByTestId('share-status')).not.toHaveText('');
+  const statusBox = await page.getByTestId('share-status').boundingBox();
+  expect(statusBox).not.toBeNull();
+  test.info().annotations.push({ type: 'share-status-bottom-393x660', description: String(statusBox!.y + statusBox!.height) });
+  expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(660);
+  await page.setViewportSize({ width: 393, height: 852 });
+
   await page.getByTestId('cancel-room').click();
   await expect(page.getByTestId('home-screen')).toBeVisible();
 });
