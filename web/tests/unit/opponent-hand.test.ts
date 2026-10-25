@@ -72,6 +72,62 @@ describe('OpponentHand redaction (SPEC §3.2)', () => {
   });
 });
 
+describe('#94: inspect exposed cards', () => {
+  const cardsUp: Card[] = [
+    { Rank: 1, Suit: 0 },
+    { Rank: 13, Suit: 3 },
+  ];
+  const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  const open = () => {
+    q('opp-hand-inspect')!.click();
+    flushSync();
+  };
+
+  it('hidden and empty hands have no tap target and no sheet', () => {
+    render({ handCount: 3, hand: null });
+    expect(q('opp-hand-inspect')).toBeNull();
+    expect(q('opp-hand-sheet')).toBeNull();
+    cleanupOnly();
+    render({ handCount: 0, hand: [] });
+    expect(q('opp-hand-inspect')).toBeNull();
+  });
+
+  it('revealed: tap lists name and effect per card in hand order', () => {
+    render({ handCount: 2, hand: cardsUp });
+    expect(q('opp-hand-sheet')).toBeNull();
+    open();
+    const sheet = q('opp-hand-sheet')!;
+    expect([...sheet.querySelectorAll('[data-opp-sheet="name"]')].map((n) => n.textContent)).toEqual(['Board Wipe', 'Shortcut']);
+    expect([...sheet.querySelectorAll('[data-opp-sheet="effect"]')].map((n) => n.textContent)).toEqual([
+      'One-off: scrap every point card.',
+      'Permanent: you need fewer points to win.',
+    ]);
+  });
+
+  it('closes with the button, Escape and the scrim', () => {
+    render({ handCount: 2, hand: cardsUp });
+    open();
+    q('opp-hand-sheet-close')!.click();
+    flushSync();
+    expect(q('opp-hand-sheet')).toBeNull();
+    open();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    flushSync();
+    expect(q('opp-hand-sheet')).toBeNull();
+    open();
+    q('opp-hand-sheet-scrim')!.click();
+    flushSync();
+    expect(q('opp-hand-sheet')).toBeNull();
+  });
+});
+
+function cleanupOnly(): void {
+  if (instance) unmount(instance);
+  host?.remove();
+  instance = undefined;
+  host = undefined;
+}
+
 describe('W25: count noun agrees with the number', () => {
   it('"1 card", never "1 cards"', () => {
     const el = render({ handCount: 1, hand: null });

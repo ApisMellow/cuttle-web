@@ -164,9 +164,11 @@ for (const which of ['Classic', 'Mythic'] as const) {
     it('under glasses the opponent’s face-up hand is named (it is visible to this viewer)', () => {
       const el = board(theme(), view({ opponent: { ...view().opponent, hand: HIDDEN_HAND } }));
       const opp = el.querySelector<HTMLElement>('[data-testid="opp-hand"]')!;
-      expect([...opp.querySelectorAll('[aria-label]')].map((e) => e.getAttribute('aria-label'))).toEqual(
+      expect([...opp.querySelectorAll('[role="img"][aria-label]')].map((e) => e.getAttribute('aria-label'))).toEqual(
         HIDDEN_HAND.map(cardSpokenName),
       );
+      // #94: the inspect button has its own accessible name.
+      expect(opp.querySelector('[data-testid="opp-hand-inspect"]')?.getAttribute('aria-label')).toBe('What their cards do');
     });
 
     it('names the 7’s revealed cards and the scrap picks', () => {
