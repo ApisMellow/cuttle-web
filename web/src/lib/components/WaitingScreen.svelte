@@ -4,6 +4,7 @@
 
   import type { OnlineActions } from '../online/actions';
   import { joinLink } from '../online/code';
+  import { QR_QUIET_ZONE, qrMatrix, qrPath } from '../online/qr';
   import { browserShareEnv, copyLink, shareInvite, type ShareEnv } from '../online/share';
 
   interface Props {
@@ -26,6 +27,9 @@
   }: Props = $props();
 
   const link = $derived(joinLink(code, base));
+  const matrix = $derived(qrMatrix(link));
+  const qrD = $derived(qrPath(matrix));
+  const qrBox = $derived(matrix.length + 2 * QR_QUIET_ZONE);
   let status = $state('');
 
   onMount(() =>
@@ -58,11 +62,24 @@
 
 <div class="ol-screen" data-testid="waiting-screen">
   <h1>Your room is ready</h1>
-  <p>Send your friend the code or the link.</p>
+  <p>Let your friend scan this, or send the link.</p>
 
   <p class="ol-code" data-testid="room-code" role="img" aria-label={`Room code ${code.split('').join(' ')}`}>
     {code}
   </p>
+
+  <!-- Fixed dark-on-light with a quiet zone, whatever the theme, so cameras read it. -->
+  <svg
+    class="ol-qr"
+    data-testid="invite-qr"
+    role="img"
+    aria-label="QR code for the invite link"
+    viewBox={`0 0 ${qrBox} ${qrBox}`}
+    shape-rendering="crispEdges"
+  >
+    <rect width={qrBox} height={qrBox} fill="#fff" />
+    <path data-qr-modules d={qrD} fill="#000" transform={`translate(${QR_QUIET_ZONE} ${QR_QUIET_ZONE})`} />
+  </svg>
 
   <p class="ol-muted" role="status" data-testid="waiting-status">Waiting for someone to join…</p>
 
