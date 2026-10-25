@@ -298,6 +298,10 @@
     border: none;
     background: none;
     cursor: pointer;
+    /* Issue #54: a 2 s hold enlarges the card; no iOS callout or selection. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     /* A DropZones parent turns pointer events off on its content so taps on
        empty well space reach its hit button; the cards opt back in. */
     pointer-events: auto;
