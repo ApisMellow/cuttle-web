@@ -6,10 +6,15 @@
 //   1. below the lowest hole, if the bubble then ends 12 px above the action bar
 //   2. above the highest hole, if it then starts at or below the score bar
 //   3. beside the holes, on the side with more room, inside the free band
-//   4. docked under the score bar (the last resort; may cover a hole)
+//   4. docked under the score bar, then slid down past anything it would
+//      touch (the last resort)
 // Candidates 1-3 are rejected if they would touch a padded hole or an
-// `avoid` box (staging bar, menu button, counter-prompt options).
-// `dock: 'under-menu'` (the counter prompt) skips straight to the dock.
+// `avoid` box (staging bar, menu button, counter-prompt options, the staged
+// cards). Candidate 4 never covers one either, unless no free spot exists
+// between the score bar and the action bar, when it stays at the dock.
+// `dock: 'under-menu'` (the counter prompt) skips straight to the dock, which
+// then sits `promptDock` below the menu row, under the prompt's own heading
+// and played line (T12: the first dock covered both).
 
 export interface Box {
   x: number;
@@ -42,7 +47,11 @@ export interface BubblePlacement {
   notchX: number;
 }
 
-/** Starting values (plan B2); T12 tunes them. */
+/**
+ * Final values (plan B2, tuned in T12 against `tutorial-geometry.spec.ts`).
+ * Only `promptDock` changed from the T4 starting values; the rest were
+ * confirmed at 393x852, 430x932 and 393x660.
+ */
 export const PLACEMENT = {
   /** Clearance kept above the action bar. */
   clearance: 12,
@@ -52,8 +61,15 @@ export const PLACEMENT = {
   holePad: 6,
   /** Notch height, and the gap between a hole and the bubble. */
   notch: 8,
-  /** Gap between the score bar and a docked bubble. */
+  /** Gap between the score bar and a docked bubble, and between a slid dock and what it slid past. */
   dockGap: 8,
+  /**
+   * Counter prompt only: how far under the menu row the dock sits. The
+   * prompt's heading ("Your response") and its played line ("Blake played a
+   * 4...") fill the first ~97 px under the menu row at every target width, so
+   * the bubble starts below them with about 11 px to spare.
+   */
+  promptDock: 108,
 } as const;
 
 function inflate(b: Box, pad: number): Box {
@@ -98,7 +114,26 @@ export function placeBubble(input: PlacementInput): BubblePlacement {
     notchX: side ? Math.min(Math.max(aimX, x + gutter + notch), x + width - gutter - notch) : x + width / 2,
   });
 
-  const dockAt = (x: number): BubblePlacement => result(x, scoreBarBottom + dockGap, null);
+  // The dock: as high as allowed, then slid down past every obstacle it would
+  // touch (T12: the first dock grazed the staged target and could cover a hole).
+  // Tried at the wanted x, then hard left, then hard right; with no free spot
+  // above the action bar it stays at the top, where it covers least.
+  const dockAt = (x: number): BubblePlacement => {
+    const top = scoreBarBottom + (input.dock === 'under-menu' ? PLACEMENT.promptDock : dockGap);
+    const bottom = actionBarTop - clearance;
+    for (const tryX of [x, minX, maxX]) {
+      let y = top;
+      for (let i = 0; i < 24; i++) {
+        const hit = obstacles.filter((o) => intersects({ x: tryX, y, width, height }, o));
+        if (hit.length === 0) {
+          if (y + height <= bottom) return result(tryX, y, null);
+          break;
+        }
+        y = Math.max(...hit.map((o) => o.y + o.height)) + dockGap;
+      }
+    }
+    return result(x, top, null);
+  };
 
   if (input.dock === 'under-menu' || !span) {
     return dockAt(clampX(input.dock === 'under-menu' ? viewportMid - width / 2 : aimX - width / 2));
