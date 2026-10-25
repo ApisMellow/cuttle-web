@@ -199,10 +199,13 @@ Every enum crosses the wire as a **plain JSON number** — the Go types are `uin
 | Value | Go constant | Decider | Meaning |
 |---|---|---|---|
 | `0` | `PhaseNormal` | `Active` | ordinary turn |
-| `1` | `PhaseAwaitingCounter` | `Active` (the non-playing player) | a one-off is pending; counter or decline |
+| `1` | `PhaseAwaitingCounter` | `Active` (the non-playing player) | a one-off is pending; counter or decline. **Legacy from engine v0.3.0** (issue #93): reachable only from a save made under v0.2.x |
 | `2` | `PhaseSevenChoosing` | `Active` (the player who played the 7) | pick one of the revealed cards and a play for it |
-| `3` | `PhaseAwaitingDiscard` | `Active` (the opponent of the 4's player) | choose discards |
+| `3` | `PhaseAwaitingDiscard` | `Active` (the opponent of the 4's player) | choose discards. **From v0.3.0:** the turn-start step for an owed discard (§4.3); it opens the discarder's own turn, Counter is also legal there, and paying the debt does not end the turn. A phase-3 state carrying `pending` is the v0.2.x shape |
 | `4` | `PhaseGameOver` | nobody | `LegalMoves` returns `nil` (`engine/apply.go:16-18`) |
+| `5` | `PhasePendingWin` *(v0.3.0)* | `Active` (the opponent of the would-be winner) | a win on a counterable turn waits: Counter, or Decline ("Let it happen") (§4.3) |
+
+*Amended 2026-10-24 (ApisMellow, issue #93, engine v0.3.0):* Counter is legal in phases 0, 3 and 5, as the first move of the turn only (§4.3). Decline is legal only in phase 5 (and legacy phase 1).
 
 **`MoveKind`** — `engine/moves.go:9-22`.
 
@@ -372,7 +375,14 @@ export interface PlayerView {
   /** PhaseSevenChoosing only, and ONLY when viewer === active (R16). */
   sevenRevealed: Card[] | null;
 
-  /** PhaseAwaitingCounter/PhaseSevenChoosing/PhaseAwaitingDiscard only. */
+  /** (added 2026-10-24, issue #93) Whether the opponent's last turn can be
+   *  countered: it held a one-off or began with a counter. Public, and never
+   *  derived from either hand: the same for both viewers and both twins. */
+  counterable: boolean;
+  /** (added 2026-10-24, issue #93) Owed discards from 4s (§4.3). Public counts. */
+  owedDiscards: { you: number; opponent: number };
+
+  /** PhaseSevenChoosing only (and legacy PhaseAwaitingCounter/PhaseAwaitingDiscard with a v0.2.x pending). */
   pending: {
     playedBy: PlayerId;
     card: Card;                     // the one-off under consideration
@@ -409,6 +419,10 @@ export interface AppliedMove {
                                      // and the counter prompt never read it (the prompt shows a 5 before it
                                      // resolves, §4.3). (amended 2026-09-28,
                                      // playtest friction)
+                                     // (amended 2026-10-24, issue #93: a 5 now always resolves on its own
+                                     // apply, so `drawn` sits on the 5's entry or the SevenPick that played it;
+                                     // the Decline/Counter placement survives only in legacy histories. A
+                                     // counter that later erases the 5 leaves the entry's count as history.)
 }
 
 export interface Envelope {
@@ -608,7 +622,7 @@ A client that gets a non-JSON error body derives the code from the status (W11 `
 |---|---|---|
 | `welcome` | `seat, names: [string\|null, string\|null], status` | Hello accepted. `seat` is the seat bound to the token. `names[1]` is `null` until someone joins. `status` is `waiting` (no opponent yet), `playing` or `over` (game over, no rematch dealt yet). The mover under a hold is told `playing`, never `over` (§2.12.5). |
 | `state` | `game, envelope, opponentOnline, tally: [n0, n1]` | This seat's full redacted envelope (§2.7). Never a diff. `envelope.state.viewer` equals the connection's seat. |
-| `responding` | `by` | The mover's neutral hold after a counterable move (§2.12.5). `by` is the other seat. |
+| `responding` | `by` | The mover's neutral hold after a counterable move (§2.12.5). `by` is the other seat. *Never sent from 2026-10-24 (issue #93, no hold); old clients keep decoding it.* |
 | `presence` | `opponentOnline` | The other seat connected or dropped. |
 | `rematch` | `requestedBy` | A rematch request is pending from `requestedBy` (either seat, including the receiver's own). |
 | `error` | `code, message, seq?` | §2.12.3. `seq` echoes the rejected `move`'s `seq`, when there was one (never on the held mover's `STALE`, §2.12.5). |
@@ -625,7 +639,7 @@ Field rules:
 **What answers a `hello`.** `welcome`, then exactly one of:
 
 1. `state`, the full current envelope for this seat (the normal case, including `status: over`);
-2. `responding {by}`, if this seat is the mover under a hold (§2.12.5); its `state` follows when the hold ends;
+2. ~~`responding {by}`, if this seat is the mover under a hold (§2.12.5); its `state` follows when the hold ends;~~ *(no hold since 2026-10-24, issue #93)*
 3. nothing more, if `status` is `waiting` (no game has been dealt); `state` follows the join.
 
 After that, if a rematch request is pending, the server sends `rematch {requestedBy}` (to the mover under a hold, only once the hold ends, after its `state`). The server never answers a `hello` with a diff or with anything that depends on `lastSeq`.
@@ -699,7 +713,21 @@ S → A  state {game:1, envelope:up.For(0) /* seq 5 */, ...}
 S → B  state {game:1, envelope:up.For(1) /* seq 5 */, ...}
 ```
 
-**A counter window with the hold.** A plays a one-off. Whether or not B holds a 2, A's frames are identical in type and order.
+**A one-off and a counter** *(added 2026-10-24, ApisMellow, issue #93; supersedes the hold sequence below)*. Nothing is held. A one-off is a move like any other, and a counter is B's first move of his own turn.
+
+```
+A → S  move {game:1, seq:9, index:0}          (a OneOff)
+S → A  state {seq 10}                         (at once)
+S → B  state {seq 10}                         (at once; B's legal moves include a Counter
+                                               only if B holds an unfrozen 2 — B's own data)
+B → S  move {game:1, seq:10, index:k}         (a Counter, or any other move)
+S → A  state {seq 11}
+S → B  state {seq 11}
+```
+
+A win on a counterable turn when B holds an unfrozen 2 is the same shape: A's `state` shows `phase 5`, `active` B ("Not So Fast!", §4.3), and B's next move is a Counter or Decline.
+
+~~**A counter window with the hold.**~~ *Superseded 2026-10-24.* A plays a one-off. Whether or not B holds a 2, A's frames are identical in type and order.
 
 ```
 A → S  move {game:1, seq:9, index:0}          (a OneOff; t0 = apply time)
@@ -759,7 +787,9 @@ A repeat `rematch` from the seat that already asked is a no-op (the server re-se
 
 If the save fails, the server reloads the room with `RestoreSession` from the stored snapshot, discards the `Update`, and sends no envelope of the unsaved state. It tells the mover `error {code: INTERNAL, seq}` followed by the reloaded (unchanged) `state`, so the phone clears `sending`. If the reload fails too, it closes both sockets without an error frame (retryable) and drops the room from memory; the next `hello` loads it from the store.
 
-**The counter hold (§4.3, plan §6).** A *counterable move* is a `MoveOneOff`, a `MoveSevenPick` whose `SubMove` is a one-off, or a `MoveCounter`. After one is applied and saved:
+**No counter hold** *(amended 2026-10-24, ApisMellow, issue #93)*. Every applied and saved move is sent to both seats at once. The server never sends `responding` and never refuses a seat's frames for being held; `-respond-min-ms` / `CUTTLE_RESPOND_MIN_MS` stay accepted as no-ops for one release so deployed configuration keeps parsing. The text below is superseded.
+
+~~**The counter hold (§4.3, plan §6).**~~ A *counterable move* is a `MoveOneOff`, a `MoveSevenPick` whose `SubMove` is a one-off, or a `MoveCounter`. After one is applied and saved:
 
 - The mover gets `responding {by: other}` at once and **no `state`** until both (a) the answer is in, meaning the engine no longer waits on the other seat's counter decision (not `phase == PhaseAwaitingCounter && active == other`; true immediately when no window opened), and (b) at least `CUTTLE_RESPOND_MIN_MS` (default 1500) has passed since the move was applied.
 - When both hold, the mover gets the **current** `state`, which may already include later moves (a quick answer and a quick next move); the phone's recap covers the gap.
@@ -795,7 +825,7 @@ If the save fails, the server reloads the room with `RestoreSession` from the st
 
 #### 2.12.7 Versioning
 
-- The protocol version is the integer `v` in `hello`. This document is `v: 1`.
+- The protocol version is the integer `v` in `hello`. This document is `v: 1`. *(Amended 2026-10-24, ApisMellow, issue #93: **`v: 2`**. Phase 5, Counter in phases 0 and 3, phase 3 as a turn-start step, and the envelope's `counterable` and `owedDiscards` change existing meanings. The server speaks only 2, so a v1 client, the native iPhone app included, gets `UPGRADE_REQUIRED` until it ships engine v0.3.0. Deploy the server first, with the app in the same release.)*
 - **A `v` bump means `UPGRADE_REQUIRED` for old clients.** A server speaks the versions it lists (v1: only `1`). A `hello` with any other `v` gets `error {code: UPGRADE_REQUIRED}` and a close. The phone shows "Refresh to update" and keeps its seat, so the refreshed app resumes the game if the room is still alive.
 - **Bump `v` for** any change an existing client would misread: a removed or renamed frame or field, a changed meaning, a new required client field, or an envelope change that the shipped `schema.ts` rejects (a new required `Envelope` field is one, §2.3's engine-token note).
 - **Don't bump for** additive changes: a new server frame type (old clients ignore it), a new optional field on a server frame, a new error code (old clients keep an unknown code as non-terminal), or a new optional client field.
@@ -810,8 +840,8 @@ Each has the default the work proceeds on until the product owner decides otherw
 2. **Pending rematch requests across a server restart.** **Default:** memory only. A restart drops the request, and the player taps Rematch again. The room's `status` stays `over`, so nothing else is lost.
 3. **`game` in `hello`.** v1 has none, so the server can't use `lastSeq`. **Default:** leave it out; the server always sends the full `state` anyway. Adding an optional `hello.game` later is additive and needs no bump.
 4. **Deploy skew.** A bump needs the server and the Pages app to move together. **Default:** a server speaks one version; bumps are rare and ship server first, with the app build in the same release. Revisit (speak N and N−1) if a bump ever lands mid family game.
-5. **The hold across a restart** (§2.12.5). **Default:** accept losing it. Persisting the hold's start time would need a schema change for a gap of a few seconds.
-6. **`Decline` entries in raw history** (plan §14, question 1). **Default:** accept, as R14 already accepts it and the recap hides them.
+5. *(Moot from 2026-10-24: there is no hold, issue #93.)* **The hold across a restart** (§2.12.5). **Default:** accept losing it. Persisting the hold's start time would need a schema change for a gap of a few seconds.
+6. ~~**`Decline` entries in raw history** (plan §14, question 1). **Default:** accept, as R14 already accepts it and the recap hides them.~~ **Closed 2026-10-24 (issue #93):** new play writes a `Decline` only for "Let it happen" at a pending win, which is public.
 
 #### 2.12.9 Phone screens during online play *(added 2026-09-29, two-phone W13b)*
 
@@ -819,8 +849,8 @@ What the phone shows around the board, all from `OnlineGameStore` (`web/src/lib/
 
 - **Status and notice lines.** One banner per line below the board: the connection status ("Connecting…", "Reconnecting…", "You’re offline. Online games need a connection.", "Can’t reach the game server." with "Tap to reconnect", "This game is open somewhere else." with "Play here", "Blake is offline.") and the last move's notice. `data-tone` is `warn` for this phone's own connection, `info` for the opponent being away, `notice` for a notice (`online-status`, `online-notice`, `online-retry`).
 - **Waiting panel** (`online-waiting`): a card back and "Waiting for the game…" until the first `state`.
-- **Responding panel** (`online-responding`, the §2.12.5 hold): "Blake is responding…", with the card this seat played when this page sent the move (taken from its own legal-move list at the Confirm; none when the hold is met on a resume). It depends only on this seat's own move, so it looks the same whether or not a counter window opened.
-- **Waiting line** (`online-waiting-on`, plan §7 `waitingOn`): in the action bar while the other seat acts in a phase that is more than "their turn": "Blake is choosing what to discard." (a 4), "Blake is choosing from the 7." From public `phase` and `active` only. The other seat's counter window, which a phone can see only without a hold (after a server restart), reads "Blake is responding…", the hold's own words, so it tells nothing the hold doesn't.
+- ~~**Responding panel**~~ *Superseded 2026-10-24 (issue #93): there is no hold, so the panel never shows.* (`online-responding`, the §2.12.5 hold): "Blake is responding…", with the card this seat played when this page sent the move (taken from its own legal-move list at the Confirm; none when the hold is met on a resume). It depends only on this seat's own move, so it looks the same whether or not a counter window opened.
+- **Waiting line** (`online-waiting-on`, plan §7 `waitingOn`): in the action bar while the other seat acts in a phase that is more than "their turn": "Blake is choosing what to discard." (a 4), "Blake is choosing from the 7." From public `phase` and `active` only. The other seat's counter window, which a phone can see only without a hold (after a server restart), reads "Blake is responding…", the hold's own words, so it tells nothing the hold doesn't. *(Amended 2026-10-24, issue #93:)* phase 1 no longer occurs in new play; at a pending win (phase 5) with this seat as the would-be winner the line reads "Blake is deciding…" after the "Not So Fast!" beat (§4.3); with the other seat paying an owed discard (phase 3) it reads "Blake is choosing what to discard." as before.
 - **Missed-moves recap** (`online-recap`, `online-recap-toggle`, `online-recap-dismiss`, `online-recap-expand`). On a `state` in the same `game` whose `seq` is more than one past the last `state` this page saw (a reconnect in the same page; a reload or a resume starts from its first `state` and never recaps), the store lists the other seat's entries after that last `seq`, `isRecapVisible` only, from this `state`'s own redacted history and nothing else. This seat's own entries are seen (§4.6), so a jump over only the mover's own move and a Decline (the end of a hold after a declined window) shows nothing, the same as the no-window case. Lines are `formatRecapLines` sentences with `recapCards` mini faces, so §4.6's rules hold unchanged: an opponent's draw is "drew a card", a 5 says "to draw 2 cards" (never `drawn`, never the cards), a 3 never names the card it takes, a 9 names only itself and its board target, a 7 never names the card that went back, a discard names no position or card. The panel is a compact strip in the flow between the board and the action bar: it takes its height from the board (which scrolls), so it never lies over the hand or the deck, and the board stays live. Closed (the default) it shows a header row (heading, move count, Show, Got it) and the latest line; open, the last 6 lines ("+N earlier" for the rest) scroll inside a list about two lines tall on a 393×660 screen and up to 200 px on a tall one. While the strip is up, whenever the board or the strip changes size (opening it, a status banner arriving), GameScreen scrolls the board just far enough that the hand's bottom edge meets the board's, so a short screen with a full board never clips the hand. An entry the formatter can't read is skipped on its own, never shown raw. It closes on "Got it", on this seat's next move from the board, and on a new game. **An apply at this seat's own counter window counts as having seen what the prompt showed (§4.6):** the entries `counterPromptEntries` returned are dropped, earlier missed moves the prompt didn't show stay, and a later jump never brings the dropped ones back. A further jump while the strip is up extends it from the same start. A first `state` and a new `game` never recap.
 - **Stuck screen** (`online-stuck`, `online-leave-game`, the online §2.10). `ILLEGAL_MOVE` or `NO_LEGAL_MOVES` from the server, or a `state` where this seat must act and `legalMoves` is empty outside game over (§2.10 rule 1), replaces the board, the counter prompt and the draw reveal. It says the game can't go on, shows the game and move number and the code (never the server's `message`, which can name a card), and lists this seat's history as §4.6 recap lines (never raw `Describe` text, never a Decline). There is no seed, dealer or scenario stanza online: the seed never leaves the server. The only way on is "Leave this game", which forgets the seat and goes Home. Nothing retries (§2.10 rule 3), and `apply` sends nothing while stuck. The state stays for that position (a resent identical `state` keeps it) and clears when a `state` for another position arrives.
 - **Rematch line** (`online-rematch-status`, on the result screen under the buttons): "Blake wants a rematch." when the other seat asked; "Waiting for Blake…" once this seat asked, with Rematch disabled until the next game; "Starting the rematch…" when both have asked and the new `state` isn't in yet.
@@ -861,6 +891,8 @@ It also makes the privacy property structural rather than disciplinary. A develo
 | `sevenRevealed` | `state.Pending.Revealed` | **only if `phase === PhaseSevenChoosing && viewer === state.Active`; otherwise `null`** (R16) |
 | `pending.card` / `.target` / `.playedBy` | `state.Pending` | present whenever `Pending != nil` — the played one-off is public the moment it is played (R14 requires the opponent to see it) |
 | `pending.counterChain` | `state.Pending.CounterChain` | public; every 2 in the chain was played face-up |
+| `counterable` *(2026-10-24)* | whether the opponent's last turn held a one-off or began with a counter | public; never derived from either hand, so identical for both viewers whatever anyone holds (issue #93) |
+| `owedDiscards` *(2026-10-24)* | `state.Owed` per player | public counts (a 4 is played face-up) |
 | `pending.scrapIndex` | `state.Pending.ScrapIndex` | **omitted from the view entirely** — see below |
 | `history[].index`, `lastMove.index` | `AppliedMove.index` | present only when `viewer === entry.by`; otherwise the key is **omitted**. The index into the mover's legal-move list reveals a pending 3's `ScrapIndex` and how many options the hidden hand produced. *(amended 2026-09-26)* |
 | `history[].description`, `lastMove.description` | `AppliedMove.description` | Verbatim for `viewer === entry.by`. For any other viewer, a `DiscardPair`'s description is `"discards two cards"`, or `"discards one card"` when the discarding hand held one card (`DiscardB === -1`). The engine's `"discard hand[a] and hand[b]"` names hand positions; hands keep arrival order, so the positions tell the other seat when the discarded cards entered that hand. The count is already public (`opponent.handCount`, `scrap`). Every other kind's description is identical for both viewers. *(amended 2026-10-18, product-owner ruling, issue #69)* |
@@ -905,6 +937,8 @@ Across all five phases, **the player who owns the next decision is exactly `stat
 - `PhaseSevenChoosing` — `resolveOneOffWith` sets `s.Active = played` (`engine/apply.go:704`). The decider is `Active`, and it is the same player who played the 7.
 - `PhaseAwaitingDiscard` — `resolveOneOffWith` sets `s.Active = opp` (`engine/apply.go:626`). The decider is `Active`.
 - `PhaseGameOver` — nobody decides.
+- `PhasePendingWin` *(engine v0.3.0, 2026-10-24, issue #93)* — the engine sets `Active` to the would-be winner's opponent, who decides (Counter or "Let it happen", §4.3).
+- *Amended 2026-10-24 (issue #93):* in v0.3.0 `PhaseAwaitingDiscard` is the turn-start step for an owed discard, so its decider is the player whose turn it is, and paying does not end the turn (§4.3). `PhaseAwaitingCounter` occurs only in a legacy save.
 
 So the curtain rule of R13 reduces to one predicate, and the UI needs no phase-by-phase special-casing to know *whether* to curtain:
 
@@ -924,11 +958,13 @@ type CurtainState =
   | { kind: 'handoff';  to: PlayerId; reason: HandoffReason }
   | { kind: 'reveal';   to: PlayerId }                 // tap-and-hold gate (R13)
   | { kind: 'recap';    to: PlayerId; entries: RecapEntry[] }  // R20
-  | { kind: 'ack';      to: PlayerId }                 // R14: the counter window
+  | { kind: 'ack';      to: PlayerId }                 // R14: the counter window (legacy saves only from 2026-10-24, §4.3)
   | { kind: 'result' };                                // PhaseGameOver
 
 type HandoffReason = 'turn' | 'counter' | 'discard' | 'seven-return' | 'resume';
 ```
+
+*Amended 2026-10-24 (issue #93):* new play never produces `counter` (there is no counter window); it remains for legacy saves. A pending win hands to the opponent with `turn`; an owed discard with `discard`.
 
 `resume` *(added 2026-09-29, resume gate, `loop/r14-resume`)* is the reason of the gate a restore raises in front of a saved board or counter window (§5.7). It lives in memory only and is never written to the save.
 
@@ -946,38 +982,38 @@ handoff  →  reveal  →  [recap]  →  [ack (the counter prompt)]  →  live v
 
 **Turn header.** On the live board the `ScoreBar` names whose turn it is: the viewer's side reads "`NAME`, your turn" (bold, ochre), and when it is the opponent's turn their side reads "`NAME`’s turn". Both come from public data only: the names and `view.active`. The viewer's side shows the viewer's name, not "You".
 
-### 4.3 R14 — the counter window *(rewritten 2026-09-29, ruling by the product owner; closes GitHub issue #23)*
+### 4.3 R14 — counters rewind *(rewritten 2026-10-24, ApisMellow, issue #93; engine v0.3.0; supersedes the 2026-09-29 counter window and its accepted leak)*
 
-**A one-off happens at once, as at the table.** It takes effect, it is scrapped, and the player's turn ends. For a 5, the drawn cards go straight into the player's hand. The opponent gets a chance to answer **if and only if they hold a legal 2**, and that is exactly when the engine opens a window: `Apply` checks `hasLegalCounter(out.Players[opp])` (engine v0.2.0 `engine/apply.go`, `case MoveOneOff`) and otherwise calls `resolveOneOffWith` in the same call, with no pending state and no phase change. A counter link works the same way: if the next player holds no 2, `MoveCounter` calls `resolvePending` at once.
+The design and its worked sequences are `docs/counter-rewind-design.md`. This section is the binding summary.
 
-**The client adds nothing.** When no window opened, the curtain follows §4.1's predicate alone: a `turn` (or `discard`, `seven-return`) handoff when control passes to the opponent, and **no curtain at all** when it stays with the mover (a 7 goes straight to its seven panel; a counter the original player cannot answer cancels the chain, and the counterer plays on). There is no hand-off to the opponent for a "let it resolve" prompt. The acting player sees the result on their own screen (for a 5, the drawn cards, §4.7) and then passes the phone for the opponent's normal turn. The opponent learns what happened from their recap.
+**A one-off happens at once and ends the turn, whatever the opponent holds.** Nobody is asked anything between the one-off and the opponent's turn, so the curtain follows §4.1's predicate alone: one `turn` handoff (or `discard` after a 4, below) to the opponent, the same whether or not they hold a 2. A 7 keeps the actor for its pick, as before.
 
-**The accepted leak** *(ruling 2026-09-29)*. The acting player can now tell whether the opponent held a 2: the phone goes to the opponent for a counter prompt only when they do. The product owner accepts this. It supersedes the earlier indistinguishability requirement ("the acting player must not be able to tell 'the opponent had no 2' from 'the opponent declined'"), the client-staged **synthetic acknowledgment** that implemented it, and the 2026-09-29 "an empty hand needs no disguise" exception, which this rule generalises. Every other privacy rule stands: no card is ever shown to a viewer not entitled to it.
+**The counter is the first action of the counterer's own turn.** At the start of your turn, if your opponent's last turn was *counterable* (it held a one-off played from hand, or began with a counter; the envelope's `counterable`), your legal moves include one `MoveCounter` per unfrozen 2. Playing one restores the position at the end of your own last turn (the start of theirs), sends your 2 and the countered cards (their one-off and their counter 2 from that turn, each only if it is in their hand in the restored position) to the scrap, clears every frozen mark, sets `PassesInARow` to 0, and you take a normal turn. Any other first move lets their turn stand. A counter-back erases the opponent's whole turn, counter and action. A 7 is undone as a whole turn, its pick included. Cards drawn or revealed in an erased turn go back on top of the deck in their original order. History is append-only: the erased entries stay and a `Counter` entry records the rewind.
 
-**Detection.** None is needed. `next(pre, mv, post)` returns `result` at game over, a handoff to `post.active` when §4.1's predicate holds, and `none` otherwise. The `ack` curtain appears only through `afterRecap`, when `post.phase === PhaseAwaitingCounter` and `post.active` is the incoming player. Every one-off rank reaches the same engine gate, a one-off played through a 7 (`MoveSevenPick` with `subKind === OneOff`) included, so no per-rank or per-kind branch exists in the machine.
+**Presentation.** There is no counter prompt. The counter is a board play at curtain `none`: selecting a 2 lights the centre last-turn marker (`counter-link`, ≥ 44 px), and a drop or tap stages "Counter with 2♣: undo `NAME`'s last turn." with Confirm and Cancel. Nothing on the board changes because a Counter is legal until a 2 is selected: no highlight, badge or bar. The counter keeps `post.active === pre.active`, so it raises no curtain.
 
-**Presentation.** The counter prompt (`CounterPrompt`, curtain `ack`) shows:
+**The 4 leaves an owed discard.** The 4 adds 2 to the opponent's owed discards (`owedDiscards`). Nothing is discarded in the 4-player's turn. The opponent's turn opens in phase 3 (handoff reason `discard`; an empty hand clears the debt and opens in phase 0): they either counter, which restores a position with no debt, or discard `min(owed, hand)` cards two at a time through the DiscardPicker, then play on in the same turn with no curtain. A counter-back restores the debt, which then waits for the debtor's next turn start; a second 4 after a counter-back stacks (4 owed); a counter of a turn in which the debt was paid restores the debt and the discarded cards, so it is paid again.
 
-| | Counter window (`post.phase === 1`) |
-|---|---|
-| Curtain text | "Pass the phone to `NAME`", label "Your response" |
-| Reveal gate | tap-and-hold, as every handoff |
-| Card shown | the one-off as a `mini` card face, read from `counterPromptEntries(history)`, never `pending` |
-| Counter chain | the same `history` slice, as mini faces |
-| Controls | "Let it resolve" + one button per legal 2 (always at least one) |
-| On confirm | `apply(indexOf MoveDecline)`, or the staged Counter's index |
+**"Not So Fast!" — a win on a counterable turn.** A turn that cannot be countered wins at once, as before. When the mover reaches their threshold on a counterable turn, the turn ends at once and:
 
-**No duplicate recap before the prompt** *(ruling 2026-09-29)*. The prompt already lists the one-off and every 2 played on it, so the recap step before it leaves those entries out and is skipped when nothing else is new. This saves a tap, and removes a hazard where a fast double-tap on the recap's dismiss pill landed on "Let it resolve". Entries the prompt does not show stay in the recap (for example the mover's discard earlier in the same exchange, or a 7 whose revealed card is the one-off now in the window). Dropped: nothing. Every line the recap carried either appears in the prompt with the same wording (the prompt uses the same formatter, `formatRecapLines`) or stays in the recap. One difference: a recap dismissal stamps `lastSeenSeq`; with the recap skipped, the responder is stamped by their own apply at the prompt instead (§4.6), which covers the same entries. Implementation: `withoutPromptEntries` in `curtain.svelte.ts` drops trailing Counters and then the one-off that opened the chain (kinds only; the window is open, so history ends with that chain).
+- **The opponent holds no unfrozen 2** (marks for the turn now starting): the game is over and the mover wins. No beat, no button.
+- **The opponent holds an unfrozen 2:** the engine enters `PhasePendingWin` (5) with the opponent active. Their turn has in effect started early, with two options: Counter (drag a 2 onto the winning play; the normal rewind runs and they take a normal turn) or Decline, labelled **"Let it happen"**, which ends the game with the mover winning. If the mover counters back at their next turn start, their winning position returns and this rule applies again. **Accepted leak:** "Not So Fast!" tells the winner the opponent holds a 2.
 
-**Staging a counter locks "Let it resolve"** *(added 2026-09-28, W25 playtest fixes, merged `b8238db`)*. Tapping a counter option stages it (R12): the options give way to a staging bar with the move's description in sentence case ("Counter with 2♣") and Confirm / Cancel. While a counter is staged, "Let it resolve" is disabled (the `disabled` attribute, dimmed to 35% opacity) and a tap on it does nothing. Cancel re-enables it. Unstaged, the button carries no `disabled` attribute.
+*The winner's screen, every mode:* the win starts to play out as a victory (the winning card lands and the win headline begins), then a **"Not So Fast!"** banner cuts in over the board. It is not a dialog and has no buttons. Online, the board then stays up with the action-bar line "`NAME` is deciding…" until the next `state`. In pass-and-play and table mode a tap or 3 s raises the usual handoff to the opponent (reason `turn`); the beat is memory only, like §4.7's draw reveal, and the save already holds the handoff.
 
-**The board never mounts at `ack`** *(amended 2026-09-28, W13 GameScreen review; reason restated 2026-09-29)*. At the counter window the one-off has not resolved yet; the prompt is a full-screen decision. The card and chain are read from `game.history`, never `pending`.
+*The opponent's screen, every mode:* no dialog and no pop-up, and "Not So Fast!" never appears. They see their normal card view and board (after the reveal and the recap of the winner's turn in pass-and-play and table mode) with one added button, **"Let it happen"** (`let-it-happen`, ≥ 44 px, one tap, keyboard-guarded like every control), and their 2s playable (every other card dimmed: it has no legal move). Countering is a normal drag or tap of a 2 onto the last-turn marker, staged and confirmed. Nothing is auto-selected and there is no chooser between 2s.
 
-**The `ack` screen must not be skippable, fast-forwardable, or auto-dismissed.** It is a decision.
+**Win order at a turn start.** (1) A pending win from the previous turn (above). (2) The incoming player's start-of-turn win check (points that reached them during the opponent's turn); if they won, nothing is offered. (3) The counter option, with any owed discard. (4) The normal turn. When both players reach their thresholds in one counterable turn, the mover's claim comes first.
 
-**The 7 costs no round trip any more.** A 7 resolves to `PhaseSevenChoosing` with `Active` back on the player who played it (`engine/apply.go`, `case card.Seven`). With no 2 against it the actor keeps the phone and goes straight to the seven panel. With a 2 against it: curtain to the opponent → counter prompt → Decline → curtain back to the actor for the reveal. **OQ-6** (§8) is resolved by the ruling.
+**Freeze rule.** A card returned by a 9 is frozen for the turn that starts right after the 9 and for no other; `endTurn` clears both players' marks before the 9 sets its new one, and a counter clears every mark. (This fixes a v0.2.1 defect where a mark outlived its turn.)
+
+**Accepted consequences.** The counterer decides after seeing the effect. A counter-back erases the opponent's whole turn. A rewind restores the position, not memory: a redrawn top card, a 7's reveal, a 3's scrap pick, and discards paid in an erased turn stay known. Glasses played through a 7's pick show the opponent's hand until a counter removes them.
+
+**Legacy.** A save made under engine v0.2.x at a counter window (phase 1) or in an old-style discard (phase 3 with `pending`) finishes through the frozen legacy path: the `ack` curtain and `CounterPrompt` ("Let it resolve") remain for that case only.
 
 ### 4.4 Full transition table
+
+*Amended 2026-10-24 (ApisMellow, issue #93, engine v0.3.0).* The rows below that open a counter window or hand a 4's discard across are superseded by §4.3; they remain only for legacy saves. In new play: `OneOff` from phase 0 goes to phase 0 (or phase 3 after a 4 when the opponent holds cards, or phase 5 on a win with the opponent holding an unfrozen 2) with `O` active, `turn`/`discard` handoff; a 7 keeps `A` for its pick as before. `Counter` from phase 0, 3 or 5 restores the counterer's last turn end: phase 0 (or phase 5 again on a counter-back that restores a win, `O` active, handoff), the counterer stays active, no curtain. `DiscardPair` from phase 3 lowers the debt; at zero, phase 0 with the same player, no curtain. `Decline` from phase 5 ends the game (result). Everything else follows §4.1's predicate.
 
 Read as: an actor in `pre.phase` applies a move of `mv.kind`; the table gives the resulting phase, the new decider, and what the UI does. `A` = pre-state actor, `O` = `other(A)`. Every `(phase, MoveKind)` pair the engine can produce appears; pairs the engine cannot produce are marked *unreachable* and, if reached, are a bug that must raise `INTERNAL`.
 
@@ -1069,8 +1105,8 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 | `PlayPermanent` (Jack) | "`NAME` stole your 10♥ with J♣." |
 | `Scuttle` | "`NAME` scuttled your 7♥ with 9♠." (target card comes from the frozen pre-state description) |
 | `OneOff` | "`NAME` played 9♥ as a one-off." (+ target clause when `Target` is set). A 5 adds what it does: "`NAME` played 5♥ as a one-off to draw 2 cards." *(amended 2026-09-28)* — the card's effect, never the count: on the real counter-window path the recap shows the 5 before it resolves, so the count (`drawn`, §2.7) is never read here (R14). |
-| `Counter` | "`NAME` countered with 2♠." |
-| `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, ApisMellow)*. "`NAME` let it resolve." adds nothing the one-off's own line and the board don't already say. *(The original reason, the synthetic acknowledgment, was retired 2026-09-29, §4.3; the filter stays.)* |
+| `Counter` | "`NAME` countered with 2♠." *(Amended 2026-10-24, issue #93:)* "`NAME` countered with 2♠ and undid your last turn." (for the counterer: "You countered with 2♠ and undid `NAME`'s last turn."). It names only the 2; the undone cards are already in the recap or on the board. |
+| `Decline` | **never shown** — Decline entries are filtered out of the recap before the "skipped when empty" check *(amended 2026-09-27, ApisMellow)*. "`NAME` let it resolve." adds nothing the one-off's own line and the board don't already say. *(The original reason, the synthetic acknowledgment, was retired 2026-09-29, §4.3; the filter stays.)* | *(Amended 2026-10-24, issue #93: in new play a Decline is "Let it happen" at a pending win; it stays hidden, and the result line reads the last visible entry, the winner's move.)*
 | `SevenPick` | "`NAME` revealed the top of the deck and played 5♥ for points." — **the unchosen card is never named** (R16). *(Amended 2026-09-27, ApisMellow: was "revealed two cards", which is false when the deck held one card.)* |
 | `DiscardPair` | "`NAME` discarded 2 cards." — **never the indices, never the identities**; the cards are in the scrap pile, which the viewer can browse (R6) |
 | `DiscardPair`, one-card hand | "`NAME` discarded 1 card." (the engine's `DiscardB: -1` case; same rule: no indices, no identity) *(added 2026-10-18; matches `lib/recap.ts`)* |
@@ -1101,6 +1137,8 @@ The recap formatter takes `(entry: AppliedMove, viewer: PlayerId, names: [string
 ### 4.7 The 5's draw reveal *(added 2026-09-29, issue #27)*
 
 When a 5 resolves and draws cards, the player who drew sees them: the cards leave a face-down deck, travel into that player's hand and turn face up. A tap anywhere, the Continue button (`draw-reveal-continue`), or 3 seconds of waiting (`DRAW_REVEAL_MS` in `lib/drawReveal.ts`) goes on. The panel (`DrawRevealPanel`, `data-testid="draw-reveal"`) shows "You drew N card(s)" and, at the drawer's own next view, the drawer's whole hand with the drawn cards marked. Before the pass it shows **only the drawn cards** (see "Which cards").
+
+*Amended 2026-10-24 (issue #93):* a 5 now always resolves on its own apply, so the reveal is always *before the pass*; the *next own view* path below survives only for legacy saves. If the opponent later counters the 5, its cards go back on top of the deck; the drawer has seen them (accepted, §4.3), and nothing is re-revealed.
 
 **Who sees it.** Only the drawer, on the drawer's own screen. The drawer is the 5's player: `fiveDrawer(history, i)` in `lib/recap.ts` reads the entry whose `drawn` is set (§2.7) and walks back over Counters to the one-off that opened the chain, reading kinds and `by` only. The opponent's screens never carry a reveal, and the handoff that follows one carries nothing of it.
 
@@ -1356,6 +1394,7 @@ interface Snapshot {
 - **`curtain` is persisted.** This matters: reloading the page while the curtain is up must come back to the curtain, not to the board. Restoring to the board would hand the previous player's hand to whoever reloads. The persisted `curtain` is reapplied before the first render (§2.4), so the reload never flashes the live board ahead of it.
 - **The opening curtain is persisted too** *(amended 2026-09-28, W25 playtest fixes, merged `b8238db`; no `v` bump, the shape is unchanged)*. `newGame()` writes the snapshot with `viewer` = the first actor and `curtain` = the opening `handoff`. The decoder normally rejects a curtain other than `none` over an empty `history`; it now allows `handoff` with reason `turn` and `reveal` there, since those are the opening deal's. On restore, a curtain with no move behind it is treated as the opening deal's (§4.2).
 - **Names survive a reload through the snapshot.** `names` is part of the snapshot, and the home screen pre-fills its fields from it (§5.2). With no saved game the fields fall back to the session's names, then to the last-used names in settings *(R10, 2026-09-28)*, so a reload with no saved game still shows the last names used. Those live under the settings key, never in this snapshot; the snapshot shape is unchanged.
+- **v3** *(2026-10-24, ApisMellow, issue #93)*. Engine v0.3.0 changes the engine's state layout (the per-player turn-end snapshots, the last turn's counterable flag and countered cards, the owed discards), so `Snapshot.v` and the Go engine snapshot version both become 3. A v2 save is accepted unchanged: it loads with no turn-end snapshot and no debt, so no counter is offered at that turn start, and a save at a legacy counter window or old-style discard finishes through the frozen legacy path. A pending win (phase 5) restores behind the resume gate like any board; the winner's "Not So Fast!" beat is memory only and is not replayed.
 - **Version mismatch discards the snapshot** and returns to the home screen with a brief notice. Bumping `v` is mandatory for any change to this shape or to the engine's state layout.
 - **v1 → v2 migration** *(orchestrator ruling, 2026-09-28; supersedes "no migration code")*. v2 differs from v1 only in `AppliedMove.drawn` (§2.7); the engine's state layout is unchanged, so a v1 save is upgraded rather than discarded, and family-beta games survive the upgrade. `decodeSnapshot` accepts `v` ∈ {1, 2}: for v1 it adds `drawn: null` to every `history` entry and every recap-curtain entry (an entry that already carries `drawn` is not a real v1 save: malformed). The opaque `engineState` keeps its own v1 tag; the bridge's `restore` accepts engine-snapshot `v` ∈ {1, 2} and, for v1, injects `"drawn": null` into each raw history entry before the strict decode, then validates as usual. The next write is v2 inside and out. A migrated save shows no draw count for 5s resolved before the upgrade. Any other `v` is still a version mismatch. Evidence: a genuine base-commit v1 engine snapshot (`internal/game/testdata/snapshot-v1-bce9fb2.json`) and live saves at every curtain kind rewritten as v1 (`web/tests/unit/snapshot-migration.test.ts`).
 - **The session tally is not in the snapshot** (R3, PRD §4). *Amended 2026-09-29:* it survives a reload in `sessionStorage` under its own key (§5.3), keyed to the name pair, and dies with the tab. The snapshot shape is unchanged; a restored game restores the game, and the tally comes back through the names.
@@ -1441,6 +1480,7 @@ The page asks for a new `sw.js` when it reaches the home screen and when it retu
 - **Drag and drop (§6.1).** Pointer deltas are in screen space and the dragged card's `translate` is in the turned frame, so both axes are negated (`toViewDelta`). The drop hit test (`document.elementFromPoint`) takes screen coordinates and needs no change.
 - **When a change takes effect.** GameScreen reads the setting only when the curtain, the viewer or the move count changes. A change never turns the screen mid-turn or mid-staged-move; it applies at the next curtain or view change. The turn is instant (no animation), so `prefers-reduced-motion` needs nothing extra.
 - **Handoff copy.** The phone is never passed in table mode, so the handoff heading reads "`NAME`'s turn" instead of "Pass the phone to `NAME`" (§4.5), for every reason and in both the handoff and reveal stages. The sub-label follows `handoffLabel(reason, tableMode)`: `turn` and `seven-return` read "Hold to show your hand" (the reveal control) rather than repeat "Your turn"; `counter` and `discard` keep the single neutral "Your response" (R14); `resume` keeps "Resume game". The heading is the same for every reason, so §4.5's no-reason-in-the-DOM rule is unchanged. Normal pass-and-play copy is unchanged.
+- *Amended 2026-10-24 (issue #93):* after a one-off the handoff reason no longer depends on whether the opponent holds a 2 (it is `turn`, or `discard` after a 4), so the sub-label tells nothing. The winner's "Not So Fast!" beat faces the winner; the opponent's pending-win board faces the opponent.
 - **Privacy is unchanged.** Table mode changes orientation and handoff wording only. What mounts behind each curtain kind (§3.3, §4), the reveal gate, the key auto-repeat guard and the finger-lift guard are exactly as in normal pass-and-play.
 
 ---

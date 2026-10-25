@@ -143,6 +143,8 @@ Config from the environment: `CUTTLE_ADDR` (default `127.0.0.1:8080`), `CUTTLE_D
 
 ## 6. Counter prompt and the timing tell
 
+> **2026-10-24, issue #93: superseded.** The hold and the counter prompt described here are replaced by PRD §10 A-9 and SPEC §2.12.5 / §4.3: counters are the first action of the counterer's own turn, nobody is consulted out of turn, and the server holds nothing. Kept as the historical plan.
+
 The engine opens a counter window only when the responder holds a legal 2 (SPEC §4.3). Online, only the responder's phone shows the counter prompt, exactly as in pass-and-play.
 
 Without care, the mover's phone would reveal the answer by timing: an instant result means "no 2", a pause means "has a 2". To blunt this:

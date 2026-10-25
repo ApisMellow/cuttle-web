@@ -170,6 +170,33 @@ that makes your list complete.
   must recurse into `SubMove`.
 - One-card discard: `DiscardB: -1`.
 
+### Counters (issue #93, engine v0.3.0)
+
+The binding rule is SPEC §4.3 (ruled by ApisMellow, 2026-10-24); the
+worked sequences are `docs/counter-rewind-design.md`. Until the go.mod
+bump lands, the engine above is still v0.2.1. What bites when coding:
+
+- **A counter is the first move of the counterer's own turn**, legal only
+  after a counterable turn (envelope `counterable`). It restores the
+  counterer's last turn end, scraps the countered cards and the 2, clears
+  every frozen mark and sets `PassesInARow` to 0. It keeps
+  `post.active === pre.active`, so it raises no curtain. History is
+  append-only: erased entries stay.
+- **A 4 leaves an owed discard** (`owedDiscards`). Phase 3 is now the
+  debtor's turn-start step: Counter or `DiscardPair` (two at a time), and
+  paying does **not** end the turn. A phase-3 state with `pending` is the
+  legacy shape.
+- **`PhasePendingWin` (5):** `Active` is the decider; legal moves are the
+  Counters plus `MoveDecline`, labelled "Let it happen". Decline ends the
+  game for the other player.
+- **Freeze rule:** a 9's mark lasts only the turn right after the 9;
+  `endTurn` clears both players' marks before the 9 sets its own; a counter
+  clears all marks.
+- **No hold, online or anywhere** (SPEC §2.12.5).
+- **Legacy:** `PhaseAwaitingCounter` (1), the `ack` curtain and
+  `CounterPrompt` ("Let it resolve") exist only so a v0.2.x save can finish
+  its window. New play never reaches them.
+
 ### WASM bridge: beyond the landmines above
 
 - **Layout (two-phone W1, 2026-09-29).** All bridge logic and its tests
@@ -356,23 +383,14 @@ that makes your list complete.
   the fan-out in one room-lock section. A failed save answers `INTERNAL`
   plus the reloaded state; if the reload fails, the room is dropped and
   both sockets close bare.
-- **The counter hold** (`hold`, `checkHoldsLocked`): after a counterable
-  move (OneOff, Counter, SevenPick whose SubMove is a OneOff, whether or
-  not a window opened) the mover gets `responding`, and gets the
-  *current* state only once the engine isn't waiting on the other seat's
-  counter decision AND `RespondMin` (`-respond-min-ms`,
-  `CUTTLE_RESPOND_MIN_MS`, 1500, 1–60000) has passed. Both seats can be
-  held at once (a counter holds the counterer). Any resync (a hello, or
-  an error followed by state) answers `responding` while held. **A held
-  mover learns nothing from its own frames:** every well-formed `move` or `rematch`
-  from it gets the fixed `error STALE` (no `seq` echo) plus `responding`,
-  without touching `Apply` or the rematch requests (`refuseHeldLocked`),
-  so the bytes are the same whether or not the answer is in or the game
-  ended. Its `welcome` says `playing` (never `over`), and a rematch
-  request is neither broadcast nor replayed to it until the hold releases
-  (`checkHoldsLocked` then sends state, then the pending request). Holds
-  and rematch requests are memory only; a timer checks `gen` so a stale one is a
-  no-op; drop, deal and shutdown stop them.
+- **No counter hold** *(2026-10-24, ApisMellow, issue #93, SPEC §2.12.5)*.
+  Every saved move fans out to both seats at once. Nobody is consulted out
+  of turn any more, so there is nothing to mask: never send `responding`,
+  never refuse a seat's frames for being held, never delay a `state`.
+  `-respond-min-ms` / `CUTTLE_RESPOND_MIN_MS` stay accepted as no-ops for
+  one release. A pending win (`PhasePendingWin`) is an ordinary engine
+  state whose `Active` is the decider; it needs no server code. Protocol is
+  `v: 2` (SPEC §2.12.7).
 - **Room lifetime:** `Sweep` never memory-drops a room with a live
   socket; a room the store expired gets `ROOM_GONE` then close. `Handler`'s
   ctx ending closes every socket bare (`play.closeAll`) and refuses new
@@ -498,7 +516,8 @@ that makes your list complete.
 - A card container or board zone (hand card, point or permanent row, deck,
   scrap) keeps its element and testid whatever the legality; dim or disable
   it instead. Controls whose existence SPEC ties to the move list (the §4.3
-  counter buttons and "Let it resolve", the §6 chooser, Confirm) are exempt.
+  "Let it happen" button at a pending win, the legacy counter prompt's
+  buttons, the §6 chooser, Confirm) are exempt.
 - A child testid must not match a sibling family's prefix selector. A badge
   inside `hand-card-3` named `hand-card-frozen` is counted as a card by
   `[data-testid^="hand-card-"]`.
@@ -515,17 +534,17 @@ Hard rejects. Each came up in rounds 1–2.
 - **Nothing of the previous holder survives a curtain:** not the envelope,
   not the view, not mover-only `index` in history or recap entries, not a
   closure or component-local copy.
-- **The board renders only at curtain `none`, never at `ack`** (the counter
-  window, where the responder is deciding whether to play a 2), and never
-  merely because `view` is non-null. Behind the curtain it is unmounted, not
-  hidden. *(Amended 2026-09-29, product-owner ruling, SPEC §4.3: the
-  synthetic ack is gone, so the board is hidden at an ack only because the
-  one-off is still pending while the responder decides.)*
+- **The board renders only at curtain `none`**, and never merely because
+  `view` is non-null. Behind the curtain it is unmounted, not hidden.
+  *(Amended 2026-10-24, ApisMellow, issue #93, SPEC §4.3:)* a counter, a
+  pending win and an owed discard are all played on the board at `none`.
+  `ack` survives only for a legacy save at a v0.2.x counter window, and the
+  board still never renders there.
 - **The idle last-move line reads the last `isRecapVisible` entry in
   `history`**, never raw `lastMove`, which can be a filtered-out `Decline`
-  *(amended 2026-09-28, W13 GameScreen review)*. The counter prompt's
-  played card and chain come from `history` as `mini` faces, never from
-  `pending`.
+  *(amended 2026-09-28, W13 GameScreen review)*. The legacy counter
+  prompt's played card and chain come from `history` as `mini` faces, never
+  from `pending`.
 - **The 7's revealed cards render only for the actor** (`viewer ===
   active` at `PhaseSevenChoosing`). The opponent never sees them on any
   screen, and no recap names the unchosen card.
@@ -536,12 +555,21 @@ Hard rejects. Each came up in rounds 1–2.
   `HandoffReason` never reaches text, class, attribute, `data-*`, testid or
   layout before the reveal gate. Assert it in a DOM test.
 - **No auto-advance anywhere in the curtain.** The ack can't be skipped,
-  fast-forwarded or auto-dismissed.
-- **No counter prompt without a legal 2** *(2026-09-29, SPEC §4.3)*. A
-  one-off resolves at once and ends the turn; the `ack` curtain appears only
-  when the engine opened a counter window. No "Let it resolve" prompt is ever
-  staged for a responder who holds no 2. The acting player can infer that
-  from whether the phone passes; the product owner accepts this leak.
+  fast-forwarded or auto-dismissed. The "Not So Fast!" beat sits outside the
+  curtain, like the draw reveal: its tap-or-3 s only raises the handoff,
+  which then waits for a tap like any handoff.
+- **Nothing may depend on whether a player holds a 2** *(2026-10-24,
+  ApisMellow, issue #93, SPEC §4.3; supersedes the 2026-09-29 accepted
+  leak)*. After any move the opponent's curtain, handoff reason, envelope,
+  frames, timing and board markup are the same whatever either hand holds.
+  The counter affordance (a lit last-turn marker) appears only once the
+  viewer selects a 2: no idle highlight, badge or bar. **The one accepted
+  exception is "Not So Fast!"**: when the mover wins on a counterable turn
+  and the opponent holds an unfrozen 2, the winner sees the victory start,
+  then the "Not So Fast!" banner (not a dialog, no buttons), then waits.
+  "Not So Fast!" never appears on the decider's screen; the decider gets the
+  normal board, one "Let it happen" button and draggable 2s, with nothing
+  auto-selected and no chooser.
 - **Recap:** never name the 7's unchosen card; never show a Decline (filter
   with `isRecapVisible` before the "skip when empty" check); `DiscardPair`
   names no indices and no identities.
@@ -560,7 +588,7 @@ Hard rejects. Each came up in rounds 1–2.
   Components read `$derived` values and call store methods; nothing else
   calls the bridge.
 - No viewer switch: `refresh()` takes no argument, re-fetches only the
-  current viewer, and runs only at `none` or a real counter window.
+  current viewer, and runs only at `none` (or a legacy counter window).
   `apply()` refuses behind a curtain.
 - Anything carried across a curtain is typed to the minimum
   (`CurtainView = Pick<PlayerView,'active'|'phase'>`).
@@ -569,11 +597,13 @@ Hard rejects. Each came up in rounds 1–2.
   must fail if the order flips.
 - A failed fetch clears pending context. Test a failure followed by a retry.
 - Restore by curtain kind: withhold the view at `handoff`, `reveal`,
-  `recap`; at `none` and either ack, raise the resume gate
+  `recap`; at `none` (a counter-eligible board, a pending win and an owed
+  discard included) and a legacy `ack`, raise the resume gate
   (`handoff` reason `resume` -> `reveal`) and fetch the view only once it
   is passed; expose the envelope at once only at `result`. The gate is
   never written to the save. Test every kind (SPEC §5.7, ruling
-  2026-09-29).
+  2026-09-29; amended 2026-10-24, issue #93). The winner's "Not So Fast!"
+  beat is memory only, like the draw reveal: never saved, never replayed.
 - `Snapshot.engineState` is opaque to TS. Never read inside it.
 - Any change to the `Snapshot` or persisted `AppliedMove` shape needs the
   brief to say "bump `v`" or "no bump". If it says neither, stop and report.
