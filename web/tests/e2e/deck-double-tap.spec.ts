@@ -49,9 +49,8 @@ async function expectDrawCommitted(page: Page): Promise<void> {
   expect(await hook(page, (h) => h.curtain())).toBe('handoff');
 
   await reveal(page);
-  await expect(page.getByTestId('recap')).toContainText('Alice drew a card');
-  await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('board')).toContainText('Alice drew a card');
   expect(await hook(page, (h) => h.viewer())).toBe(1);
   await expect(page.getByTestId('opp-hand')).toContainText('6 cards');
   await expect(page.getByTestId('deck-pile')).toHaveText('40');

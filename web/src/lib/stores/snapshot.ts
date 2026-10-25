@@ -71,12 +71,19 @@ const HANDOFF_REASONS: readonly string[] = ['turn', 'counter', 'discard', 'seven
  *   - `ack` with `synthetic: true` becomes `reveal` for the same player: the
  *     step just before it. Passing that gate fetches their view fresh, or
  *     hands the phone on when the turn is not theirs (curtain machine,
- *     `afterRecap`), so nothing new is shown to anyone.
+ *     `afterReveal`), so nothing new is shown to anyone.
  *   - a `handoff` with the retired reason `acknowledge` becomes `turn`.
+ *   - `recap` (retired, issue #95, 2026-10-25) becomes `reveal` for the same
+ *     player: the step just before it. Passing that gate goes on to the
+ *     counter window or the board, as if the recap were dismissed. Its
+ *     entries are dropped. No `v` bump: the shape only loses a variant.
  * An `ack` whose `synthetic` is not a boolean is malformed.
  */
 function withoutLegacyAck(curtain: unknown): unknown {
   if (!isPlainObject(curtain)) return curtain;
+  if (curtain.kind === 'recap' && isPlayerId(curtain.to) && Array.isArray(curtain.entries)) {
+    return { kind: 'reveal', to: curtain.to };
+  }
   if (curtain.kind === 'handoff' && curtain.reason === 'acknowledge') return { ...curtain, reason: 'turn' };
   if (curtain.kind !== 'ack' || !('synthetic' in curtain)) return curtain;
   if (curtain.synthetic === true) return { kind: 'reveal', to: curtain.to };
@@ -84,7 +91,7 @@ function withoutLegacyAck(curtain: unknown): unknown {
   return curtain; // a non-boolean flag: isCurtainState rejects it
 }
 
-/** SPEC §4.2: exactly the six variants, each with the fields it requires. */
+/** SPEC §4.2: exactly the five variants, each with the fields it requires. */
 function isCurtainState(value: unknown): value is CurtainState {
   if (!isPlainObject(value)) return false;
   switch (value.kind) {
@@ -95,8 +102,6 @@ function isCurtainState(value: unknown): value is CurtainState {
       return isPlayerId(value.to) && typeof value.reason === 'string' && HANDOFF_REASONS.includes(value.reason);
     case 'reveal':
       return isPlayerId(value.to);
-    case 'recap':
-      return isPlayerId(value.to) && Array.isArray(value.entries);
     case 'ack':
       return isPlayerId(value.to) && !('synthetic' in value);
     default:
@@ -175,13 +180,7 @@ function withNullDrawn(entries: unknown): unknown[] | null {
 function migrateV1(v1: Record<string, unknown>): Record<string, unknown> | null {
   const history = Array.isArray(v1.history) ? withNullDrawn(v1.history) : v1.history;
   if (history === null) return null;
-  let curtain = v1.curtain;
-  if (isPlainObject(curtain) && curtain.kind === 'recap' && Array.isArray(curtain.entries)) {
-    const entries = withNullDrawn(curtain.entries);
-    if (entries === null) return null;
-    curtain = { ...curtain, entries };
-  }
-  return { ...v1, v: SNAPSHOT_VERSION, history, curtain };
+  return { ...v1, v: SNAPSHOT_VERSION, history };
 }
 
 export function decodeSnapshot(raw: string | null): DecodeResult {

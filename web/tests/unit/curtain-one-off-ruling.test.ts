@@ -7,8 +7,8 @@
 // is followed like any other resolved move. Supersedes the "empty hand
 // needs no disguise" ruling of the same day, which this generalises.
 //
-// Also: before the counter prompt, the recap drops what the prompt shows,
-// and is skipped when nothing else is left.
+// Also (issue #95): there is no recap step; the reveal goes straight to
+// the prompt or the board.
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -73,15 +73,15 @@ describe('a one-off the opponent cannot answer (no 2): no ack, the turn simply p
   }
 
   for (const cards of [0, 3]) {
-    it(`live (Blake holds ${cards} cards, no 2): turn handoff, reveal, recap, board; never an ack`, async () => {
+    it(`live (Blake holds ${cards} cards, no 2): turn handoff, reveal, board; never an ack`, async () => {
       const { store } = await aliceAtBoard(cards);
       await store.apply(0);
       expect(store.curtain).toEqual({ kind: 'handoff', to: O, reason: 'turn' });
-      expect(await walkStore(store)).toEqual(['handoff:1', 'reveal:1', 'recap:1', 'none']);
+      expect(await walkStore(store)).toEqual(['handoff:1', 'reveal:1', 'none']);
       expect(store.viewer).toBe(O);
     });
 
-    for (const stopAt of ['handoff', 'reveal', 'recap'] as const) {
+    for (const stopAt of ['handoff', 'reveal'] as const) {
       it(`restore at ${stopAt} (Blake holds ${cards}) walks the same sequence as the live game`, async () => {
         const full = await (async () => {
           const again = await aliceAtBoard(cards);
@@ -174,7 +174,7 @@ describe('a counter the original player cannot answer: the counterer plays on, n
   });
 });
 
-describe('a one-off the opponent can answer (they hold a 2): the counter prompt, with no duplicate recap', () => {
+describe('a one-off the opponent can answer (they hold a 2): the counter prompt, straight after the reveal', () => {
   const oneOffPublic = appliedMove({ by: A, kind: Kind.OneOff, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
 
   function blakeWindow(history = [oneOffPublic]): Envelope {
@@ -209,7 +209,7 @@ describe('a one-off the opponent can answer (they hold a 2): the counter prompt,
     return { store, storage };
   }
 
-  it('handoff, reveal, then straight to the prompt: the recap would only repeat the 5', async () => {
+  it('handoff, reveal, then straight to the prompt', async () => {
     const { store } = await aliceFive();
     await store.apply(0);
     expect(store.curtain).toEqual({ kind: 'handoff', to: O, reason: 'counter' });
@@ -217,16 +217,13 @@ describe('a one-off the opponent can answer (they hold a 2): the counter prompt,
     expect(store.legalMoves.some((m) => m.Kind === Kind.Counter)).toBe(true);
   });
 
-  it('a move the prompt does not show (Alice\'s discard before her 5) still gets a recap, without the 5', async () => {
+  it('an earlier unseen move (Alice\'s discard before her 5) adds no step: reveal, then the prompt', async () => {
     const discard = appliedMove({ by: A, kind: Kind.DiscardPair, seq: 1, description: 'discard hand[0] and hand[1]' });
     const five = { ...oneOffPublic, seq: 2 };
     const { store } = await aliceFive([discard, five]);
     await store.apply(0);
     await store.advanceCurtain(); // reveal
-    await store.advanceCurtain(); // recap
-    expect(store.curtain.kind).toBe('recap');
-    const entries = store.curtain.kind === 'recap' ? store.curtain.entries : [];
-    expect(entries.map((e) => e.kind)).toEqual([Kind.DiscardPair]);
+    expect(store.curtain).toEqual({ kind: 'reveal', to: O });
     await store.advanceCurtain();
     expect(store.curtain).toEqual({ kind: 'ack', to: O });
   });

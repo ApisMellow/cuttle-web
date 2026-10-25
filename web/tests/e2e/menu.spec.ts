@@ -63,12 +63,12 @@ async function startGoldenGame(page: Page): Promise<void> {
   await expect(page.getByTestId('board')).toBeVisible();
 }
 
-/** handoff -> reveal via the two-step pill, landing on the recap. */
+/** handoff -> reveal via the two-step pill, landing on the board (issue #95: no recap). */
 async function reveal(page: Page): Promise<void> {
   await expect(page.getByTestId('curtain-gate')).toBeVisible();
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
-  await expect(page.getByTestId('recap')).toBeVisible();
+  await expect(page.getByTestId('board')).toBeVisible();
 }
 
 /** A counter handoff: the gate, then the prompt at once (ruling 2026-09-29: no recap repeating the one-off). */
@@ -147,24 +147,26 @@ test('the menu button sits in the score bar; opening and closing it moves nothin
   expect(await boxes(page)).toEqual(before);
 });
 
-test('R17.2: Rules from the menu at a recap and at a real counter window leave the curtain, the save and lastSeenSeq alone', async ({ page }) => {
+test('R17.2: Rules from the menu at the reveal gate and at a real counter window leave the curtain, the save and lastSeenSeq alone', async ({ page }) => {
   await startGoldenGame(page);
   await play(page, /^draw/, 0, 'deck');
 
-  // Blake's recap of Alice's draw. Rules must not dismiss it.
-  await reveal(page); // Blake
-  const atRecap = await save(page);
-  expect(await hook(page, (h) => h.curtain())).toBe('recap');
+  // Blake's reveal gate. Rules must not advance it.
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  await page.getByTestId('reveal-two-step').click();
+  const atGate = await save(page);
+  expect(await hook(page, (h) => h.curtain())).toBe('reveal');
   await openMenu(page);
   await page.getByTestId('menu-rules').click();
   await expect(page.getByTestId('rules-sheet')).toBeVisible();
   await page.getByTestId('rules-close').click();
   // r16: back to the menu, then close it.
   await page.getByTestId('menu-close').click();
-  await expect(page.getByTestId('recap')).toBeVisible();
-  expect(await hook(page, (h) => h.curtain())).toBe('recap');
-  expect(await save(page)).toBe(atRecap);
-  await page.getByTestId('recap-dismiss').click();
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  expect(await hook(page, (h) => h.curtain())).toBe('reveal');
+  expect(await save(page)).toBe(atGate);
+  await page.getByTestId('reveal-two-step').click();
+  await expect(page.getByTestId('board')).toBeVisible();
   await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
 
   // The real counter window: Alice holds 2♥. Ruling 2026-09-29: no recap
@@ -339,7 +341,6 @@ test('R4 privacy: after a reload, Resume at the board and at a real counter wind
   // Reach Alice's real counter window (she holds 2♥), then reload there.
   await play(page, /^draw/, 0, 'deck');
   await reveal(page); // Blake
-  await page.getByTestId('recap-dismiss').click();
   await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
   await revealToPrompt(page); // Alice
   await expect(page.getByTestId('counter-prompt')).toBeVisible();

@@ -494,7 +494,6 @@ describe('drag and the curtain (privacy)', () => {
     await click(el, 'reveal-two-step');
     expect(draggingCards(el)).toHaveLength(0);
     expect(el.innerHTML).not.toContain('--drag-');
-    await click(el, 'recap-dismiss');
 
     expect(el.querySelectorAll('[data-testid^="hand-card-"]')).toHaveLength(2);
     expect(draggingCards(el)).toHaveLength(0);

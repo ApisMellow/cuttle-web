@@ -11,8 +11,7 @@
 // 2♥ 3♣ A♥ K♦ Q♣, Blake 5♥ 9♥ 8♦ 4♦ 5♠ 4♥. Alice draws (keeping her 2),
 // Blake plays 5♥ as a one-off, so Alice gets a REAL counter window. Every
 // state on the way (opening handoff and reveal, the board, Blake's handoff,
-// reveal and recap, Alice's response handoff, reveal and the real ack; the
-// recap before it is skipped, since the prompt shows the 5) is round-tripped
+// reveal, Alice's response handoff, reveal and the real ack) is round-tripped
 // through Home -> Resume and then played on.
 
 import { describe, expect, it } from 'vitest';
@@ -71,7 +70,7 @@ async function homeAndResume(store: GameStore, storage: Storage): Promise<void> 
 }
 
 describe('Home -> Resume round-trips the save at every curtain kind (real engine)', () => {
-  it('opening curtain, board, turn handoff, recap, response handoff and a real counter window all come back identically and play on', async () => {
+  it('opening curtain, board, turn handoff, response handoff and a real counter window all come back identically and play on', async () => {
     await createWasmEngine();
     const storage = fakeStorage();
     const store = new GameStore({ storage, session: new SessionStore() });
@@ -117,7 +116,7 @@ describe('Home -> Resume round-trips the save at every curtain kind (real engine
     expect(store.curtain.kind).toBe('none');
     await homeAndResume(store, storage);
 
-    expect([...visited].sort()).toEqual(['ack', 'handoff', 'none', 'recap', 'reveal']);
+    expect([...visited].sort()).toEqual(['ack', 'handoff', 'none', 'reveal']);
   }, 20_000);
 });
 

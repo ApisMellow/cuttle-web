@@ -355,7 +355,7 @@ describe('S9: no prompt, ever — App half (R25.12)', () => {
       screens.add(kind);
       if (game.drawReveal !== null) {
         game.dismissDrawReveal();
-      } else if (kind === 'handoff' || kind === 'reveal' || kind === 'recap') {
+      } else if (kind === 'handoff' || kind === 'reveal') {
         await game.advanceCurtain();
       } else {
         await game.apply(pickMove(game.envelope!));

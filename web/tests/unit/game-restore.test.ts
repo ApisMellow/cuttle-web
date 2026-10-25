@@ -171,8 +171,7 @@ describe('carry-over 7: a persisted curtain is re-raised before the store expose
     await store.advanceCurtain(); // -> reveal
     expect(store.curtain).toEqual({ kind: 'reveal', to: 1 });
 
-    await store.advanceCurtain(); // -> recap (1 unseen entry for P2) or none if already seen
-    await (store.curtain.kind === 'recap' ? store.advanceCurtain() : Promise.resolve());
+    await store.advanceCurtain(); // -> none (issue #95: no recap step)
 
     expect(store.curtain).toEqual({ kind: 'none' });
     expect(store.viewer).toBe(1);
@@ -233,7 +232,6 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
   for (const curtain of [
     { kind: 'handoff', to: 1, reason: 'counter' },
     { kind: 'reveal', to: 1 },
-    { kind: 'recap', to: 1, entries: [oneOff] },
   ] satisfies CurtainState[]) {
     it(`${curtain.kind}: nothing is exposed, and no card identity from the fetched view is reachable`, async () => {
       const { store } = restoreWith(baseSnapshot({ viewer: 1, curtain, history: [oneOff] }), viewerEnvelope(1, 1, Phase.AwaitingCounter));
@@ -246,6 +244,26 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
       expect(JSON.stringify([store.history, store.curtain])).not.toContain(JSON.stringify(SECRET));
     });
   }
+
+  it('issue #95: a save written at the retired recap restores as the reveal before it, and goes on to the board', async () => {
+    const env = viewerEnvelope(1, 1, Phase.Normal);
+    const legacy = JSON.parse(encodeSnapshot(baseSnapshot({ viewer: 1, history: [oneOff], lastSeenSeq: { 0: 1, 1: 0 } })));
+    legacy.curtain = { kind: 'recap', to: 1, entries: [oneOff] };
+    const storage = fakeStorage();
+    storage.setItem(SNAPSHOT_KEY, JSON.stringify(legacy));
+    const engine = createFakeEngine({ restore: vi.fn(() => env), view: () => env });
+    const store = new GameStore({ engine, storage, session: new SessionStore() });
+    await store.restore();
+    expect(store.screen).toBe('game');
+    expect(store.curtain).toEqual({ kind: 'reveal', to: 1 });
+    expect(store.envelope).toBeNull();
+    expect(store.view).toBeNull();
+
+    await store.advanceCurtain();
+    expect(store.curtain).toEqual({ kind: 'none' });
+    expect(store.viewer).toBe(1);
+    expect(store.lastSeenSeq[1]).toBe(1);
+  });
 
   it('counter window (ack): behind the resume gate, then the decider\'s envelope is exposed and apply() works', async () => {
     const decline = appliedMove({ by: 1, kind: Kind.Decline, seq: 2 });
@@ -289,11 +307,10 @@ describe('B4: restore into every curtain kind exposes exactly what that kind all
 });
 
 describe('B2 on restore: no index survives into a restored curtain', () => {
-  it('handoff: the bridge-restored history loses every index key; a stored recap\'s entries likewise', async () => {
+  it('handoff: the bridge-restored history loses every index key; the stored curtain likewise', async () => {
     const withIndex = appliedMove({ by: 1, kind: Kind.Draw, seq: 1, index: 3 });
     for (const curtain of [
       { kind: 'handoff', to: 1, reason: 'turn' },
-      { kind: 'recap', to: 1, entries: [withIndex] },
     ] satisfies CurtainState[]) {
       const storage = fakeStorage();
       storage.setItem(SNAPSHOT_KEY, encodeSnapshot(baseSnapshot({ viewer: 1, curtain, history: [withIndex] })));
@@ -302,7 +319,6 @@ describe('B2 on restore: no index survives into a restored curtain', () => {
       await store.restore();
       expect(JSON.stringify(store.history)).not.toContain('"index"');
       expect(JSON.stringify(store.curtain)).not.toContain('"index"');
-      expect(JSON.stringify(store.recapFor(1))).not.toContain('"index"');
     }
   });
 });

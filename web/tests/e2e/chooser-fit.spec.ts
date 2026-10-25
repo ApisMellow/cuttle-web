@@ -32,13 +32,12 @@ async function hook<T>(page: Page, fn: (h: Hook) => T | Promise<T>): Promise<T> 
   return page.evaluate(`(${fn.toString()})(window.__cuttleTestHook)`) as Promise<T>;
 }
 
-/** Through handoff -> reveal -> [recap] to the board, by the two-step pill. */
+/** Through handoff -> reveal to the board, by the two-step pill. */
 async function reachBoard(page: Page): Promise<void> {
   for (let i = 0; i < 6; i++) {
     const kind = await hook(page, (h) => h.curtain());
     if (kind === 'none') return;
-    if (kind === 'recap') await page.getByTestId('recap-dismiss').click();
-    else if (kind === 'ack') await page.getByTestId('counter-resolve').click();
+    if (kind === 'ack') await page.getByTestId('counter-resolve').click();
     else await page.getByTestId('reveal-two-step').click();
   }
   expect(await hook(page, (h) => h.curtain())).toBe('none');

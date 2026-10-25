@@ -9,18 +9,12 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { AppliedMove, PlayerId } from '../../src/lib/bridge/schema';
 import { HOLD_DURATION_MS } from '../../src/lib/curtain';
 import type { CurtainState, HandoffReason } from '../../src/lib/stores/curtain.svelte';
 import Curtain from '../../src/lib/components/Curtain.svelte';
-import { appliedMove, Kind } from './game-test-support';
 
 const NAMES: [string, string] = ['Alice', 'Blake'];
 const REASONS: HandoffReason[] = ['turn', 'counter', 'discard', 'seven-return'];
-
-function pass(seq: number): AppliedMove {
-  return appliedMove({ by: 1, kind: Kind.Pass, description: 'pass', seq });
-}
 
 let host: HTMLDivElement | undefined;
 let instance: ReturnType<typeof mount> | undefined;
@@ -29,8 +23,6 @@ interface RenderProps {
   curtain: CurtainState;
   names: readonly [string, string];
   revealPreference: 'hold' | 'two-step';
-  recapEntries: AppliedMove[];
-  viewer: PlayerId | null;
   tableMode?: boolean;
   onadvance: () => void;
 }
@@ -67,7 +59,7 @@ afterEach(() => {
 });
 
 function baseProps(curtain: CurtainState): RenderProps {
-  return { curtain, names: NAMES, revealPreference: 'hold', recapEntries: [], viewer: 0, onadvance: () => {} };
+  return { curtain, names: NAMES, revealPreference: 'hold', onadvance: () => {} };
 }
 
 function gate(el: HTMLElement): HTMLElement {
@@ -103,14 +95,6 @@ describe('Curtain renders exactly one child per curtain.kind (Contract)', () => 
       expect(gate(el).textContent).toContain('Blake');
       expect(el.querySelector('[data-testid="recap"]')).toBeNull();
     }
-  });
-
-  it('kind "recap": the curtain root with the recap only', () => {
-    const props = baseProps({ kind: 'recap', to: 0, entries: [pass(1)] });
-    props.recapEntries = [pass(1), pass(2)];
-    const el = render(props);
-    expect(el.querySelector('[data-testid="recap"]')).toBeTruthy();
-    expect(el.querySelector('[data-testid="curtain-gate"]')).toBeNull();
   });
 
   it('the removed separate screens leave no testid behind', () => {
@@ -385,9 +369,8 @@ describe('Ruling A1: one persistent screen across handoff -> reveal', () => {
     props.onadvance = () => {
       calls.push(props.curtain.kind);
       if (props.curtain.kind === 'handoff') props.curtain = { kind: 'reveal', to: 1 };
-      else if (props.curtain.kind === 'reveal') props.curtain = { kind: 'recap', to: 1, entries: [pass(1)] };
+      else if (props.curtain.kind === 'reveal') props.curtain = { kind: 'none' };
     };
-    props.recapEntries = [pass(1)];
     flushSync();
 
     const ring = el.querySelector('[data-testid="reveal-hold"]')!;
@@ -402,7 +385,7 @@ describe('Ruling A1: one persistent screen across handoff -> reveal', () => {
     vi.advanceTimersByTime(1);
     flushSync();
     expect(calls).toEqual(['handoff', 'reveal']);
-    expect(el.querySelector('[data-testid="recap"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="curtain"]')).toBeNull();
   });
 
   it('pill path through the Curtain: triple tap gives exactly one call per transition', () => {
@@ -443,32 +426,12 @@ describe('Ruling A1: one persistent screen across handoff -> reveal', () => {
   });
 });
 
-describe('Curtain never filters recapEntries (Contract)', () => {
-  it('every entry passed in recapEntries renders as a line, regardless of curtain.entries', () => {
-    const props = baseProps({ kind: 'recap', to: 0, entries: [] });
-    props.recapEntries = [pass(1), pass(2), pass(3)];
-    expect(render(props).querySelectorAll('.recap__line').length).toBe(3);
-  });
-
-  it('recap dismiss calls the SAME onadvance passed to Curtain', () => {
-    const seen: number[] = [];
-    const props = baseProps({ kind: 'recap', to: 0, entries: [] });
-    props.recapEntries = [pass(1)];
-    props.onadvance = () => seen.push(1);
-    const el = render(props);
-    el.querySelector<HTMLButtonElement>('[data-testid="recap-dismiss"]')?.click();
-    flushSync();
-    expect(seen).toEqual([1]);
-  });
-});
-
 describe('Curtain never auto-advances', () => {
   it('mounting any withheld kind and letting timers run never calls onadvance', () => {
     vi.useFakeTimers();
     for (const curtain of [
       { kind: 'handoff', to: 1, reason: 'turn' },
       { kind: 'reveal', to: 1 },
-      { kind: 'recap', to: 0, entries: [] },
     ] as CurtainState[]) {
       const seen: number[] = [];
       const props = baseProps(curtain);
@@ -481,7 +444,7 @@ describe('Curtain never auto-advances', () => {
 });
 
 describe('Curtain prop changes on one mounted instance (OQ-13 pattern)', () => {
-  it('walks none -> handoff -> reveal -> recap -> none on the same instance', () => {
+  it('walks none -> handoff -> reveal -> none on the same instance', () => {
     const { el, props } = renderLive(baseProps({ kind: 'none' }));
     expect(el.querySelector('[data-testid="curtain"]')).toBeNull();
 
@@ -493,31 +456,8 @@ describe('Curtain prop changes on one mounted instance (OQ-13 pattern)', () => {
     flushSync();
     expect(gate(el)).toBe(screen);
 
-    props.curtain = { kind: 'recap', to: 1, entries: [] };
-    props.recapEntries = [pass(1)];
-    flushSync();
-    expect(el.querySelector('[data-testid="recap"]')).toBeTruthy();
-    expect(el.querySelector('[data-testid="curtain-gate"]')).toBeNull();
-
     props.curtain = { kind: 'none' };
     flushSync();
     expect(el.querySelector('[data-testid="curtain"]')).toBeNull();
-  });
-});
-
-describe('Curtain default theme (SPEC §5.6 rule 5)', () => {
-  it('falls back to the app default theme when the theme prop is omitted', () => {
-    const props = baseProps({ kind: 'recap', to: 0, entries: [] });
-    props.recapEntries = [
-      appliedMove({
-        by: 1,
-        kind: Kind.PlayPermanent,
-        card: { Rank: 11, Suit: 0 },
-        description: 'play J♣ (steal opponent point)',
-        seq: 1,
-        targetCard: { Rank: 10, Suit: 2 },
-      }),
-    ];
-    expect(render(props).querySelectorAll('.recap__face [data-state]').length).toBe(2);
   });
 });

@@ -340,7 +340,7 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     expect(text(el)).not.toContain('8♦');
   });
 
-  it('PRIVACY: after the pick, neither revealed card survives into the handoff, reveal, recap or the opponent\'s board', async () => {
+  it('PRIVACY: after the pick, neither revealed card survives into the handoff, reveal or the opponent\'s board', async () => {
     const el = await start(sevenEnvelope());
     // Control: the unchosen J♣ is on screen for the actor while choosing.
     expect(text(el)).toContain('J♣');
@@ -387,15 +387,11 @@ describe('GameScreen SevenRevealPanel (R16)', () => {
     await click(el, 'zone-points');
     await click(el, 'staging-confirm');
 
-    for (const step of ['handoff', 'reveal', 'recap', 'none'] as const) {
+    for (const step of ['handoff', 'reveal', 'none'] as const) {
       expect(game.curtain.kind).toBe(step);
       expect(sevenNodes(el)).toHaveLength(0);
       expect(text(el)).not.toContain('J♣');
       if (step === 'handoff' || step === 'reveal') await click(el, 'reveal-two-step');
-      if (step === 'recap') {
-        expect(q(el, 'recap')?.textContent).toContain('revealed the top of the deck');
-        await click(el, 'recap-dismiss');
-      }
     }
     expect(game.viewer).toBe(1);
     expect(q(el, 'board')).not.toBeNull();

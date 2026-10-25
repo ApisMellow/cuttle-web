@@ -135,7 +135,7 @@ async function resumeInto(c: (typeof CASES)[number], viewer: PlayerId = 0): Prom
 
 function expectGateOnly(el: HTMLElement, name: string): void {
   expect(el.querySelector('[data-testid="curtain-gate"]'), name).not.toBeNull();
-  for (const id of ['board', 'counter-prompt', 'counter-resolve', 'player-hand', 'pass', 'score-bar', 'recap']) {
+  for (const id of ['board', 'counter-prompt', 'counter-resolve', 'player-hand', 'pass', 'score-bar']) {
     expect(el.querySelector(`[data-testid="${id}"]`), `${name}: ${id}`).toBeNull();
   }
   expect(el.querySelectorAll('[data-testid^="hand-card-"], [data-testid^="counter-option-"]').length, name).toBe(0);

@@ -41,7 +41,6 @@ async function passThePhone(page: Page, to: string): Promise<void> {
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('curtain-gate')).toHaveCount(0);
-  if ((await page.getByTestId('recap').count()) > 0) await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('board')).toBeVisible();
 }
 

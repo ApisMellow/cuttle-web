@@ -101,7 +101,7 @@ async function expectOwnRowsClear(page: Page): Promise<void> {
 }
 
 /**
- * Hands the phone over: handoff -> reveal (two-step) -> recap if any. The
+ * Hands the phone over: handoff -> reveal (two-step) -> the board. The
  * board stays out of the DOM until the receiver is looking.
  */
 async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your response'): Promise<void> {
@@ -114,10 +114,6 @@ async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your r
   await expect(page.getByTestId('reveal-two-step')).toHaveText('Show my hand');
   await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('curtain-gate')).toHaveCount(0);
-  if ((await page.getByTestId('recap').count()) > 0) {
-    await expect(page.getByTestId('board')).toHaveCount(0);
-    await page.getByTestId('recap-dismiss').click();
-  }
 }
 
 async function playOneOff(page: Page, pattern: RegExp): Promise<HookMove> {
@@ -209,16 +205,14 @@ for (const { width, height } of [
     await expectFits(page);
     await page.getByTestId('staging-confirm').click();
 
-    // Blake: the revealed cards never reach his screens; the recap says only
+    // Blake: the revealed cards never reach his screens; the last-move line says only
     // that the top of the deck was revealed and what was played.
     await expect(page.getByTestId('curtain-gate')).toBeVisible();
     await expect(page.locator('[data-testid^="seven-"]')).toHaveCount(0);
     await page.getByTestId('reveal-two-step').click();
     await page.getByTestId('reveal-two-step').click();
-    await expect(page.getByTestId('recap')).toContainText('Alice revealed the top of the deck and played');
-    await expect(page.locator('[data-testid^="seven-"]')).toHaveCount(0);
-    await page.getByTestId('recap-dismiss').click();
     await expect(page.getByTestId('board')).toBeVisible();
+    await expect(page.getByTestId('board')).toContainText('Alice revealed the top of the deck and played');
     await expect(page.locator('[data-testid^="seven-"]')).toHaveCount(0);
     expect(await hook(page, (h) => h.viewer())).toBe(1);
 

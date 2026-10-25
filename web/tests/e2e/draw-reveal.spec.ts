@@ -77,7 +77,6 @@ async function toBlakesReveal(page: Page, confirm: (page: Page) => Promise<void>
   await page.getByTestId('staging-confirm').click();
 
   await gate(page);
-  await page.getByTestId('recap-dismiss').click();
   await expect(page.getByTestId('board')).toBeVisible();
   const fiveOneOff = await findMove(page, /^play 5. as one-off$/, 4);
   await page.getByTestId(`hand-card-${fiveOneOff.handIndex}`).click();
@@ -132,10 +131,8 @@ for (const viewport of [
     await expect(page.getByTestId('curtain-gate')).toContainText('Alice');
     for (const l of labels) expect(await squashedBody(page)).not.toContain(l);
     await gate(page);
-    await expect(page.getByTestId('recap')).toBeVisible();
     await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
     for (const l of labels) expect(await squashedBody(page)).not.toContain(l);
-    await page.getByTestId('recap-dismiss').click();
     await expect(page.getByTestId('board')).toBeVisible();
     await expect(page.getByTestId('draw-reveal')).toHaveCount(0);
     expect(await hook(page, (h) => h.viewer())).toBe(0);
@@ -146,8 +143,7 @@ for (const viewport of [
     await page.getByTestId('staging-confirm').click();
     await expect(page.getByTestId('curtain-gate')).toContainText('Blake');
     await gate(page);
-    await page.getByTestId('recap-dismiss').click();
-    await expect(page.getByTestId('board')).toBeVisible();
+      await expect(page.getByTestId('board')).toBeVisible();
     await expect(page.getByTestId('draw-reveal')).toHaveCount(0);
     await expect(page.getByTestId('player-hand').locator('[data-testid^="hand-card-"]')).toHaveCount(7);
   });

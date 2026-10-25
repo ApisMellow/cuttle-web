@@ -17,7 +17,7 @@ const TOP_SEAT: PlayerId = 1;
 
 /**
  * Who the current game screen is for. An addressed curtain (handoff, reveal
- * gate, recap, counter prompt) faces its own `to`. The live board, and the
+ * gate, counter prompt) faces its own `to`. The live board, and the
  * draw reveal and pickers drawn in its place, face whoever holds the view.
  * The result screen, and a board with no view yet, face player 1.
  */
@@ -25,7 +25,6 @@ export function screenAddressee(curtain: CurtainState, viewer: PlayerId | null):
   switch (curtain.kind) {
     case 'handoff':
     case 'reveal':
-    case 'recap':
     case 'ack':
       return curtain.to;
     case 'none':

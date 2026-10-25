@@ -8,7 +8,7 @@
 // (labels are for the table and your own choices; on the passive board nothing
 // is labelled until the viewer taps the exposed hand to inspect it, #94), and
 // never behind the
-// curtain: at handoff, reveal, recap and both kinds of ack there is no
+// curtain: at handoff, reveal and both kinds of ack there is no
 // label, and nothing the previous player selected or staged carries over.
 //
 // ONE mounted GameScreen per test, driven through the real game/session
@@ -305,7 +305,7 @@ describe('Card labels privacy: only face-up cards the viewer can see', () => {
     expectLabelsOnlyWhereAllowed(el);
   });
 
-  it('nothing is labelled at handoff, reveal or recap, and nothing Alice selected or staged reaches Blake', async () => {
+  it('nothing is labelled at handoff or reveal, and nothing Alice selected or staged reaches Blake', async () => {
     const el = await start();
     const played = appliedMove({ by: 0, kind: Kind.PlayPoint, seq: 1, index: 3, card: NINE, description: 'play 9♥ as point card' });
     bridge.apply.mockImplementation((): BridgeResult => envelope({ state: p0View({ active: 1 }), lastMove: played, history: [played] }));
@@ -327,9 +327,6 @@ describe('Card labels privacy: only face-up cards the viewer can see', () => {
     expect(game.curtain.kind).toBe('reveal');
     expectNoLabels(el, 'reveal');
     await click(el, 'reveal-two-step');
-    expect(game.curtain.kind).toBe('recap');
-    expectNoLabels(el, 'recap');
-    await click(el, 'recap-dismiss');
 
     // Blake's board: table badges only; Alice's selection and staging are gone.
     expect(game.curtain.kind).toBe('none');

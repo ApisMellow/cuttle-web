@@ -185,10 +185,8 @@ test.describe('table mode, touch, 393x852', () => {
 
     await page.getByTestId('reveal-two-step').tap();
     await page.getByTestId('reveal-two-step').tap();
-    // Alice sees Blake's play in the recap first, upright.
-    await expect(page.getByTestId('recap')).toBeVisible();
+    // Alice's board comes up upright.
     await expect(page.getByTestId('game-screen')).toHaveAttribute('data-table-rotated', 'false');
-    await page.getByTestId('recap-dismiss').tap();
     await expect(page.getByTestId('board')).toBeVisible();
     expect(await hook(page, (h) => h.viewer())).toBe(0);
     const hand = await box(page, 'player-hand');

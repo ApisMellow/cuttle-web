@@ -9,7 +9,7 @@
 // Privacy structure (SPEC §3.3 rule 4, round-1 review carry-over 4): the
 // store's `envelope` field is the ONLY place a full `PlayerView` lives.
 // Invariant: `envelope` and `viewer` are null whenever `curtain.kind` is
-// `handoff`, `reveal` or `recap` — on every path into those states (apply,
+// `handoff` or `reveal` — on every path into those states (apply,
 // advanceCurtain, dismissDrawReveal, and restore).
 // `history`/`seq` are kept separately, because the §4.6 recap needs move
 // history while a curtain is up but must never need a hand to compute it;
@@ -52,7 +52,7 @@ import {
 } from '../bridge/engine';
 import { type DrawReveal, drawnHandIndices, unseenDrawFor } from '../drawReveal';
 import { Phase } from '../enums';
-import { fiveDrawer, isRecapVisible } from '../recap';
+import { fiveDrawer } from '../recap';
 import {
   type CurtainContext,
   type CurtainState,
@@ -135,7 +135,7 @@ export class GameStore implements TableSource {
   /** Set once a game exists (newGame or a successful restore); needed to fill the Snapshot's seed/dealer without ever reading engineState (carry-over 8). */
   #seed: string | null = null;
   #dealer: PlayerId | null = null;
-  /** The (pre, move, post) that produced the current non-'none' curtain — needed by `advance()`/`recapFor` while a curtain is up, since `envelope` is null then. Cleared once the curtain settles back to 'none'. */
+  /** The (pre, move, post) that produced the current non-'none' curtain — needed by `advance()` while a curtain is up, since `envelope` is null then. Cleared once the curtain settles back to 'none'. */
   #pendingCtx: { pre: CurtainView; move: AppliedMove | null; post: CurtainView } | null = null;
   /**
    * The resting curtain a resume gate leads to (`none` or an `ack`), while
@@ -426,15 +426,15 @@ export class GameStore implements TableSource {
 
   /**
    * Advances the current curtain sequence one step (§4.2:
-   * handoff → reveal → [recap] → [ack | counter-prompt] → none). Fetches a
+   * handoff → reveal → [ack | counter-prompt] → none). Fetches a
    * fresh `PlayerView` — via `engine.view`, never by reusing a stale one
    * (SPEC §3.3 rule 4) — exactly when the machine reaches a state that needs
    * one: the final `none` (the board) or an `ack` (the counter prompt needs
-   * the Counter moves). Every transition into `handoff`/`reveal`/`recap`
-   * drops whatever view was held (B1). `lastSeenSeq[viewer]` is stamped when the
-   * viewer leaves `recap` (recap dismissal, §4.6 amended 2026-09-27) and at
-   * the transition into `none`; never at `handoff`, `reveal`, or on entering
-   * `recap`. (A successful `apply()` separately stamps the mover.)
+   * the Counter moves). Every transition into `handoff`/`reveal`
+   * drops whatever view was held (B1). `lastSeenSeq[viewer]` is stamped at
+   * the transition into `none`; never at `handoff`, `reveal` or `ack` (issue
+   * #95: there is no recap step). (A successful `apply()` separately stamps
+   * the mover.)
    */
   async advanceCurtain(): Promise<void> {
     this.#refuseDuringDrawReveal('advanceCurtain');
@@ -443,7 +443,6 @@ export class GameStore implements TableSource {
       return;
     }
     const ctx = this.#requireCurtainContext();
-    const leavingRecap = this.curtain.kind === 'recap';
     const newState = advanceCurtainState(this.curtain, ctx);
 
     switch (newState.kind) {
@@ -456,12 +455,9 @@ export class GameStore implements TableSource {
         return;
       }
       case 'ack': {
-        // SPEC §4.6 (amended 2026-09-27): dismissing a recap stamps its
-        // viewer. The ack target is the recap's viewer (afterRecap keeps
-        // `to`), and the stamp lands in #applyViewerChange's persist-first
-        // write. A recap skipped because the prompt shows it all stamps
-        // nothing here; the responder's own apply stamps them.
-        const ok = await this.#applyViewerChange(newState.to, { stamp: leavingRecap, curtain: newState });
+        // Nothing is stamped at the counter window; the responder's own
+        // apply stamps them (SPEC §4.6).
+        const ok = await this.#applyViewerChange(newState.to, { stamp: false, curtain: newState });
         // SPEC §4.7: a counter window is the drawer's first own view when
         // the opponent's turn ended in a one-off; the draw shows here,
         // before a counter can change the hand.
@@ -470,7 +466,6 @@ export class GameStore implements TableSource {
       }
       case 'handoff':
       case 'reveal':
-      case 'recap':
         this.#enterWithheldCurtain(newState);
         return;
       case 'result':
@@ -500,11 +495,6 @@ export class GameStore implements TableSource {
     this.screen = 'home';
   }
 
-  /** §4.6: unseen, recap-visible history for one viewer. */
-  recapFor(viewer: PlayerId): AppliedMove[] {
-    return this.history.filter((h) => h.seq > this.lastSeenSeq[viewer]).filter(isRecapVisible);
-  }
-
   /**
    * SPEC §5.7 restore. R4.4: a snapshot whose `v` is outside {1, 2} (or that
    * is otherwise malformed) is discarded without a crash, straight to the
@@ -515,8 +505,8 @@ export class GameStore implements TableSource {
    * `curtain` is re-raised before any view is exposed.
    *
    * B4, amended 2026-09-29 (resume gate, SPEC §5.7): nothing view-bearing
-   * is exposed at any restored curtain but `result`. `handoff`/`reveal`/
-   * `recap` come back as they were (the next holder has not passed the
+   * is exposed at any restored curtain but `result`. `handoff`/`reveal`
+   * come back as they were (the next holder has not passed the
    * reveal gate). `none` and `ack` come back behind a
    * resume gate for the persisted viewer, since whoever taps Resume may not
    * be that player; the view is fetched fresh once the gate is passed, and
@@ -545,7 +535,7 @@ export class GameStore implements TableSource {
     this.#seed = snap.seed;
     this.#dealer = snap.dealer;
 
-    const persisted = withoutRecapIndices(snap.curtain);
+    const persisted = snap.curtain;
     const resumeTo = isResumeTarget(persisted) ? persisted : null;
     const exposed = persisted.kind === 'result';
     // Carry-over 7: the curtain goes up first, before any view field is set.
@@ -570,7 +560,7 @@ export class GameStore implements TableSource {
             { pre: restoredView, move: null, post: restoredView }
           : {
             // `pre.active` is exactly `mv.by` (§2.7: "by: pre-state Active");
-            // `pre.phase` is never read by `advance()`/`afterRecap()` (only
+            // `pre.phase` is never read by `advance()`/`afterReveal()` (only
             // a fresh `next()` call consults it, and restore never replays
             // `next()` for an already-applied move) — see docs/assumptions.md.
             pre: { active: lastMove.by, phase: result.state.phase },
@@ -611,13 +601,13 @@ export class GameStore implements TableSource {
   }
 
   /**
-   * The single path into `handoff`/`reveal`/`recap`: persist first
+   * The single path into `handoff`/`reveal`: persist first
    * (carry-over 6), then drop every view-bearing field (B1) and strip
    * mover-only `index` keys from what is kept (B2).
    */
   #enterWithheldCurtain(state: WithheldCurtain): void {
     const history = this.history.map(withoutIndex);
-    const curtain = withoutRecapIndices(state) as WithheldCurtain;
+    const curtain = state;
     this.#writeSnapshot({
       history,
       lastSeenSeq: this.lastSeenSeq,
@@ -666,7 +656,6 @@ export class GameStore implements TableSource {
       pre: pending.pre,
       move: pending.move,
       post: pending.post,
-      recapFor: (viewer) => this.recapFor(viewer),
     };
   }
 
@@ -714,7 +703,7 @@ export class GameStore implements TableSource {
   }
 }
 
-type WithheldCurtain = Extract<CurtainState, { kind: 'handoff' | 'reveal' | 'recap' }>;
+type WithheldCurtain = Extract<CurtainState, { kind: 'handoff' | 'reveal' }>;
 
 /** The resting curtains a restore puts behind a resume gate (SPEC §5.7, ruling 2026-09-29). */
 type ResumeTarget = Extract<CurtainState, { kind: 'none' | 'ack' }>;
@@ -737,10 +726,6 @@ function withoutIndex(move: AppliedMove): AppliedMove {
   const copy = { ...move };
   delete copy.index;
   return copy;
-}
-
-function withoutRecapIndices(curtain: CurtainState): CurtainState {
-  return curtain.kind === 'recap' ? { ...curtain, entries: curtain.entries.map(withoutIndex) } : curtain;
 }
 
 function noticeFor(reason: 'invalid-json' | 'version-mismatch' | 'malformed'): string {

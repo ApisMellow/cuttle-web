@@ -358,7 +358,7 @@ async function playAceForPoints(el: HTMLElement): Promise<void> {
 }
 
 describe('GameScreen curtain gate (R13.2, SPEC §4.5)', () => {
-  it('the board is NOT in the DOM at handoff, reveal and recap; it returns for the new viewer', async () => {
+  it('the board is NOT in the DOM at handoff and reveal; it returns for the new viewer', async () => {
     const el = await start();
     applyToHandoff();
     await playAceForPoints(el);
@@ -372,13 +372,9 @@ describe('GameScreen curtain gate (R13.2, SPEC §4.5)', () => {
     expect(game.curtain.kind).toBe('reveal');
     expect(q(el, 'board')).toBeNull();
 
-    await click(el, 'reveal-two-step'); // reveal -> recap
-    expect(game.curtain.kind).toBe('recap');
-    expect(q(el, 'board')).toBeNull();
-    expect(q(el, 'recap')?.textContent).toContain('Alice played');
-
-    await click(el, 'recap-dismiss'); // recap -> none, fetch P1's view
+    await click(el, 'reveal-two-step'); // reveal -> none, fetch P1's view (issue #95: no recap)
     expect(game.curtain.kind).toBe('none');
+    expect(q(el, 'recap')).toBeNull();
     expect(bridge.view).toHaveBeenCalledWith(1);
     expect(q(el, 'board')).not.toBeNull();
     expect(q(el, 'curtain')).toBeNull();
@@ -392,7 +388,6 @@ describe('GameScreen curtain gate (R13.2, SPEC §4.5)', () => {
     await playAceForPoints(el);
     await click(el, 'reveal-two-step');
     await click(el, 'reveal-two-step');
-    await click(el, 'recap-dismiss');
     expect(q(el, 'staging-bar')).toBeNull();
     for (const card of el.querySelectorAll('[data-testid^="hand-card-"]')) {
       expect(card.getAttribute('aria-pressed')).toBe('false');
@@ -511,7 +506,7 @@ describe('GameScreen CounterPrompt (SPEC §4.3)', () => {
     expect(q(el, 'board')).toBeNull();
   });
 
-  it('ruling 2026-09-29: with no 2 to answer there is no prompt and no "Let it resolve": turn handoff, recap, then the board', async () => {
+  it('ruling 2026-09-29: with no 2 to answer there is no prompt and no "Let it resolve": turn handoff, reveal, then the board', async () => {
     const el = await start();
     const oneOff = nineEntry();
     bridge.apply.mockImplementation(
@@ -536,13 +531,13 @@ describe('GameScreen CounterPrompt (SPEC §4.3)', () => {
     await playNine(el);
     expect(game.curtain).toEqual({ kind: 'handoff', to: 1, reason: 'turn' });
     const seen: string[] = [];
-    for (const step of ['reveal-two-step', 'reveal-two-step', 'recap-dismiss']) {
+    for (const step of ['reveal-two-step', 'reveal-two-step']) {
       await click(el, step);
       seen.push(game.curtain.kind);
       expect(q(el, 'counter-prompt')).toBeNull();
       expect(q(el, 'counter-resolve')).toBeNull();
     }
-    expect(seen).toEqual(['reveal', 'recap', 'none']);
+    expect(seen).toEqual(['reveal', 'none']);
     expect(q(el, 'board')).not.toBeNull();
   });
 

@@ -13,7 +13,7 @@
   // path here calls `source.apply` (`applyMove`).
   //
   // What mounts, by curtain kind (SPEC §4.2, §4.5; AGENTS.md "Redaction"):
-  //   handoff / reveal / recap -> Curtain only. The board is NOT in the DOM.
+  //   handoff / reveal -> Curtain only. The board is NOT in the DOM.
   //     One `{#if}` branch spans all three, so Curtain stays mounted across
   //     handoff -> reveal (ruling A1: the press carries into the hold).
   //   ack (the counter window) -> CounterPrompt only. The board is not
@@ -31,7 +31,7 @@
   // drawn cards; the menu (`menuOpen`) pauses its 3 s wait.
   //
   // Stuck curtain (brief): if `engine.view` fails while the curtain leaves
-  // reveal/recap, the store keeps the curtain and sets `game.error`, and
+  // reveal, the store keeps the curtain and sets `game.error`, and
   // RevealGate's latch means no retry can come from the curtain. App's
   // route switch checks `game.error` before the game screen, so the W12
   // error screen (the stand-in for SPEC §2.10's StuckState) takes over,
@@ -227,9 +227,7 @@
     return { hand: drawnCards, indices: drawnCards.map((_, i) => i) };
   });
   const revealed = $derived(board === null ? null : sevenCards(board));
-  const withheld = $derived(
-    source.curtain.kind === 'handoff' || source.curtain.kind === 'reveal' || source.curtain.kind === 'recap',
-  );
+  const withheld = $derived(source.curtain.kind === 'handoff' || source.curtain.kind === 'reveal');
 
   // R9.3 (W21): the dimmed-card detail popover. `staging.inspect` is a hand
   // index into the VIEWER'S OWN hand only (staging.svelte.ts's #selectHand
@@ -648,7 +646,7 @@
   // ---- In-game menu (SPEC §5.2, §5.5 R17.2, §5.6 rule 5) ------------------
   // One menu button, drawn in one of two places and never both: in the score
   // bar's reserved slot on the live board (design.md §6), and pinned top
-  // right over every other game screen: handoff, reveal, recap and the
+  // right over every other game screen: handoff, reveal and the
   // counter prompt (design.md §8: rules stay reachable mid-curtain). The
   // button and the panel hold no game state and call no store method that
   // moves the curtain, so opening the menu at a withheld curtain can't
@@ -746,15 +744,11 @@
 
   {#if withheld}
     <Curtain
-      history={source.history}
       curtain={source.curtain}
       {names}
       revealPreference={settings.revealPreference}
-      recapEntries={source.curtain.kind === 'recap' ? source.curtain.entries : []}
-      viewer={source.curtain.kind === 'recap' ? source.curtain.to : null}
       tableMode={tableLatched}
       onadvance={advanceCurtain}
-      {theme}
     />
   {:else if online?.stuck && source.viewer !== null}
     <!-- W13b (SPEC §2.10): the game can't go on. Takes the place of the
