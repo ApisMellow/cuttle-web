@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // P2 W13 — the stuck-curtain case. If `engine.view` fails while the curtain
-// leaves reveal/recap for the board, the store keeps the curtain where it
+// leaves the reveal for the board, the store keeps the curtain where it
 // was and sets `game.error`; RevealGate's once-only latch means the curtain
 // itself can never retry. SPEC §2.9 routes a failed bridge call (INTERNAL,
 // NO_LEGAL_MOVES, ILLEGAL_MOVE) to the stuck-state screen with no auto-retry,
@@ -112,8 +112,7 @@ describe('stuck curtain: engine.view fails leaving the reveal (SPEC §2.9)', () 
     await click('staging-confirm');
     expect(game.curtain.kind).toBe('handoff');
     await click('reveal-two-step'); // handoff -> reveal
-    await click('reveal-two-step'); // reveal -> recap (the draw is unseen by P1)
-    await click('recap-dismiss'); // recap -> none: view(1) fails
+    await click('reveal-two-step'); // reveal -> none: view(1) fails
 
     expect(bridge.view).toHaveBeenCalledWith(1);
     expect(game.error?.code).toBe('INTERNAL');

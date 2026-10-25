@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // SPEC §6.5 — `window.__cuttleTestHook` reads the current holder's envelope
 // only while that holder is legitimately looking: curtain `none` or the
-// counter window (`ack`). Behind every other curtain (recap and the rest)
+// counter window (`ack`). Behind every other curtain (the handoff and the rest)
 // every accessor returns empty, even when an envelope is handed to
-// it. The store happens to hold `null` at recap, so this is tested against
+// it. The store happens to hold `null` at a curtain, so this is tested against
 // the hook directly: the promise is the hook's own, not the store's.
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -41,7 +41,6 @@ function held(): Envelope {
 }
 
 const WITHHELD: CurtainState[] = [
-  { kind: 'recap', to: 1, entries: [appliedMove({ by: 0, kind: Kind.OneOff, seq: 1 })] },
   { kind: 'handoff', to: 1, reason: 'counter' },
   { kind: 'reveal', to: 1 },
   { kind: 'result' },

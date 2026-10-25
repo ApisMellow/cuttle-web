@@ -135,17 +135,14 @@ async function saved<T>(page: Page, pick: (s: SaveShape) => T): Promise<T> {
   return pick(JSON.parse(raw as string) as SaveShape);
 }
 
-/** handoff -> reveal via the two-step pill, then the recap if there is one. */
-async function passThePhone(page: Page, { recap }: { recap: boolean }): Promise<void> {
+/** handoff -> reveal via the two-step pill, then the board (issue #95: no recap); `drew` expects the last-move line. */
+async function passThePhone(page: Page, { drew }: { drew: boolean }): Promise<void> {
   await expect(page.getByTestId('curtain-gate')).toBeVisible();
   await expect(page.getByTestId('board')).toHaveCount(0);
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
-  if (recap) {
-    await expect(page.getByTestId('recap')).toContainText('drew a card');
-    await page.getByTestId('recap-dismiss').click();
-  }
   await expect(page.getByTestId('board')).toBeVisible();
+  if (drew) await expect(page.getByTestId('board')).toContainText('drew a card');
 }
 
 /** The player at the board draws a card; the phone is then passed. */
@@ -196,13 +193,13 @@ test('R18.3: after one online visit the app boots offline and a seeded game play
   await page.getByTestId('theme-option-mythic').click();
   await newSeededGame(page);
 
-  await passThePhone(page, { recap: false }); // the opening deal
+  await passThePhone(page, { drew: false }); // the opening deal
   await expectMythicFacesLoaded(page);
   await draw(page); // wasm apply, offline
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
   await expectMythicFacesLoaded(page);
   await draw(page);
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
   await draw(page);
   expect(await saved(page, (s) => s.history.length)).toBe(3);
 
@@ -213,9 +210,9 @@ test('R18.3: after one online visit the app boots offline and a seeded game play
 test('R18.3: a save made online resumes offline', async ({ page, context }) => {
   await firstVisit(page);
   await newSeededGame(page);
-  await passThePhone(page, { recap: false });
+  await passThePhone(page, { drew: false });
   await draw(page);
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
   const save = await page.evaluate(() => localStorage.getItem('cuttle-web:game'));
 
   await context.setOffline(true);
@@ -225,7 +222,7 @@ test('R18.3: a save made online resumes offline', async ({ page, context }) => {
   expect(await page.evaluate(() => localStorage.getItem('cuttle-web:game'))).toBe(save);
 
   await draw(page); // and play goes on
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
 });
 
 test('R18 gallery: its navigations never get the app shell, online or offline', async ({ page, context }) => {
@@ -247,9 +244,9 @@ test('R18 updates: a new build waits through a game, takes over at Home, and the
   await firstVisit(page);
   await page.reload(); // now controlled by build A's worker
   await newSeededGame(page);
-  await passThePhone(page, { recap: false });
+  await passThePhone(page, { drew: false });
   await draw(page);
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
 
   // A new deploy lands mid-game.
   await page.evaluate(() => {
@@ -264,7 +261,7 @@ test('R18 updates: a new build waits through a game, takes over at Home, and the
   // It waits: no reload, no takeover, and play goes on.
   await page.waitForTimeout(1000);
   await draw(page);
-  await passThePhone(page, { recap: true });
+  await passThePhone(page, { drew: true });
   expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.waiting?.state ?? null)).toBe(
     'installed',

@@ -20,7 +20,6 @@ function addressed(to: 0 | 1): CurtainState[] {
     { kind: 'handoff', to, reason: 'seven-return' },
     { kind: 'handoff', to, reason: 'resume' },
     { kind: 'reveal', to },
-    { kind: 'recap', to, entries: [] },
     { kind: 'ack', to },
   ];
 }

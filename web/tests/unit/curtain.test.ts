@@ -19,7 +19,7 @@ import {
   next,
   opening,
 } from '../../src/lib/stores/curtain.svelte';
-import type { CurtainContext, CurtainState, CurtainView, HandoffReason, RecapEntry } from '../../src/lib/stores/curtain.svelte';
+import type { CurtainContext, CurtainState, CurtainView, HandoffReason } from '../../src/lib/stores/curtain.svelte';
 
 // SPEC §2.5, pinned locally for the fixtures.
 const Normal: Phase = 0;
@@ -88,8 +88,8 @@ function project(v: PlayerView): CurtainView {
   return { active: v.active, phase: v.phase };
 }
 
-function ctx(pre: PlayerView, mv: AppliedMove, post: PlayerView, recap: Partial<Record<PlayerId, RecapEntry[]>> = {}): CurtainContext {
-  return { pre: project(pre), move: mv, post: project(post), recapFor: (p) => recap[p] ?? [] };
+function ctx(pre: PlayerView, mv: AppliedMove, post: PlayerView): CurtainContext {
+  return { pre: project(pre), move: mv, post: project(post) };
 }
 
 /** Walks the receiving sequence from next() until it rests (none/result/ack). */
@@ -230,19 +230,13 @@ describe('curtain machine — SPEC §4.4 full transition table', () => {
     expect(count).toBe(40);
   });
 
-  it('R13.1: the receiving sequence inserts a recap step only when the incoming player has entries', () => {
-    const entry: RecapEntry = move(Draw, { by: A });
+  it('issue #95: the receiving sequence has no recap step, whatever the incoming player missed', () => {
     const pre = view(A, Normal);
     const post = view(O, Normal, A);
-    expect(walk(ctx(pre, move(Draw), post, { [O]: [entry] }))).toEqual([
-      handoff(O, 'turn'),
-      reveal(O),
-      { kind: 'recap', to: O, entries: [entry] },
-      none,
-    ]);
-    // A 7 with no 2 against it: the actor keeps the phone, no recap step.
+    expect(walk(ctx(pre, move(Draw), post))).toEqual([handoff(O, 'turn'), reveal(O), none]);
+    // A 7 with no 2 against it: the actor keeps the phone.
     const sevenPost = view(A, SevenChoosing, A);
-    expect(walk(ctx(pre, move(OneOff, { rank: 7 }), sevenPost, { [O]: [entry], [A]: [entry] }))).toEqual([none]);
+    expect(walk(ctx(pre, move(OneOff, { rank: 7 }), sevenPost))).toEqual([none]);
   });
 
   it('R13.1: advancing a resting state (none, result, real counter window) is a bug', () => {
@@ -258,11 +252,6 @@ describe('curtain machine — SPEC §4.4 full transition table', () => {
     // A's seven panel to O.
     const c = ctx(view(A, Normal), move(OneOff, { rank: 7 }), view(A, SevenChoosing, A));
     expect(advance(reveal(O), c)).toEqual(handoff(A, 'seven-return'));
-    const entry: RecapEntry = move(OneOff, { by: A, rank: 7 });
-    const withRecap = ctx(view(A, Normal), move(OneOff, { rank: 7 }), view(A, SevenChoosing, A), { [O]: [entry] });
-    const recap = advance(reveal(O), withRecap);
-    expect(recap).toEqual({ kind: 'recap', to: O, entries: [entry] });
-    expect(advance(recap, withRecap)).toEqual(handoff(A, 'seven-return'));
   });
 });
 
@@ -312,42 +301,15 @@ describe('SPEC §4.3 (ruling 2026-09-29): no acknowledgment for a one-off that o
   });
 });
 
-describe('ruling 2026-09-29: no recap line the counter prompt already shows', () => {
-  const oneOff = (seq: number, by: PlayerId = A): RecapEntry => ({ ...move(OneOff, { by, rank: 5 }), seq });
-  const counter = (seq: number, by: PlayerId): RecapEntry => ({ ...move(Counter, { by, rank: 2 }), seq });
-  const windowFor = (recap: RecapEntry[], preActive: PlayerId = A, prePhase: Phase = Normal): CurtainContext =>
-    ctx(view(preActive, prePhase), move(prePhase === AwaitingCounter ? Counter : OneOff, { by: preActive, rank: 5 }), view(O, AwaitingCounter, preActive), { [O]: recap });
-
-  it('the recap is skipped when it holds only the one-off the prompt shows (one tap fewer)', () => {
-    expect(walk(windowFor([oneOff(8)]))).toEqual([handoff(O, 'counter'), reveal(O), ack(O)]);
+describe('issue #95: the reveal goes straight to the counter window or the board', () => {
+  it('a reveal before the counter window goes to the ack', () => {
+    const c = ctx(view(A, Normal), move(OneOff, { rank: 5 }), view(O, AwaitingCounter, A));
+    expect(advance(reveal(O), c)).toEqual(ack(O));
   });
 
-  it('the recap is skipped when it holds only the 2 the prompt shows (a counter-back)', () => {
-    // A played the one-off, O countered (O has seen both), A countered back.
-    expect(walk(windowFor([counter(10, A)], A, AwaitingCounter))).toEqual([handoff(O, 'counter'), reveal(O), ack(O)]);
-  });
-
-  it('a move the prompt does not show stays in the recap; the chain is dropped from it', () => {
-    const discard: RecapEntry = { ...move(DiscardPair, { by: A }), seq: 7 };
-    expect(walk(windowFor([discard, oneOff(8)]))).toEqual([
-      handoff(O, 'counter'),
-      reveal(O),
-      { kind: 'recap', to: O, entries: [discard] },
-      ack(O),
-    ]);
-  });
-
-  it('only the one-off that opened the chain is dropped: an earlier one-off (a 7) stays', () => {
-    const seven: RecapEntry = { ...move(OneOff, { by: A, rank: 7 }), seq: 7 };
-    const pick: RecapEntry = { ...move(SevenPick, { by: A, rank: 5, subKind: OneOff }), seq: 8 };
-    const c = ctx(view(A, SevenChoosing), pick, view(O, AwaitingCounter, A), { [O]: [seven, pick] });
-    expect(walk(c)).toEqual([handoff(O, 'counter'), reveal(O), { kind: 'recap', to: O, entries: [seven] }, ack(O)]);
-  });
-
-  it('a recap before a board keeps every entry, one-offs included', () => {
-    const entries = [oneOff(8), counter(9, O), counter(10, A)];
-    const c = ctx(view(A, AwaitingCounter), move(Counter, { by: A, rank: 2 }), view(O, Normal, A), { [O]: entries });
-    expect(walk(c)).toEqual([handoff(O, 'turn'), reveal(O), { kind: 'recap', to: O, entries }, none]);
+  it('a reveal before a board goes to none', () => {
+    const c = ctx(view(A, AwaitingCounter), move(Counter, { by: A, rank: 2 }), view(O, Normal, A));
+    expect(advance(reveal(O), c)).toEqual(none);
   });
 });
 
@@ -437,11 +399,10 @@ describe('handoff label — SPEC §4.5 (amended 2026-09-27)', () => {
 
 describe('W25: the opening deal\'s curtain (move null)', () => {
   const first: CurtainView = { active: 1, phase: 0 as Phase };
-  const openingCtx = (recap: RecapEntry[] = [], view: CurtainView = first): CurtainContext => ({
+  const openingCtx = (view: CurtainView = first): CurtainContext => ({
     pre: view,
     move: null,
     post: view,
-    recapFor: () => recap,
   });
 
   it('is a handoff to the first actor with the neutral turn label', () => {

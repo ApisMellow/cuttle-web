@@ -96,7 +96,7 @@ function expectNothingExposed(store: GameStore): void {
   expect(store.viewer).toBeNull();
   expect(store.legalMoves).toEqual([]);
   expect(store.isViewerActive).toBe(false);
-  const reachable = JSON.stringify([store.history, store.curtain, store.recapFor(0), store.recapFor(1)]);
+  const reachable = JSON.stringify([store.history, store.curtain]);
   expect(reachable).not.toContain(JSON.stringify(SECRET));
   expect(reachable).not.toContain('"index"');
 }

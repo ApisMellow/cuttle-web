@@ -213,7 +213,7 @@ describe('W10: pending apply', () => {
   });
 });
 
-describe('W10: pending and Pass, the counter prompt, the recap history', () => {
+describe('W10: pending and Pass, the counter prompt', () => {
   function passOnly(): Envelope {
     return envelope({
       state: aliceView({ you: { hand: [], frozenHandIndices: [], points: [], permanents: [], watched: false } }),
@@ -273,18 +273,6 @@ describe('W10: pending and Pass, the counter prompt, the recap history', () => {
     await settle();
     expect((q('counter-resolve') as HTMLButtonElement).disabled).toBe(false);
     expect((q('counter-option-0') as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('a recap names an older one-off through the Curtain to RecapPanel history wiring', async () => {
-    // The recap shows only the Counter; the 4 it stops is older, so its name
-    // can only come from the history GameScreen hands Curtain.
-    const oneOff = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: FOUR, description: 'play 4♣ as one-off' });
-    const counter = appliedMove({ by: 0, kind: Kind.Counter, seq: 2, card: TWO, description: 'counter with 2♣' });
-    const source = sourceAt(envelope({ state: aliceView({ active: 1 }), legalMoves: [], descriptions: [], history: [oneOff, counter] }));
-    source.curtain = { kind: 'recap', to: 1, entries: [counter] };
-    render(source);
-    expect(q('recap')).not.toBeNull();
-    expect(q('recap')?.textContent).toContain('to stop your 4♣');
   });
 
   it('uses the history the source gives as-is (the source owns redaction)', async () => {

@@ -157,7 +157,7 @@ export async function startGame(
     if (dealt === null) return;
     const deal = dealt;
     engine.view = () => deal;
-    for (let i = 0; i < 4 && ['handoff', 'reveal', 'recap'].includes(store.curtain.kind); i++) {
+    for (let i = 0; i < 4 && ['handoff', 'reveal'].includes(store.curtain.kind); i++) {
       await store.advanceCurtain();
     }
   } finally {
@@ -190,7 +190,7 @@ export async function startGameMocked(
   bridge.view.mockImplementation(() => deal);
   try {
     await store.newGame(opts);
-    for (let i = 0; i < 4 && ['handoff', 'reveal', 'recap'].includes(store.curtain.kind); i++) {
+    for (let i = 0; i < 4 && ['handoff', 'reveal'].includes(store.curtain.kind); i++) {
       await store.advanceCurtain();
     }
   } finally {

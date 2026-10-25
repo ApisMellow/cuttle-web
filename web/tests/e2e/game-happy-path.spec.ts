@@ -11,7 +11,7 @@ import { plainMoveText } from '../../src/lib/recap';
 //   3. Blake plays 5♥ as a one-off; Alice holds no 2, so the engine resolves
 //      it at once (SPEC §4.3, ruling 2026-09-29): Blake sees his two drawn
 //      cards, then passes the phone,
-//   4. Alice walks handoff -> reveal -> recap -> her board for her normal
+//   4. Alice walks handoff -> reveal -> her board for her normal
 //      turn, with no counter prompt,
 //   5. Alice draws, and the phone goes back to Blake.
 // The reveal gate is driven through the two-step path (SPEC §4.5). The hook
@@ -56,7 +56,7 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
   ).toBe(true);
 }
 
-/** handoff -> reveal -> [recap] via the two-step pill; the board must stay out of the DOM throughout. */
+/** handoff -> reveal -> the board via the two-step pill (no recap, issue #95); the board must stay out of the DOM throughout. */
 async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your response'): Promise<void> {
   await expect(page.getByTestId('curtain-gate')).toBeVisible();
   await expect(page.getByTestId('curtain-gate')).toContainText(to);
@@ -69,8 +69,9 @@ async function passThePhone(page: Page, to: string, label: 'Your turn' | 'Your r
   await expect(page.getByTestId('board')).toHaveCount(0);
   await page.getByTestId('reveal-two-step').click();
 
-  await expect(page.getByTestId('recap')).toBeVisible();
-  await expect(page.getByTestId('board')).toHaveCount(0);
+  await expect(page.getByTestId('curtain')).toHaveCount(0);
+  await expect(page.getByTestId('recap')).toHaveCount(0);
+  await expect(page.getByTestId('board')).toBeVisible();
 }
 
 test('happy path: points play, a one-off that resolves at once, curtain handoffs both ways', async ({ page }) => {
@@ -111,9 +112,7 @@ test('happy path: points play, a one-off that resolves at once, curtain handoffs
   // 2. The phone goes to Blake.
   expect(await curtainKind(page)).toBe('handoff');
   await passThePhone(page, 'Blake', 'Your turn');
-  await expect(page.getByTestId('recap')).toContainText('Alice played');
-  await page.getByTestId('recap-dismiss').click();
-  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('board')).toContainText('Alice played');
   expect(await hook(page, (h) => h.viewer())).toBe(1);
   await expect(page.getByTestId('player-hand').locator('[data-testid^="hand-card-"]')).toHaveCount(6);
   // Alice's 2 is on the board, in her (the opponent's) points row.
@@ -134,8 +133,7 @@ test('happy path: points play, a one-off that resolves at once, curtain handoffs
 
   // 4. Alice's normal turn: no counter prompt, no "Let it resolve".
   await passThePhone(page, 'Alice', 'Your turn');
-  await expect(page.getByTestId('recap')).toContainText('Blake played');
-  await page.getByTestId('recap-dismiss').click();
+  await expect(page.getByTestId('board')).toContainText('Blake played');
   await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
   expect(await hook(page, (h) => h.seq())).toBe(2);
 
@@ -151,8 +149,7 @@ test('happy path: points play, a one-off that resolves at once, curtain handoffs
   await expect(page.getByTestId('staging-bar')).toContainText('Draw a card.');
   await page.getByTestId('staging-confirm').click();
   await passThePhone(page, 'Blake', 'Your turn');
-  await expect(page.getByTestId('recap')).toContainText('Alice drew a card');
-  await page.getByTestId('recap-dismiss').click();
+  await expect(page.getByTestId('board')).toContainText('Alice drew a card');
   // He already saw his draw before the pass: no second reveal.
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId('draw-reveal')).toHaveCount(0);

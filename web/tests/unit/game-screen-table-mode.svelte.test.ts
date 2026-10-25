@@ -213,11 +213,10 @@ async function boardFor(env: Envelope): Promise<HTMLDivElement> {
   return render();
 }
 
-/** Walks the two-step reveal gate (handoff -> reveal -> none/recap -> none). */
+/** Walks the two-step reveal gate (handoff -> reveal -> none). */
 async function passCurtain(el: HTMLElement): Promise<void> {
   for (let i = 0; i < 4 && game.curtain.kind !== 'none'; i++) {
-    if (game.curtain.kind === 'recap') await click(el, 'recap-dismiss');
-    else await click(el, 'reveal-two-step');
+    await click(el, 'reveal-two-step');
   }
 }
 
@@ -270,7 +269,6 @@ describe('table mode (issue #37): which screens turn', () => {
     { kind: 'handoff', to, reason: 'turn' },
     { kind: 'handoff', to, reason: 'resume' },
     { kind: 'reveal', to },
-    { kind: 'recap', to, entries: [appliedMove({ by: (1 - to) as PlayerId, kind: Kind.Draw, seq: 1, description: 'draw a card' })] },
   ];
 
   it.each(addressed(1).map((c) => [`${c.kind}${'reason' in c ? `/${c.reason}` : ''}`, c] as const))(

@@ -21,44 +21,27 @@
   // Epoch: a counter bumped every time the curtain state changes. It keys
   // RevealGate's once-only latch (one onadvance() per machine transition).
   //
-  // `recapEntries` arrives already filtered by the store (`isRecapVisible`,
-  // SPEC §4.6); Curtain never filters it.
-  import type { AppliedMove, PlayerId } from '../bridge/schema';
+  // Issue #95 (2026-10-25): there is no recap screen; the reveal goes
+  // straight on.
+  import type { PlayerId } from '../bridge/schema';
   import { handoffLabel, type CurtainState } from '../stores/curtain.svelte';
-  import { DEFAULT_THEME_ID, getTheme } from '../theme';
-  import type { CardTheme } from '../theme/types';
   import HandoffPanel from './HandoffPanel.svelte';
-  import RecapPanel from './RecapPanel.svelte';
 
   interface CurtainProps {
     curtain: CurtainState;
     names: readonly [string, string];
     revealPreference: 'hold' | 'two-step';
-    /** Already filtered by the store (SPEC §4.6); Curtain never filters. */
-    recapEntries: AppliedMove[];
-    viewer: PlayerId | null;
-    /**
-     * The table source's history, handed to RecapPanel (a Counter names what
-     * it stops). Public behind a curtain: every mover-only `index` is
-     * stripped there (SPEC §3.2). Omitted, the recap has only its entries.
-     */
-    history?: readonly AppliedMove[];
     /** Table mode (SPEC §5.10): "NAME's turn" heading, no pass prompt. */
     tableMode?: boolean;
     onadvance: () => void;
-    theme?: CardTheme;
   }
 
   let {
     curtain,
     names,
     revealPreference,
-    recapEntries,
-    viewer,
-    history,
     tableMode = false,
     onadvance,
-    theme = getTheme(DEFAULT_THEME_ID),
   }: CurtainProps = $props();
 
   interface GateScreen {
@@ -91,22 +74,18 @@
   });
 </script>
 
-{#if screen !== null || curtain.kind === 'recap'}
+{#if screen !== null}
   <div class="curtain" data-testid="curtain">
-    {#if screen !== null}
-      <HandoffPanel
-        name={names[screen.to]}
-        player={screen.to}
-        label={screen.label}
-        stage={screen.stage}
-        epoch={screen.epoch}
-        {tableMode}
-        {revealPreference}
-        {onadvance}
-      />
-    {:else}
-      <RecapPanel entries={recapEntries} {viewer} {names} {onadvance} {theme} {history} />
-    {/if}
+    <HandoffPanel
+      name={names[screen.to]}
+      player={screen.to}
+      label={screen.label}
+      stage={screen.stage}
+      epoch={screen.epoch}
+      {tableMode}
+      {revealPreference}
+      {onadvance}
+    />
   </div>
 {/if}
 

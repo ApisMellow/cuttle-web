@@ -39,18 +39,18 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     expect(result).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=3' });
   });
 
-  it('SPEC §5.7 (ruling 2026-09-28): v is 2; a v1 save migrates, gaining drawn: null on every history and recap entry', () => {
+  it('SPEC §5.7 (ruling 2026-09-28): v is 2; a v1 save migrates, gaining drawn: null on every history entry', () => {
     expect(SNAPSHOT_VERSION).toBe(2);
     const entry = appliedMove({ by: 1, kind: 4, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
     const v1Entry: Record<string, unknown> = { ...entry };
     delete v1Entry.drawn;
-    const v1 = { ...validSnapshot(), v: 1, viewer: 0, history: [v1Entry], curtain: { kind: 'recap', to: 0, entries: [v1Entry] } };
+    const v1 = { ...validSnapshot(), v: 1, viewer: 0, history: [v1Entry], curtain: { kind: 'reveal', to: 0 } };
     const result = decodeSnapshot(JSON.stringify(v1));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.snapshot.v).toBe(2);
     expect(result.snapshot.history).toEqual([{ ...entry, drawn: null }]);
-    expect(result.snapshot.curtain).toEqual({ kind: 'recap', to: 0, entries: [{ ...entry, drawn: null }] });
+    expect(result.snapshot.curtain).toEqual({ kind: 'reveal', to: 0 });
     // The opaque engine state is passed through untouched (the bridge migrates it).
     expect(result.snapshot.engineState).toBe(v1.engineState);
   });
@@ -106,7 +106,7 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     const snap = validSnapshot({
       viewer: 1,
       history: [entry],
-      curtain: { kind: 'recap', to: 1, entries: [entry] },
+      curtain: { kind: 'reveal', to: 1 },
     });
     const result = decodeSnapshot(encodeSnapshot(snap));
     expect(result).toEqual({ ok: true, snapshot: snap });
@@ -129,7 +129,6 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
     ['handoff', { kind: 'handoff', to: 1, reason: 'turn' }, 1],
     ['handoff/seven-return', { kind: 'handoff', to: 1, reason: 'seven-return' }, 1],
     ['reveal', { kind: 'reveal', to: 1 }, 1],
-    ['recap', { kind: 'recap', to: 1, entries: [entry] }, 1],
     ['ack', { kind: 'ack', to: 1 }, 1],
     ['result', { kind: 'result' }, 0],
   ] as const)('accepts a well-formed %s curtain', (_label, curtain, viewer) => {
@@ -141,6 +140,7 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
   it.each([
     ['a real-window ack (synthetic: false) drops the flag', { kind: 'ack', to: 1, synthetic: false }, { kind: 'ack', to: 1 }],
     ['a synthetic ack becomes the reveal before it', { kind: 'ack', to: 1, synthetic: true }, { kind: 'reveal', to: 1 }],
+    ['a retired recap (issue #95) becomes the reveal before it', { kind: 'recap', to: 1, entries: [entry] }, { kind: 'reveal', to: 1 }],
     ['an "acknowledge" handoff becomes a turn handoff', { kind: 'handoff', to: 1, reason: 'acknowledge' }, { kind: 'handoff', to: 1, reason: 'turn' }],
   ] as const)('a pre-ruling save: %s', (_label, curtain, expected) => {
     const result = decodeSnapshot(withHistory(curtain, 1));
@@ -179,7 +179,6 @@ describe('N1: structural validation of curtain and lastSeenSeq (malformed, clean
   it.each([
     ['handoff counter', { kind: 'handoff', to: 1, reason: 'counter' }],
     ['handoff discard', { kind: 'handoff', to: 1, reason: 'discard' }],
-    ['recap', { kind: 'recap', to: 1, entries: [] }],
     ['ack', { kind: 'ack', to: 1 }],
     ['result', { kind: 'result' }],
   ])('rejects a non-"none", non-opening curtain (%s) with an empty history', (_label, curtain) => {

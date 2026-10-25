@@ -238,11 +238,10 @@ async function blakeDrawsBackToAlice(el: HTMLElement, before: AppliedMove[]): Pr
   await passThePhone(el);
 }
 
-/** handoff -> reveal -> recap -> next, through the two-step pill and the recap button. */
+/** handoff -> reveal -> next, through the two-step pill. */
 async function passThePhone(el: HTMLElement): Promise<void> {
   await click(el, 'reveal-two-step');
   await click(el, 'reveal-two-step');
-  if (q(el, 'recap') !== null) await click(el, 'recap-dismiss');
 }
 
 // ---------------------------------------------------------------------------
@@ -360,8 +359,6 @@ describe('before the pass: the drawer\'s screen, then the handoff', () => {
     await click(el, 'reveal-two-step');
     expectNoDrawnCards(el, 'Blake\'s reveal gate');
     await click(el, 'reveal-two-step');
-    expectNoDrawnCards(el, 'Blake\'s recap');
-    if (q(el, 'recap') !== null) await click(el, 'recap-dismiss');
     expect(q(el, 'board')).not.toBeNull();
     expect(q(el, 'draw-reveal')).toBeNull();
     expectNoDrawnCards(el, 'Blake\'s board');

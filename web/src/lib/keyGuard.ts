@@ -4,7 +4,7 @@
 // recap, putting the next hand on the previous player's screen.
 //
 // Two defences, used together by the curtain-side screens (RevealGate,
-// RecapPanel, CounterPrompt):
+// CounterPrompt):
 //   1. None of them focuses an activating control on arrival; each focuses
 //      its non-activating text instead (one Tab reaches the control).
 //   2. This guard: a click that a key produced counts only if that key went

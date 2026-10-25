@@ -44,7 +44,6 @@ function toV1(raw: string): string {
   outer.v = 1;
   outer.engineState = JSON.stringify(inner);
   outer.history = stripDrawn(outer.history);
-  if (outer.curtain.kind === 'recap') outer.curtain.entries = stripDrawn(outer.curtain.entries);
   return JSON.stringify(outer);
 }
 
@@ -110,7 +109,7 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
 
   it('a live save at every curtain kind, rewritten as v1, restores exactly like the v2 save and writes v2 next', async () => {
     await createWasmEngine();
-    const wanted: CurtainState['kind'][] = ['handoff', 'reveal', 'recap', 'ack', 'none', 'result'];
+    const wanted: CurtainState['kind'][] = ['handoff', 'reveal', 'ack', 'none', 'result'];
     const captured = new Map<string, string>();
     const key = (c: CurtainState): string => c.kind;
 
@@ -138,7 +137,7 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       }
       if (live.curtain.kind === 'result' && !captured.has('result')) captured.set('result', storage.getItem(SNAPSHOT_KEY)!);
     }
-    expect([...captured.keys()].sort()).toEqual(['ack', 'handoff', 'none', 'recap', 'result', 'reveal']);
+    expect([...captured.keys()].sort()).toEqual(['ack', 'handoff', 'none', 'result', 'reveal']);
 
     // The bridge holds one game at a time, so each restore runs to the end
     // of its checks before the next one starts.

@@ -127,12 +127,8 @@ test('keyboard only: curtain, reveal, select, stage, Confirm and the next curtai
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
-  // Blake's recap: focus on its heading; Tab to "See the board".
-  await expect(page.getByTestId('recap')).toBeVisible();
-  await expect.poll(() => activeClass(page)).toContain('recap__heading');
-  await page.keyboard.press('Tab');
-  expect(await activeTestId(page)).toBe('recap-dismiss');
-  await page.keyboard.press('Enter');
+  // Issue #95: no recap; Blake's board comes straight up.
+  await expect(page.getByTestId('recap')).toHaveCount(0);
   await expect(page.getByTestId('board')).toBeVisible();
   await expect.poll(() => activeTestId(page)).toMatch(/^hand-card-\d$/);
 });
@@ -237,7 +233,6 @@ test('1440x900: the counter prompt keeps to the board column, with focus on a co
   await page.getByTestId('staging-confirm').click();
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
-  await page.getByTestId('recap-dismiss').click();
   const moves = await hook(page, (h) => h.moves());
   const five = moves.find((m) => m.kind === 4 && /^play 5. as one-off$/.test(m.description))!;
   await page.getByTestId(`hand-card-${five.handIndex}`).click();

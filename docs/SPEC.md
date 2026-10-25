@@ -1027,6 +1027,8 @@ The design and its worked sequences are `docs/counter-rewind-design.md`. This se
 
 ### 4.4 Full transition table
 
+*(Amended 2026-10-25, ApisMellow, issue #95: pass-and-play no longer shows the recap; reveal goes straight on. The board's last-move line covers it. Online's MissedMovesPanel is unchanged.)*
+
 *Amended 2026-10-24 (ApisMellow, issue #93, engine v0.3.0).* The rows below that open a counter window or hand a 4's discard across are superseded by §4.3; they remain only for legacy saves. In new play: `OneOff` from phase 0 goes to phase 0 (or phase 3 after a 4 when the opponent holds cards, or phase 5 on a win with the opponent holding an unfrozen 2) with `O` active, `turn`/`discard` handoff; a 7 keeps `A` for its pick as before. `Counter` from phase 0, 3 or 5 restores the counterer's last turn end: phase 0 (or phase 5 again on a counter-back that restores a win, `O` active, handoff), the counterer stays active, no curtain. `DiscardPair` from phase 3 lowers the debt; at zero, phase 0 with the same player, no curtain. `Decline` from phase 5 ends the game (result). Everything else follows §4.1's predicate.
 
 Read as: an actor in `pre.phase` applies a move of `mv.kind`; the table gives the resulting phase, the new decider, and what the UI does. `A` = pre-state actor, `O` = `other(A)`. Every `(phase, MoveKind)` pair the engine can produce appears; pairs the engine cannot produce are marked *unreachable* and, if reached, are a bug that must raise `INTERNAL`.
@@ -1099,6 +1101,8 @@ The curtain must reveal nothing and must not be dismissible by an accidental bru
 - **No auto-advance anywhere in the curtain sequence.** Every screen waits for an explicit action.
 
 ### 4.6 R20 — "while you were away" recap
+
+*(Amended 2026-10-25, ApisMellow, issue #95: pass-and-play no longer shows the recap; reveal goes straight on. The board's last-move line covers it. Online's MissedMovesPanel is unchanged.)*
 
 **What it is.** On the incoming player's post-reveal screen, before they act: the moves applied since that player's last look, oldest first, as short lines. Skipped entirely when there are none.
 

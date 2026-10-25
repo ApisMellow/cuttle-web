@@ -29,9 +29,6 @@ const MoveSevenPick = MK.SevenPick;
 const MoveDiscardPair = MK.DiscardPair;
 const MovePass = MK.Pass;
 
-/** A history entry the incoming player has not yet seen (§4.6). Formatting is the recap formatter's job. */
-export type RecapEntry = AppliedMove;
-
 /**
  * `resume` (ruling 2026-09-29, SPEC §5.7) is the gate a restore raises in
  * front of a resting position (`none` or an `ack`). It is held in memory
@@ -44,7 +41,6 @@ export type CurtainState =
   | { kind: 'none' }
   | { kind: 'handoff'; to: PlayerId; reason: HandoffReason }
   | { kind: 'reveal'; to: PlayerId }
-  | { kind: 'recap'; to: PlayerId; entries: RecapEntry[] }
   /** The real counter window (§4.3): `to` holds a legal 2. */
   | { kind: 'ack'; to: PlayerId }
   | { kind: 'result' };
@@ -68,8 +64,6 @@ export interface CurtainContext {
   /** The applied move this sequence follows, or `null` for the opening deal (W25: see `opening`). */
   move: AppliedMove | null;
   post: CurtainView;
-  /** Unseen history for a player, evaluated when that player passes the reveal gate. */
-  recapFor(viewer: PlayerId): RecapEntry[];
 }
 
 /** A curtain-machine bug. `code` mirrors the bridge's INTERNAL (§2.9). */
@@ -89,11 +83,6 @@ const REACHABLE: Record<Phase, readonly MoveKind[]> = {
   [PhaseAwaitingDiscard]: [MoveDiscardPair],
   [PhaseGameOver]: [],
 };
-
-/** A one-off entry: a OneOff, or a SevenPick whose sub-move was a OneOff. Kinds only. */
-function isOneOff(mv: AppliedMove): boolean {
-  return mv.kind === MoveOneOff || (mv.kind === MoveSevenPick && mv.subKind === MoveOneOff);
-}
 
 /** §4.1: curtainRequired ⟺ post.active !== pre.active ∧ post.phase !== PhaseGameOver. */
 export function curtainRequired(pre: CurtainView, post: CurtainView): boolean {
@@ -183,29 +172,13 @@ function ackFollows(to: PlayerId, ctx: CurtainContext): boolean {
 }
 
 /**
- * The recap entries left once the counter prompt will show the chain
- * (ruling 2026-09-29, #23 follow-up): the prompt already lists the one-off
- * and every 2 on it, so those are dropped here and only what the prompt
- * does not show stays (for example the responder's own discard before a
- * one-off). The window is open, so history ends with that chain, and the
- * unseen entries are a tail of it: drop trailing Counters, then the one-off
- * that opened the chain. Kinds only; no card is read.
- */
-function withoutPromptEntries(entries: RecapEntry[]): RecapEntry[] {
-  let end = entries.length;
-  while (end > 0 && entries[end - 1].kind === MoveCounter) end--;
-  if (end > 0 && isOneOff(entries[end - 1])) end--;
-  return entries.slice(0, end);
-}
-
-/**
- * The step after reveal/recap: the real counter window, or the live view.
+ * The step after reveal: the real counter window, or the live view.
  * A sequence addressed to someone who is not the decider hands the phone
  * on instead; the live machine never produces one (every handoff goes to
  * `post.active`), but a save from before the 2026-09-29 ruling can hold
  * such a curtain (snapshot.ts maps an old acknowledgment to `reveal`).
  */
-function afterRecap(to: PlayerId, ctx: CurtainContext): CurtainState {
+function afterReveal(to: PlayerId, ctx: CurtainContext): CurtainState {
   if (ackFollows(to, ctx)) return { kind: 'ack', to };
   if (ctx.post.active !== to) return { kind: 'handoff', to: ctx.post.active, reason: reasonFor(ctx.post.phase) };
   return { kind: 'none' };
@@ -213,9 +186,9 @@ function afterRecap(to: PlayerId, ctx: CurtainContext): CurtainState {
 
 /**
  * Advances the receiving player's sequence one step (§4.2):
- * handoff → reveal → [recap] → [counter prompt] → none.
- * Before the counter prompt the recap keeps only what the prompt does not
- * show, and is skipped when that leaves nothing.
+ * handoff → reveal → [counter prompt] → none. (Issue #95, ApisMellow
+ * 2026-10-25: pass-and-play no longer shows a recap between the reveal and
+ * what follows it.)
  *
  * `none`, `result`, and the counter window (`ack`) are resting states: the
  * first two are terminal, the third leaves only via a bridge apply and a
@@ -225,14 +198,8 @@ export function advance(state: CurtainState, ctx: CurtainContext): CurtainState 
   switch (state.kind) {
     case 'handoff':
       return { kind: 'reveal', to: state.to };
-    case 'reveal': {
-      const unseen = ctx.recapFor(state.to);
-      const entries = ackFollows(state.to, ctx) ? withoutPromptEntries(unseen) : unseen;
-      if (entries.length > 0) return { kind: 'recap', to: state.to, entries };
-      return afterRecap(state.to, ctx);
-    }
-    case 'recap':
-      return afterRecap(state.to, ctx);
+    case 'reveal':
+      return afterReveal(state.to, ctx);
     case 'ack':
       throw new CurtainError('the counter window resolves through apply(), not advance() (SPEC §4.3)');
     case 'none':
