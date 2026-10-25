@@ -81,7 +81,8 @@ const LESSON_1: Lesson = {
       kind: 'move',
       id: '1.5',
       main: 'Your 9 gets you to 21. Drag it onto your Points row.',
-      spot: [L1_9D],
+      // The very first move: the Points row its line names is lit as well (T14).
+      spot: [L1_9D, ZONE_POINTS],
       expect: { kind: MoveKind.PlayPoint, card: c(9, 'D') },
       source: L1_9D,
       target: ZONE_POINTS,
@@ -95,7 +96,7 @@ const LESSON_1: Lesson = {
       ],
       generic: 'Not this one. Your 9 gets you to 21.',
       // "You win!" is the bubble's headline (announced with this line), never repeated here.
-      success: '21.',
+      success: 'You reached 21.',
       demo: { kind: 'drag', from: L1_9D, to: ZONE_POINTS, thenConfirm: true },
       blake: [],
     },
@@ -259,7 +260,7 @@ const LESSON_4: Lesson = {
   id: 4,
   title: 'One-offs and the 2',
   subtitle: 'Powers, and how to stop them',
-  done: 'A one-off happens at once, and only a 2 can stop it. Rules in the menu lists every one-off.',
+  done: 'A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off.',
   win: false,
   deal: false,
   position: {

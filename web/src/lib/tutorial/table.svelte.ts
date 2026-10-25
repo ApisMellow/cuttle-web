@@ -22,9 +22,9 @@
 // it, §5.5.1) and resolves normally, so the board returns to idle and nothing
 // is ever stuck.
 //
-// Beats (plan P3): success line (1200 ms or a tap) -> if Blake replies,
+// Beats (plan P3): success line (2200 ms or a tap) -> if Blake replies,
 // "Blake's turn." with `pending` true, a think pause (700 ms, 400 ms reduced),
-// his move and its narration -> after 1200 ms (or a tap) the next step. A
+// his move and its narration -> after 2200 ms (or a tap) the next step. A
 // reply with no narration hands straight to the next step (lesson 4's 4,
 // whose window is step 4.2). `pending` runs from the learner's match until
 // Blake's last reply lands (design §6.2). No state path awaits anything:
@@ -98,10 +98,10 @@ export interface TutorialTableDeps {
   afterReply?(entry: AppliedMove): void;
 }
 
-export const SUCCESS_BEAT_MS = 1200;
+export const SUCCESS_BEAT_MS = 2200;
 export const BLAKE_THINK_MS = 700;
 export const BLAKE_THINK_REDUCED_MS = 400;
-export const BLAKE_DONE_BEAT_MS = 1200;
+export const BLAKE_DONE_BEAT_MS = 2200;
 
 const defaultEngine: TutorialEngine = {
   restore: bridgeRestore,

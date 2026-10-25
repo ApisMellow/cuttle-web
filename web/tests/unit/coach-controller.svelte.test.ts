@@ -27,11 +27,13 @@ import {
   OWN_CONTROLS,
   ownsInput,
   type CoachClock,
+  type CoachDeps,
+  type CoachFlights,
   type CoachFrames,
 } from '../../src/lib/tutorial/coach.svelte';
 import { CANCEL_SUFFIX, LESSONS } from '../../src/lib/tutorial/lessons';
 import { intersects, type Box } from '../../src/lib/tutorial/placement';
-import { TutorialTable } from '../../src/lib/tutorial/table.svelte';
+import { BLAKE_DONE_BEAT_MS, SUCCESS_BEAT_MS, TutorialTable } from '../../src/lib/tutorial/table.svelte';
 import type { Lesson, LessonId, MoveStep } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
 import { expectedIndex, walkTo, wrongIndices } from './tutorial-driver';
@@ -134,12 +136,12 @@ async function settle(): Promise<void> {
   flushSync();
 }
 
-async function mountWith(table: TutorialTable): Promise<CoachController> {
+async function mountWith(table: TutorialTable, extra: Partial<CoachDeps> = {}): Promise<CoachController> {
   host = document.createElement('div');
   document.body.append(host);
   instance = mount(GameScreen, { target: host, props: { source: table } });
   flushSync();
-  controller = new CoachController({ table, root: root(), clock, frames });
+  controller = new CoachController({ table, root: root(), clock, frames, ...extra });
   await settle();
   return controller;
 }
@@ -227,7 +229,8 @@ describe('the stage machine at a board move step (1.5)', () => {
     expect(c.stage).toBe('idle');
     expect(c.text).toBe(step.main);
     expect(c.tone).toBe('main');
-    expect(c.targets).toEqual([`hand-card-${nine}`]);
+    // T14: the very first move lights the Points row too (the line names it).
+    expect(c.targets).toEqual([`hand-card-${nine}`, 'zone-points']);
 
     await click(`hand-card-${nine}`);
     expect(c.stage).toBe('selected');
@@ -532,7 +535,7 @@ describe('spotlight targets (design §7.2)', () => {
     expect(table.phase).toBe('success');
     expect(c.stage).toBe('done');
     expect(c.targets).toEqual([]);
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
     await settle();
     expect(table.phase).toBe('blake');
     expect(c.stage).toBe('blake');
@@ -574,7 +577,7 @@ describe('appear steps (5.3)', () => {
     await settle();
     expect(q('card-detail-popover')).not.toBeNull();
     expect(table.step?.id).toBe('5.2'); // ignored during the beat
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(BLAKE_DONE_BEAT_MS);
     await settle();
     expect(table.step?.id).toBe('5.4');
     expect(c.covered).toBe(true);
@@ -1063,7 +1066,7 @@ describe("T12b: the bubble stays off Blake's hand during the beats", () => {
       expect(c.stage).toBe('done');
       expect(intersects(bubbleBox(c), BOARD_852['opp-hand']), 'success beat over his hand').toBe(false);
 
-      vi.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(SUCCESS_BEAT_MS);
       await settle();
       frames.run();
       expect(c.stage).toBe('blake');
@@ -1133,10 +1136,7 @@ describe('T12b: every spotlit target is scrolled into view', () => {
           [`hand-card-${nine}`]: { x: 40, y: 480, width: 60, height: 78 },
         },
         async () => {
-          frames.run();
-          scrollBy.mockClear();
-          intoView.mockClear();
-          await click(`hand-card-${nine}`);
+          // 1.5 at rest already lights the 9 and the Points row (T14).
           frames.run();
           expect(c.targets).toEqual([`hand-card-${nine}`, 'zone-points']);
           // Up by 24 px: the zone's top (20) to the score bar's bottom (44).
@@ -1188,9 +1188,7 @@ describe('T12b: every spotlit target is scrolled into view', () => {
           [`hand-card-${nine}`]: { x: 40, y: 200, width: 60, height: 78 },
         },
         async () => {
-          frames.run();
-          calls.length = 0;
-          await click(`hand-card-${nine}`);
+          // 1.5 at rest already lights the 9 and the Points row (T14).
           frames.run();
           expect(c.targets[0]).toBe(`hand-card-${nine}`);
           expect(calls.map((el) => el.getAttribute('data-testid'))).toEqual([`hand-card-${nine}`]);
@@ -1235,5 +1233,288 @@ describe("T12b: one definition of the coach's own controls", () => {
     } finally {
       wrap.remove();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T14 judge M1: a dragged card eases back into the hand after the drop
+// (HandCard's `translate` transition). The page changes no attribute when it
+// lands, so the coach must re-measure when the transition ends, or the bubble
+// keeps avoiding where the card was mid-flight and covers where it settled.
+// ---------------------------------------------------------------------------
+
+describe('T14 M1: the bubble re-places once a dragged card settles', () => {
+  for (const type of ['transitionend', 'transitioncancel'] as const) {
+    it(`a ${type} inside the root re-measures: staged-right never covers the settled staged card`, async () => {
+      const table = newTable(1);
+      walkTo(table, '1.5');
+      const c = await mountWith(table);
+      const nine = handIndexOf(table, { Rank: 9, Suit: 1 });
+      const card = `hand-card-${nine}`;
+      const rects: Record<string, Box> = {
+        ...BOARD_852,
+        'staging-confirm': { x: 250, y: 800, width: 120, height: 44 },
+        'staging-cancel': { x: 130, y: 800, width: 110, height: 44 },
+        // Released over the Points row: the card is still there as the coach first measures.
+        [card]: { x: 150, y: 525, width: 60, height: 78 },
+      };
+      await withLayout(rects, async () => {
+        await click(card);
+        await click('zone-points');
+        frames.run();
+        expect(c.stage).toBe('staged-right');
+
+        // The card eases back to its lifted hand slot; only a transition event says so.
+        rects[card] = { x: 70, y: 693, width: 60, height: 78 };
+        expect(frames.pending(), 'nothing is scheduled before the event').toBe(0);
+        q(card)!.dispatchEvent(new Event(type, { bubbles: true }));
+        expect(frames.pending(), `a ${type} schedules a measure`).toBe(1);
+        frames.run();
+        expect(intersects(bubbleBox(c), rects[card]), 'bubble over the settled staged card').toBe(false);
+        for (const id of c.targets) expect(intersects(bubbleBox(c), rects[id]), `bubble over hole ${id}`).toBe(false);
+      });
+    });
+  }
+
+  it('dispose removes the transition listeners too (the same function, capture: true)', async () => {
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const add = vi.spyOn(HTMLElement.prototype, 'addEventListener');
+    const remove = vi.spyOn(HTMLElement.prototype, 'removeEventListener');
+    try {
+      const c = await mountWith(table);
+      const capture = (o: unknown): boolean => (typeof o === 'boolean' ? o : !!(o as AddEventListenerOptions | undefined)?.capture);
+      const types = ['transitionend', 'transitioncancel'];
+      const fns = types.map((type) => {
+        const mine = add.mock.calls.findIndex(([t, , o], i) => t === type && capture(o) && add.mock.contexts[i] === root());
+        expect(mine, `${type} listener added on the root`).toBeGreaterThanOrEqual(0);
+        return add.mock.calls[mine][1];
+      });
+      const removed = (type: string, fn: unknown) =>
+        remove.mock.calls.some(([t, f, o], i) => t === type && f === fn && capture(o) && remove.mock.contexts[i] === root());
+      types.forEach((type, k) => expect(removed(type, fns[k]), `${type} still live before dispose`).toBe(false));
+      c.dispose();
+      types.forEach((type, k) => expect(removed(type, fns[k]), `${type} removed with capture: true`).toBe(true));
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T14 judge M4: Show me is offered only when it would show something. The
+// demo plays at idle, selected and refused; with motion off its markers also
+// stay at staged-right (design §8.3). Never on next or appear steps, beats,
+// staged-wrong, staged-right with motion, or an error.
+// ---------------------------------------------------------------------------
+
+describe('T14 M4: canShowMe', () => {
+  it('lesson 2: idle, selected and refused yes; staged-right, staged-wrong, the success and Blake beats and next steps no', async () => {
+    const table = newTable(2);
+    const c = await mountWith(table);
+    const seen: [string, boolean][] = [];
+    const note = () => seen.push([c.stage, c.canShowMe]);
+    note(); // 2.1 idle
+    const env = table.envelope!;
+    const seven = handIndexOf(table, { Rank: 7, Suit: 0 });
+    await click(`hand-card-${seven}`);
+    note(); // selected
+    await click('zone-points');
+    note(); // staged-right
+    await click('staging-cancel');
+    await stage(env, wrongIndices(table)[0]);
+    note(); // staged-wrong
+    await click('staging-confirm');
+    note(); // refused
+    void table.apply(expectedIndex(table));
+    await settle();
+    note(); // done
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+    await settle();
+    note(); // blake
+    for (let n = 0; n < 20 && table.step?.id !== '2.3'; n++) {
+      if (table.phase === 'step') void table.apply(expectedIndex(table));
+      vi.advanceTimersToNextTimer();
+      await settle();
+    }
+    await settle();
+    note(); // 2.3 next
+    expect(seen).toEqual([
+      ['idle', true],
+      ['selected', true],
+      ['staged-right', false],
+      ['staged-wrong', false],
+      ['refused', true],
+      ['done', false],
+      ['blake', false],
+      ['next', false],
+    ]);
+  });
+
+  it('reduced motion keeps Show me at staged-right (the numbered markers re-show)', async () => {
+    settings.reducedMotion = true;
+    const table = newTable(1);
+    walkTo(table, '1.5');
+    const c = await mountWith(table);
+    await stage(table.envelope!, expectedIndex(table));
+    expect(c.stage).toBe('staged-right');
+    expect(c.canShowMe).toBe(true);
+  });
+
+  it('an appear step (5.3) has no demo', async () => {
+    const table = newTable(5);
+    walkTo(table, '5.3');
+    const c = await mountWith(table);
+    expect(c.stage).toBe('appear');
+    expect(c.canShowMe).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T14 judge M2: during the success beat the learner's move is in flight (3.1's
+// scuttle hits Blake's 9 and both cards fly to the scrap), and during Blake's
+// beat his reply is. The overlay hands the coach those boxes; the bubble keeps
+// clear of them, but only during their own beat.
+// ---------------------------------------------------------------------------
+
+describe('T14 M2: the bubble keeps clear of the cards in flight during a beat', () => {
+  const hit = BOARD_852['point-1-0'];
+  const scrap = BOARD_852['scrap-pile'];
+  const source = { x: 70, y: 705, width: 60, height: 78 };
+
+  it("3.1's scuttle: at `done` the bubble covers neither the hit card nor the scrap; a learner box is ignored in Blake's beat", async () => {
+    let flights: CoachFlights | null = null;
+    const table = newTable(3);
+    walkTo(table, '3.1');
+    const c = await mountWith(table, { flights: () => flights });
+    await withLayout(BOARD_852, async () => {
+      // Without flight boxes the success beat docks over Blake's points row (the judge's finding).
+      void table.apply(expectedIndex(table));
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('done');
+      expect(intersects(bubbleBox(c), hit), 'precondition: the plain dock covers the hit card').toBe(true);
+
+      flights = { beat: 'done', boxes: [hit, scrap, source] };
+      c.relayout();
+      expect(frames.pending()).toBe(1);
+      frames.run();
+      for (const b of [hit, scrap, source, BOARD_852['opp-hand']]) expect(intersects(bubbleBox(c), b), JSON.stringify(b)).toBe(false);
+      expect(c.placement.y + 150).toBeLessThanOrEqual(792 - 12);
+
+      // Blake's beat reads only Blake's flights.
+      flights = { beat: 'done', boxes: [{ x: 0, y: 430, width: 393, height: 200 }] };
+      vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('blake');
+      const ignoring = bubbleBox(c);
+      flights = null;
+      c.relayout();
+      frames.run();
+      expect(bubbleBox(c)).toEqual(ignoring);
+    });
+  });
+
+  it("Blake's beat: his flight boxes are kept clear of", async () => {
+    let flights: CoachFlights | null = null;
+    const table = newTable(3);
+    walkTo(table, '3.1');
+    const c = await mountWith(table, { flights: () => flights });
+    await withLayout(BOARD_852, async () => {
+      void table.apply(expectedIndex(table));
+      vi.advanceTimersByTime(SUCCESS_BEAT_MS);
+      await settle();
+      frames.run();
+      expect(c.stage).toBe('blake');
+      const box = { x: 16, y: 440, width: 361, height: 60 };
+      expect(intersects(bubbleBox(c), box), 'precondition: the plain placement covers the box').toBe(true);
+      flights = { beat: 'blake', boxes: [box] };
+      c.relayout();
+      frames.run();
+      expect(intersects(bubbleBox(c), box)).toBe(false);
+    });
+  });
+});
+
+// T14 judge nice-to-have 3: at 4.2 Blake's 4 flies into the counter prompt;
+// the entry demo waits until it has landed (the overlay says how long).
+describe('T14: the entry demo can wait for a flight to land', () => {
+  it('entryDelay holds the first demo back; it never shortens it', async () => {
+    let hold = 990;
+    const table = newTable(4);
+    walkTo(table, '4.2');
+    const c = await mountWith(table, { entryDelay: () => hold });
+    frames.run();
+    // GhostDemo plays as soon as a demo appears, so none is offered until then.
+    expect(c.demo, 'no demo while the flight lands').toBeNull();
+    const start = c.playKey;
+    clock.advance(DEMO_ENTRY_MS);
+    frames.run();
+    expect(c.playKey, 'not at the usual 250 ms').toBe(start);
+    expect(c.demo).toBeNull();
+    clock.advance(990 - DEMO_ENTRY_MS);
+    expect(c.playKey).toBe(start + 1);
+    expect(frames.pending(), 'the demo is measured again once the hold ends').toBe(1);
+    frames.run();
+    expect(c.demo?.kind).toBe('tap');
+    cleanup();
+
+    hold = 10;
+    const t2 = newTable(4);
+    walkTo(t2, '4.2');
+    const c2 = await mountWith(t2, { entryDelay: () => hold });
+    frames.run();
+    expect(c2.demo?.kind, 'a short hold holds nothing back').toBe('tap');
+    const s2 = c2.playKey;
+    clock.advance(DEMO_ENTRY_MS - 1);
+    expect(c2.playKey).toBe(s2);
+    clock.advance(1);
+    expect(c2.playKey).toBe(s2 + 1);
+  });
+});
+
+// T14 judge nice-to-have 8: at staged-wrong the nudge points at the step's
+// real target ("Drop the 10 on his cards"); the bubble keeps it in sight when
+// there is room (a soft box: never at the cost of a hole or the staged move).
+describe('T14: staged-wrong keeps the step’s real target in sight', () => {
+  it("3.1, the 10 staged on her own Points row: the bubble covers neither of Blake's point cards", async () => {
+    const table = newTable(3);
+    walkTo(table, '3.1');
+    const c = await mountWith(table);
+    const ten = handIndexOf(table, { Rank: 10, Suit: 2 });
+    const rects: Record<string, Box> = {
+      ...BOARD_852,
+      'staging-confirm': { x: 290, y: 800, width: 90, height: 44 },
+      'staging-cancel': { x: 200, y: 800, width: 84, height: 44 },
+      [`hand-card-${ten}`]: { x: 102, y: 693, width: 60, height: 78 },
+    };
+    await withLayout(rects, async () => {
+      await click(`hand-card-${ten}`);
+      await click('zone-points');
+      frames.run();
+      expect(c.stage).toBe('staged-wrong');
+      for (const id of ['point-1-0', 'point-1-1']) expect(intersects(bubbleBox(c), rects[id]), `bubble over ${id}`).toBe(false);
+      for (const id of [...c.targets, `hand-card-${ten}`, 'zone-points', 'staging-bar', 'menu-button']) {
+        expect(intersects(bubbleBox(c), rects[id]), `bubble over ${id}`).toBe(false);
+      }
+    });
+  });
+});
+
+// T14 review B1: Show me during the 4.2 entry hold plays the demo at once.
+describe('T14 review B1: Show me releases the entry hold', () => {
+  it('at 4.2, held for 990 ms: Show me before the clock moves offers the demo and plays it', async () => {
+    const table = newTable(4);
+    walkTo(table, '4.2');
+    const c = await mountWith(table, { entryDelay: () => 990 });
+    frames.run();
+    expect(c.demo, 'held').toBeNull();
+    const before = c.playKey;
+    c.showMe();
+    frames.run();
+    expect(c.demo?.kind).toBe('tap');
+    expect(c.playKey).toBeGreaterThan(before);
   });
 });

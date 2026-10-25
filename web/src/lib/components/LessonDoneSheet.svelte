@@ -68,9 +68,15 @@
   <h2 id={headingId} class="done__title" tabindex="-1" bind:this={titleEl}>{heading}</h2>
   <p class="done__line">{doneLine}</p>
 
-  <ol class="done__pips" aria-hidden="true">
-    {#each LESSONS as n (n)}
-      <li class="done__pip" class:done__pip--done={done.includes(n)} class:done__pip--new={n === lesson && done.includes(n)}></li>
+  <!-- T14: the finale fills all five pips in turn, once the sheet has risen. -->
+  <ol class="done__pips" aria-hidden="true" data-finale={final ? 'true' : undefined}>
+    {#each LESSONS as n, i (n)}
+      <li
+        class="done__pip"
+        class:done__pip--done={done.includes(n)}
+        class:done__pip--new={n === lesson && done.includes(n)}
+        style:--i={final ? i : undefined}
+      ></li>
     {/each}
   </ol>
   <span class="done__sr">{doneCount} of 5 lessons done</span>
@@ -170,6 +176,45 @@
   @keyframes done-pip {
     from {
       transform: scale(0.4);
+    }
+  }
+
+  /* T14, the finale ("You've learned Cuttle"): the pips start as hairline
+     dots and an ochre fill pops into each in turn, 90 ms apart, after the
+     sheet's rise. Transform and opacity only, on a fill layer over the dot.
+     Reduced motion: every pip is simply ochre. */
+  .done__pips[data-finale='true'] .done__pip {
+    position: relative;
+    background: var(--cu-ink-line, #4a3d57);
+    animation: none;
+  }
+
+  .done__pips[data-finale='true'] .done__pip::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--cu-ochre, #f0b54a);
+    animation: done-pip-fill 360ms var(--cu-ease-land, ease-out) both;
+    animation-delay: calc(var(--cu-dur-slow, 320ms) + var(--i) * 90ms);
+  }
+
+  .done[data-reduced='true'] .done__pips[data-finale='true'] .done__pip::after {
+    animation: none;
+  }
+
+  @keyframes done-pip-fill {
+    0% {
+      opacity: 0;
+      transform: scale(0.3);
+    }
+    55% {
+      opacity: 1;
+      transform: scale(1.45);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 

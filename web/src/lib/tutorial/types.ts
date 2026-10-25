@@ -76,8 +76,9 @@ interface StepBase {
   id: string;
   main: string;
   /**
-   * The step's resting spotlight. For a `move` step this is the idle hole
-   * (`[source]`); the coach adds `target` once a card is selected.
+   * The step's resting spotlight. For a `move` step this is the idle hole,
+   * `[source]` (step 1.5 adds its drop target, the first move); the coach
+   * shows `source` and `target` once a card is selected.
    */
   spot: SpotTarget[];
 }

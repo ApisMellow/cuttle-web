@@ -670,6 +670,37 @@ export function flightAfter(cap: FlightCapture, after: PlayerView | null | undef
   return { drawn, oppHand: cap.plan === 'glassesFlip' ? after.opponent.hand : null };
 }
 
+/**
+ * T14: a one-off that opens a counter window (lesson 4's 4) lands while the
+ * board is unmounted, so the one-off spot it was captured against is empty
+ * space over the counter prompt. Aim it at the prompt's own thumbnail of the
+ * played card instead: it shrinks into it and fades (no scrap leg, as the
+ * scrap pile isn't on the page). Any other flight comes back unchanged.
+ */
+export function intoPrompt(cap: FlightCapture, thumb: RectLike): FlightCapture {
+  if (cap.landing !== 'oneOff') return cap;
+  return { ...cap, rects: { ...cap.rects, oneoff: toRect(thumb) } };
+}
+
+/**
+ * T14 judge M2: what a flight crosses, for the coach bubble to keep clear of
+ * during the beat, most important first: the hit card (scuttle, Jack steal),
+ * every point card an Ace sweeps, where the card lands (`landing`, measured
+ * once the new state has rendered), the one-off spot, the scrap, and last
+ * where the card started (it leaves there first). Pure; plain rects out.
+ */
+export function flightBoxes(cap: FlightCapture, landing: RectLike | null): RectLike[] {
+  const r = cap.rects;
+  const out: RectLike[] = [];
+  if (r.target) out.push(r.target);
+  for (const [key, rect] of Object.entries(r)) if (key.startsWith('sweep:')) out.push(rect);
+  if (landing) out.push(landing);
+  if (cap.landing === 'oneOff' && r.oneoff) out.push(r.oneoff);
+  if ((cap.landing === 'scuttle' || cap.landing === 'oneOff') && r.scrap) out.push(r.scrap);
+  if (r.source) out.push(r.source);
+  return out.map(toRect);
+}
+
 /** Where a calm (reduced-motion) change gets its ochre ring. */
 export type FlightRingTarget = 'landing' | 'scrap' | 'oppHand';
 
@@ -707,6 +738,8 @@ const SWEEP_GAP_MS = 50;
 const GLASSES_GAP_MS = 70;
 const FLIP_MS = 240;
 const FADE_OUT_MS = 200;
+/** How long a counter-window one-off takes (`oneOff` with no scrap): in, a short hold, then the fade. */
+export const COUNTER_ONEOFF_MS = ONEOFF_IN_MS + ONEOFF_HOLD_MS + FADE_OUT_MS;
 const LEG_STEPS = 10;
 const STAND_IN_PX = 4;
 
@@ -1030,7 +1063,9 @@ export function flightScript(
     case 'oneOff': {
       const zone = cap.rects.oneoff;
       if (!src || !zone || startCard === undefined) break;
-      const spot = centredIn(zone, ends.card.width, ends.card.height);
+      // With no scrap on the page (a counter window) the zone may be the
+      // prompt's thumbnail (`intoPrompt`): the card shrinks to fit it.
+      const spot = scrapSpot ? centredIn(zone, ends.card.width, ends.card.height) : fitInto(zone, ends.card);
       const leaveAt = ONEOFF_IN_MS + ONEOFF_HOLD_MS;
       const away: FlightLeg = scrapSpot
         ? { to: scrapSpot, startMs: leaveAt, ms: SCRAP_MS, ease: easeInOut }

@@ -23,10 +23,16 @@
     /** idle | selected | staged-right | staged-wrong | refused | done | next | appear | blake | error */
     stage: string;
     showNext: boolean;
+    /**
+     * T14 M4: a demo exists for this moment, so Show me would show something.
+     * Without one the button's slot stays, empty and hidden from everyone,
+     * so the footer never jumps.
+     */
+    showMe: boolean;
     onnext?: () => void;
     onshowme?: () => void;
     onleave?: () => void;
-    /** 1-5, for the "N of 5" count. */
+    /** 1-5, for the "Lesson N/5" count (read as "Lesson N of 5"). */
     lessonNumber: number;
     placement: BubblePlacement;
     /** Counter; every change shakes the bubble once (design §8.2). */
@@ -43,6 +49,7 @@
     stepId,
     stage,
     showNext,
+    showMe,
     onnext,
     onshowme,
     onleave,
@@ -138,13 +145,21 @@
         Leave
       </button>
     {:else}
-      <button type="button" class="coach__button coach__button--text" data-testid="coach-show-me" onclick={() => onshowme?.()}>
-        Show me
-      </button>
+      {#if showMe}
+        <button type="button" class="coach__button coach__button--text" data-testid="coach-show-me" onclick={() => onshowme?.()}>
+          Show me
+        </button>
+      {:else}
+        <!-- T14 M4: no demo to show. The slot keeps its width, so Leave and
+             the count stay put; it is invisible, unfocusable and hidden from
+             assistive tech, and carries no testid. -->
+        <span class="coach__button coach__button--text coach__slot" data-show-me-slot aria-hidden="true">Show me</span>
+      {/if}
       <button type="button" class="coach__button coach__button--text" data-testid="coach-leave" onclick={() => onleave?.()}>
         Leave
       </button>
-      <span class="coach__count">{lessonNumber} of 5</span>
+      <!-- T14: "Lesson N of 5" pushed Next onto a second row at 393 wide. -->
+      <span class="coach__count"><span aria-hidden="true">Lesson {lessonNumber}/5</span><span class="coach__sr">Lesson {lessonNumber} of 5</span></span>
       {#if showNext}
         <button type="button" class="coach__button coach__button--next" data-testid="coach-next" onclick={() => onnext?.()}>
           Next
@@ -338,6 +353,14 @@
     color: var(--cu-pearl, #eee8f1);
   }
 
+  /* The empty Show me slot: the same box as the button, never seen or hit. */
+  .coach__slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+  }
+
   .coach__button--ghost {
     padding: 0 var(--cu-space-3, 12px);
     border: 1px solid var(--cu-ink-line, #4a3d57);
@@ -349,6 +372,15 @@
     padding: 0 var(--cu-space-4, 16px);
     border: 1px solid var(--cu-iris, #5ccfc4);
     border-radius: var(--cu-radius-control, 999px);
+  }
+
+  .coach__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .coach__count {

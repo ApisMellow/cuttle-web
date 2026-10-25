@@ -20,6 +20,7 @@ interface Props {
   stepId: string;
   stage: string;
   showNext: boolean;
+  showMe: boolean;
   onnext?: () => void;
   onshowme?: () => void;
   onleave?: () => void;
@@ -39,6 +40,7 @@ function baseProps(over: Partial<Props> = {}): Props {
     stepId: '1.5',
     stage: 'idle',
     showNext: false,
+    showMe: true,
     lessonNumber: 2,
     placement,
     shake: 0,
@@ -155,7 +157,7 @@ describe('CoachBubble', () => {
     expect(onnext).toHaveBeenCalledTimes(1);
   });
 
-  it('shows Show me, Leave and "N of 5", and forwards the taps', () => {
+  it('shows Show me, Leave and "Lesson N/5", and forwards the taps', () => {
     const onshowme = vi.fn();
     const onleave = vi.fn();
     const el = render(baseProps({ onshowme, onleave, lessonNumber: 4 }));
@@ -163,8 +165,39 @@ describe('CoachBubble', () => {
     byId(el, 'coach-leave')?.click();
     expect(onshowme).toHaveBeenCalledTimes(1);
     expect(onleave).toHaveBeenCalledTimes(1);
-    expect(el.textContent).toContain('4 of 5');
+    // "Lesson 4 of 5" wraps Next to a second row at 393 wide, so the count
+    // reads "Lesson 4/5" on screen and "Lesson 4 of 5" to a screen reader.
+    const count = el.querySelector('.coach__count')!;
+    expect(count.querySelector('[aria-hidden="true"]')?.textContent).toBe('Lesson 4/5');
+    expect(count.querySelector('.coach__sr')?.textContent).toBe('Lesson 4 of 5');
     expect(byId(el, 'coach-restart')).toBeNull();
+  });
+
+  it('T14 M4: with no demo there is no Show me, but its footer slot stays (hidden from everyone, not focusable)', () => {
+    cleanup();
+    const props = $state<Props>(baseProps({ showMe: false, showNext: true, stage: 'next' }));
+    host = document.createElement('div');
+    document.body.append(host);
+    instance = mount(CoachBubble, { target: host, props });
+    flushSync();
+    const footer = host.querySelector<HTMLElement>('.coach__footer')!;
+    expect(byId(host, 'coach-show-me')).toBeNull();
+    const slot = footer.querySelector<HTMLElement>('[data-show-me-slot]');
+    expect(slot, 'the slot keeps the footer from jumping').not.toBeNull();
+    expect(slot!.getAttribute('aria-hidden')).toBe('true');
+    expect(slot!.tagName).toBe('SPAN');
+    expect(slot!.hasAttribute('tabindex')).toBe(false);
+    expect(slot!.hasAttribute('data-testid')).toBe(false);
+    expect(slot!.querySelector('button, [tabindex]')).toBeNull();
+    // The slot sits where Show me sits: first in the footer, before Leave.
+    expect(footer.firstElementChild).toBe(slot);
+    expect(slot!.textContent?.trim()).toBe('Show me');
+
+    // A demo appears on the same instance: the real button takes the slot.
+    props.showMe = true;
+    flushSync();
+    expect(footer.querySelector('[data-show-me-slot]')).toBeNull();
+    expect(footer.firstElementChild).toBe(byId(host, 'coach-show-me'));
   });
 
   it('shows Restart lesson and Leave only when error is set', () => {

@@ -44,10 +44,19 @@
 
   const RING_PAD = 6; // matches CoachSpotlight's hole padding
   const MARKER_SHIFT = 26; // keeps two markers on one spot from stacking
-  const CORNER_X = 10; // the Confirm marker's inset from the box's right edge
-  const CORNER_Y = 6; // ... and from its top edge
+  // T14: the Confirm "3" sits above the pill's top-right corner, its right
+  // edge on the pill's: it never reaches the label (it covered the "m").
+  const CORNER_X = 14; // the marker centre's inset from Confirm's right edge (its radius)
+  const CORNER_Y = -10; // ... and its offset from Confirm's top edge (up)
 
   const centre = (b: Box) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+
+  /** A target this much wider than tall is a labelled button (4.2's counter option). */
+  const WIDE = 2;
+  /** On such a button the tap lands this far in from its right end: clear of the centred label (T14). */
+  const TAP_END_INSET = 28;
+  /** Where a tap lands: a card's centre, or near a wide labelled button's right end. */
+  const tapPoint = (b: Box) => (b.width > b.height * WIDE ? { x: b.x + b.width - TAP_END_INSET, y: b.y + b.height / 2 } : centre(b));
   const near = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1;
 
@@ -58,7 +67,7 @@
     if (demo?.kind !== 'tap') return [];
     const runs: { at: { x: number; y: number }; times: 1 | 2 }[] = [];
     for (const box of demo.at) {
-      const c = centre(box);
+      const c = tapPoint(box);
       const last = runs[runs.length - 1];
       if (last && last.times === 1 && near(last.at, c)) last.times = 2;
       else runs.push({ at: c, times: 1 });
@@ -131,9 +140,9 @@
   const markers = $derived.by(() => {
     if (!demo) return [];
     const spots =
-      demo.kind === 'drag' ? [centre(demo.from), centre(demo.to)] : demo.at.map((box) => centre(box));
-    // Confirm is a wide pill with a label: its "3" rides the top-right corner
-    // so it never covers the word.
+      demo.kind === 'drag' ? [centre(demo.from), centre(demo.to)] : demo.at.map((box) => tapPoint(box));
+    // Confirm is a wide pill with a label: its "3" rides just above the
+    // top-right corner so it never covers the word.
     if (confirmBox) spots.push({ x: confirmBox.x + confirmBox.width - CORNER_X, y: confirmBox.y + CORNER_Y });
     return spots.map((spot, i) => {
       const clash = spots.slice(0, i).filter((other) => near(other, spot)).length;

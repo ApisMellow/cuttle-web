@@ -98,7 +98,12 @@ export async function settled(page: Page): Promise<Reading> {
       }
       // What is staged: the bubble's line is about that setup (design §7.3), so it stays visible.
       for (const el of document.querySelectorAll('[data-staged="true"], [data-state="staged"]')) {
-        const holder = el.closest<HTMLElement>('[data-testid]');
+        // A staged drop-zone well has no testid of its own: its staged hit
+        // button inside it is the zone (`zone-*`). Without this the well's
+        // nearest testid ancestor, the whole player zone, counted as staged.
+        const holder =
+          (el.hasAttribute('data-testid') ? null : el.querySelector<HTMLElement>('[data-testid][data-state="staged"]')) ??
+          el.closest<HTMLElement>('[data-testid]');
         if (holder && holder.dataset.testid !== 'staging-bar') {
           avoid.push({ id: `staged ${holder.dataset.testid}`, box: box(holder.getBoundingClientRect()) });
         }
@@ -422,7 +427,8 @@ export async function playExpected(page: Page, step: MoveStep): Promise<void> {
 export async function playThrough(page: Page, lesson: number, upToStepId: string): Promise<void> {
   for (const step of stepsOf(lesson)) {
     if (step.id === upToStepId) return;
-    await waitStep(page, step.id);
+    // A step can follow a success beat, Blake's think pause and his narration.
+    await waitStep(page, step.id, BEAT_MS);
     if (step.kind === 'next') {
       await waitStage(page, 'next');
       await page.getByTestId('coach-next').click();

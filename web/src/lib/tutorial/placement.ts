@@ -8,6 +8,8 @@
 //   3. beside the holes, on the side with more room, inside the free band
 //   4. docked under the score bar, then slid down past anything it would
 //      touch (the last resort)
+// Soft boxes (T14 M2: cards in flight during a beat) count as obstacles too,
+// but are dropped from the end, one at a time, when no spot clears them all.
 // Candidates 1-3 are rejected if they would touch a padded hole or an
 // `avoid` box (staging bar, menu button, counter-prompt options, the staged
 // cards). Candidate 4 never covers one either, unless no free spot exists
@@ -29,6 +31,13 @@ export interface PlacementInput {
   holes: Box[];
   /** Boxes the bubble must never cover. */
   avoid: Box[];
+  /**
+   * T14 M2: boxes to keep clear of when there is room (the cards in flight
+   * during a beat), most important first. When no spot clears them all, the
+   * last is dropped, then the next, before the dock gives up. Never traded
+   * for a hole or an `avoid` box.
+   */
+  soft?: Box[];
   /** Top edge of the action bar (viewport y). */
   actionBarTop: number;
   /** Bottom edge of the score bar and menu row (viewport y). */
@@ -90,7 +99,18 @@ function bounds(boxes: Box[]): Box {
 }
 
 export function placeBubble(input: PlacementInput): BubblePlacement {
-  const { viewport, avoid, actionBarTop, scoreBarBottom, bubble } = input;
+  const soft = input.soft ?? [];
+  // Every soft box first; then one fewer from the end, until a spot clears.
+  for (let keep = soft.length; keep > 0; keep--) {
+    const tried = place(input, [...input.avoid, ...soft.slice(0, keep)]);
+    if (tried.clear) return tried.placement;
+  }
+  return place(input, input.avoid).placement;
+}
+
+/** One placement pass against these avoid boxes; `clear` is false only when the dock found no free spot. */
+function place(input: PlacementInput, avoid: Box[]): { placement: BubblePlacement; clear: boolean } {
+  const { viewport, actionBarTop, scoreBarBottom, bubble } = input;
   const { gutter, clearance, notch, dockGap, holePad } = PLACEMENT;
   const { width, height } = bubble;
 
@@ -118,7 +138,7 @@ export function placeBubble(input: PlacementInput): BubblePlacement {
   // touch (T12: the first dock grazed the staged target and could cover a hole).
   // Tried at the wanted x, then hard left, then hard right; with no free spot
   // above the action bar it stays at the top, where it covers least.
-  const dockAt = (x: number): BubblePlacement => {
+  const dockAt = (x: number): { placement: BubblePlacement; clear: boolean } => {
     const top = scoreBarBottom + (input.dock === 'under-menu' ? PLACEMENT.promptDock : dockGap);
     const bottom = actionBarTop - clearance;
     for (const tryX of [x, minX, maxX]) {
@@ -126,14 +146,15 @@ export function placeBubble(input: PlacementInput): BubblePlacement {
       for (let i = 0; i < 24; i++) {
         const hit = obstacles.filter((o) => intersects({ x: tryX, y, width, height }, o));
         if (hit.length === 0) {
-          if (y + height <= bottom) return result(tryX, y, null);
+          if (y + height <= bottom) return { placement: result(tryX, y, null), clear: true };
           break;
         }
         y = Math.max(...hit.map((o) => o.y + o.height)) + dockGap;
       }
     }
-    return result(x, top, null);
+    return { placement: result(x, top, null), clear: false };
   };
+  const ok = (placement: BubblePlacement) => ({ placement, clear: true });
 
   if (input.dock === 'under-menu' || !span) {
     return dockAt(clampX(input.dock === 'under-menu' ? viewportMid - width / 2 : aimX - width / 2));
@@ -144,12 +165,12 @@ export function placeBubble(input: PlacementInput): BubblePlacement {
   // 1. Below the lowest hole.
   const belowY = span.y + span.height + notch;
   const below: Box = { x, y: belowY, width, height };
-  if (belowY + height <= actionBarTop - clearance && free(below)) return result(x, belowY, 'up');
+  if (belowY + height <= actionBarTop - clearance && free(below)) return ok(result(x, belowY, 'up'));
 
   // 2. Above the highest hole.
   const aboveY = span.y - notch - height;
   const above: Box = { x, y: aboveY, width, height };
-  if (aboveY >= scoreBarBottom && free(above)) return result(x, aboveY, 'down');
+  if (aboveY >= scoreBarBottom && free(above)) return ok(result(x, aboveY, 'down'));
 
   // 3. Beside the holes, the roomier side first, inside the free band.
   const bandTop = scoreBarBottom;
@@ -164,7 +185,7 @@ export function placeBubble(input: PlacementInput): BubblePlacement {
     ].sort((a, b) => b.room - a.room);
     for (const side of sides) {
       if (side.room < width) continue;
-      if (free({ x: side.x, y: sideY, width, height })) return result(side.x, sideY, null);
+      if (free({ x: side.x, y: sideY, width, height })) return ok(result(side.x, sideY, null));
     }
   }
 
