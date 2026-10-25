@@ -462,7 +462,7 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 - **Content:**
   - Spotlight rings are keyed by target. The pulse waits out the 200 ms fade-in. Rings wider than 360 px pulse opacity only.
   - The board keeps `scroll-padding-top` at the sticky score bar's measured height, and the coach scrolls every target into view, not just the first.
-  - Lit drop targets at `selected` join the bubble's avoid set, as do `opp-hand` during the success beat and `opponent-zone` and `deck-pile` during Blake's beats.
+  - Lit drop targets at `selected` join the bubble's avoid set (soft since GEOFIX: kept clear when there is room), as do `opp-hand` during the success beat and `opponent-zone` and `deck-pile` during Blake's beats.
   - "You win!" is the headline only, inside the bubble's single live region; the 1.5 and 5.4 success lines drop it.
   - The glasses 8's clone carries the theme's glasses face.
   - `OWN_CONTROLS` and `ownsInput` are exported from `coach.svelte.ts` and shared with `CoachOverlay`.

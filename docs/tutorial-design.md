@@ -423,7 +423,7 @@ Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on
 - **At the counter prompt** the dock starts `promptDock` (108 px) under the menu row, below the prompt's heading and its "Blake played a 4…" line.
 - **Final constants** (`PLACEMENT`): clearance 12, gutter 16, hole padding 6, notch 8, dock gap 8, `promptDock` 108. The bubble reserves 150 px of height, plus 34 px with a headline.
 - **The avoid set** is the demonstrated card and its target, `staging-bar`, `menu-button`, the counter options and "Let it resolve", and the staged card and target once Confirm is up. *(T12b)* It also takes:
-  - at `selected`, every lit target of the selected card (`data-state="highlighted"` on a `zone-*`, `point-*` or `perm-*` holder);
+  - at `selected`, every lit target of the selected card (`data-state="highlighted"` on a `zone-*`, `point-*` or `perm-*` holder), *when there is room*. *(As built, GEOFIX.)* These are soft boxes, added last to the soft list, so they are the first dropped. Holes, `staging-bar`, `menu-button`, the counter options and the staged cards stay hard. With lit targets hard, no spot cleared them at 393×660 in step 3.1, and the fallback dock covered the spotlit holes;
   - `opp-hand` during the success beat (stage `done`), so the glasses flip in 5.1 stays in sight;
   - `opponent-zone` and `deck-pile` during Blake's think pause and narration, where his card leaves his hand and lands.
 - *(As built, 2026-10-24, T14fix.)*
