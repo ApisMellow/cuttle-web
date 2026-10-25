@@ -69,6 +69,10 @@ function envelopeFor(
       },
       sevenRevealed: null,
       pending: null,
+      // Issue #93: required view fields since engine v0.3.0. A phase-3 state
+      // with Blake to act is his owed discard after Alice's 4.
+      counterable: false,
+      owedDiscards: { you: 0, opponent: phase === 3 && active === 1 ? 2 : 0 },
     },
     legalMoves: myTurn ? [{ Kind: 0, Card: null, HandIndex: 0, Target: null, JackTarget: null, ScrapIndex: 0, DiscardA: 0, DiscardB: 0, SubMove: null }] : [],
     descriptions: myTurn ? ['draw a card'] : [],

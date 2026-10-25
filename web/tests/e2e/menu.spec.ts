@@ -2,14 +2,19 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 
+import { loadLegacyCounterWindow } from './helpers/legacy-counter-window';
+
 // The in-game menu: R17.2 (Rules from the menu mid-decision, the game
 // undisturbed), R23.2 (a menu control switches the card style, no reflow,
 // never in the save), R4 (Home keeps the game; Resume brings it back
 // exactly; New game from the menu asks first). SPEC §5.5, §5.6 rule 5, §5.7.
 //
 // The golden deal (seed "42", dealer P2): Alice holds 2♥ 3♣ A♥ K♦ Q♣,
-// Blake 5♥ 9♥ 8♦ 4♦ 5♠ 4♥. Alice draws (the 2♣) and keeps her 2♥, so when Blake
-// plays 5♥ as a one-off Alice gets a REAL counter window.
+// Blake 5♥ 9♥ 8♦ 4♦ 5♠ 4♥.
+//
+// Issue #93: engine v0.3.0 opens no counter window in new play, so the
+// counter-window cases resume a legacy phase-1 save instead
+// (helpers/legacy-counter-window.ts), which still shows the CounterPrompt.
 
 interface HookMove {
   index: number;
@@ -63,19 +68,15 @@ async function startGoldenGame(page: Page): Promise<void> {
   await expect(page.getByTestId('board')).toBeVisible();
 }
 
-/** handoff -> reveal via the two-step pill, landing on the board (issue #95: no recap). */
-async function reveal(page: Page): Promise<void> {
-  await expect(page.getByTestId('curtain-gate')).toBeVisible();
-  await page.getByTestId('reveal-two-step').click();
-  await page.getByTestId('reveal-two-step').click();
-  await expect(page.getByTestId('board')).toBeVisible();
-}
-
-/** A counter handoff: the gate, then the prompt at once (ruling 2026-09-29: no recap repeating the one-off). */
-async function revealToPrompt(page: Page): Promise<void> {
-  await expect(page.getByTestId('curtain-gate')).toBeVisible();
-  await page.getByTestId('reveal-two-step').click();
-  await page.getByTestId('reveal-two-step').click();
+/**
+ * Issue #93: a legacy counter window. Writes the phase-1 save addressed to
+ * `to`, reloads, resumes, and passes the resume gate to the prompt (no
+ * recap repeating the one-off, ruling 2026-09-29).
+ */
+async function resumeToPrompt(page: Page, to: 0 | 1, name: string): Promise<void> {
+  await loadLegacyCounterWindow(page, to);
+  await page.getByTestId('resume').click();
+  await passResumeGate(page, name);
   await expect(page.getByTestId('recap')).toHaveCount(0);
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
 }
@@ -147,7 +148,7 @@ test('the menu button sits in the score bar; opening and closing it moves nothin
   expect(await boxes(page)).toEqual(before);
 });
 
-test('R17.2: Rules from the menu at the reveal gate and at a real counter window leave the curtain, the save and lastSeenSeq alone', async ({ page }) => {
+test('R17.2: Rules from the menu at the reveal gate and at a legacy counter window leave the curtain, the save and lastSeenSeq alone', async ({ page }) => {
   await startGoldenGame(page);
   await play(page, /^draw/, 0, 'deck');
 
@@ -167,14 +168,12 @@ test('R17.2: Rules from the menu at the reveal gate and at a real counter window
   expect(await save(page)).toBe(atGate);
   await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('board')).toBeVisible();
-  await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
 
-  // The real counter window: Alice holds 2♥. Ruling 2026-09-29: no recap
-  // first, since the prompt already shows the 5.
-  await revealToPrompt(page);
+  // A legacy counter window (issue #93): Alice, holding 2♣, against Blake's 6♣.
+  await resumeToPrompt(page, 0, 'Alice');
   await expect(page.getByTestId('counter-prompt')).toBeVisible();
   const counters = await page.locator('[data-testid^="counter-option-"]').count();
-  expect(counters).toBeGreaterThanOrEqual(1); // 2♥, and the 2♣ she drew
+  expect(counters).toBeGreaterThanOrEqual(1); // 2♣
   const atAck = await save(page);
   const seenBefore = JSON.parse(atAck as string).lastSeenSeq;
   const seq = await hook(page, (h) => h.seq());
@@ -328,7 +327,7 @@ for (const size of [
   });
 }
 
-test('R4 privacy: after a reload, Resume at the board and at a real counter window shows the gate first, and the gate is the same', async ({ page }) => {
+test('R4 privacy: after a reload, Resume at the board and at a legacy counter window shows the gate first, and the gate is the same', async ({ page }) => {
   await startGoldenGame(page);
   await page.reload();
   await page.getByTestId('resume').click();
@@ -338,12 +337,9 @@ test('R4 privacy: after a reload, Resume at the board and at a real counter wind
   await expect(page.getByTestId('board')).toBeVisible();
   expect(await hook(page, (h) => h.viewer())).toBe(0);
 
-  // Reach Alice's real counter window (she holds 2♥), then reload there.
-  await play(page, /^draw/, 0, 'deck');
-  await reveal(page); // Blake
-  await play(page, /^play 5. as one-off$/, 4, 'zone-oneoff');
-  await revealToPrompt(page); // Alice
-  await expect(page.getByTestId('counter-prompt')).toBeVisible();
+  // Issue #93: reach Alice's counter window from a legacy save (she holds
+  // 2♣ against Blake's 6♣), then reload there.
+  await resumeToPrompt(page, 0, 'Alice');
   const atAck = await save(page);
 
   await page.reload();
