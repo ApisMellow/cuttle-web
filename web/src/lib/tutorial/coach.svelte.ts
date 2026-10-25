@@ -718,9 +718,11 @@ export class CoachController {
     }
     // T12b. During the success beat Alice's glasses can turn Blake's hand
     // over; during his think pause and narration his card leaves that hand
-    // (or a drawn one arrives) and lands in his rows. Keep those in sight.
-    if (stage === 'done' || stage === 'blake') {
-      const el = this.#el(stage === 'blake' ? 'opponent-zone' : 'opp-hand') ?? this.#el('opp-hand');
+    // and lands in his rows, or a drawn card flies from the deck to his hand.
+    // Keep those in sight.
+    const beatClear = stage === 'blake' ? ['opponent-zone', 'deck-pile'] : stage === 'done' ? ['opp-hand'] : [];
+    for (const id of beatClear) {
+      const el = this.#el(id);
       if (el) avoid.push(boxOf(el));
     }
 

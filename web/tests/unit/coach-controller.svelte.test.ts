@@ -1069,6 +1069,8 @@ describe("T12b: the bubble stays off Blake's hand during the beats", () => {
       expect(c.stage).toBe('blake');
       expect(table.line.text).toBe("Blake's turn.");
       expect(intersects(bubbleBox(c), BOARD_852['opponent-zone']), 'think pause over his side').toBe(false);
+      // His draw starts at the deck: that stays in sight too.
+      expect(intersects(bubbleBox(c), BOARD_852['deck-pile']), 'think pause over the deck').toBe(false);
 
       vi.advanceTimersByTime(700);
       await settle();
@@ -1076,6 +1078,7 @@ describe("T12b: the bubble stays off Blake's hand during the beats", () => {
       expect(c.stage).toBe('blake');
       expect(table.line.text).toBe('Blake drew an Ace. You saw it.');
       expect(intersects(bubbleBox(c), BOARD_852['opponent-zone']), 'narration over his side').toBe(false);
+      expect(intersects(bubbleBox(c), BOARD_852['deck-pile']), 'narration over the deck (his drawn card flies from it)').toBe(false);
       // Still above the action bar: the bubble isn't pushed off the board.
       expect(c.placement.y + 150).toBeLessThanOrEqual(792 - 12);
     });

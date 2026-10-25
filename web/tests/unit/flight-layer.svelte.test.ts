@@ -659,6 +659,10 @@ describe('flightScript', () => {
     for (const a of withFlip.actors.filter((x) => x.key !== 'mover')) expect(a.glassesFrames).toBeNull();
   });
 
+  it('a glasses 8 played BY Blake turns face up and becomes the glasses face too (public once played, as PermanentRow draws it)', () => {
+    expect(replyScript(entry(1, K.PlayPermanent, eight)).actors.find((a) => a.key === 'mover')).toMatchObject({ back: true, face: eight, glassesFrames: expect.any(Array) });
+  });
+
   it('a glasses 8 without Blake’s hand in the after view still flies; nothing turns over', () => {
     const s = script(move(K.PlayPermanent, { Card: eight, HandIndex: 2 }), view());
     expect(s.actors.map((a) => a.key)).toEqual(['mover']);
