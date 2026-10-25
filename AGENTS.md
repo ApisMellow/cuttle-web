@@ -442,6 +442,56 @@ that makes your list complete.
 - Connection tests inject a fake socket factory, a fake environment
   (`online-fakes.ts`) and `random`, and drive time with `vi.useFakeTimers`.
 
+### Tutorial (R25)
+
+Learn to play lives in `web/src/lib/tutorial/` plus the `Coach*`,
+`GhostDemo`, `FlightLayer`, `LessonDoneSheet` and `TutorialLessons`
+components. The contract is SPEC §5.11. The design is
+`docs/tutorial-design.md`, and the plan with its build-time rulings is
+`docs/tutorial-plan.md`.
+
+- **The gate is `TutorialTable.apply`** (`table.svelte.ts`), the tutorial's
+  `TableSource`. It is the only path to the engine for a learner move. It
+  refuses every commit that doesn't match the current move step,
+  including any commit outside a move step. A refusal applies nothing,
+  bumps `refusals` and resolves normally. Never filter `legalMoves` to
+  steer the learner (R11). `TutorialTable` is the one bridge caller
+  besides `GameStore`; it holds only `view(0)`.
+- **The coach reads the DOM, never the staging store.** `CoachController`
+  and `readStagedPage` read the GameScreen root's attributes (never
+  `document`) and import nothing from `lib/stores/staging.svelte.ts`. Tests
+  enforce it.
+- **Blake's envelope stays local.** His legal list exists only as a local
+  variable inside the reply callback: never a field, a hook argument or
+  rendered. His flights use public history only:
+  - `beforeReply(view0)` → `snapshot`;
+  - `afterReply(entry)` → `captureReply`, which reads `by`, `kind`, `card`
+    and `targetCard`.
+  Never pass his `Move` to `capture`. The S6 walk in
+  `tutorial-table.test.ts` covers fields and hook arguments.
+- **Tutorial storage is `cuttle-web:tutorial` only**, `{"v":1,"done":[…]}`,
+  every access in try/catch. The tutorial never writes `cuttle-web:game`,
+  `cuttle-web:tally`, `cuttle-web:settings` or the session's names.
+- **Lesson copy lives in `lessons.ts`.** `tutorial-lessons-wasm.test.ts`
+  checks it: golden tables for every main, staged, success and tap-route
+  line and every nudge, length limits, no suit glyphs, plus the engine
+  replay against golden descriptions. A copy change updates the golden
+  table in the same PR. Import the shared lines (`CANCEL_SUFFIX`,
+  `NEXT_FIRST`, `SNAG_LINE`, …); never retype them.
+- **e2e helpers** are in `web/tests/e2e/helpers/tutorial.ts`: navigation,
+  waits on `coach-bubble`'s `data-step` and `data-stage` (never fixed
+  timeouts), tap, drag and keyboard moves, storage snapshots and
+  geometry readings. Reuse them; don't fork a second set.
+- **The overlay must never cover a sheet.** A new sheet or dialog in the
+  game screen joins `COVERING_SHEETS` in `coach.svelte.ts`, or the overlay
+  paints over it (`.game-screen` is `isolation: isolate`).
+- **Taps during beats:** the coach's own controls and `menu-button`
+  (`OWN_CONTROLS`) never skip a beat. Everything else, the bubble copy
+  included, does.
+- **No state path awaits an animation.** Beats are timers with a
+  generation check. Motion hooks run inside try/catch. Flights write no
+  attribute, class or state.
+
 ### Svelte 5 conventions
 
 - Runes only: `$state`, `$derived`, `$props`, `$effect`. No `export let`,

@@ -1,8 +1,8 @@
 name: CI
 
 # Runs the full mechanical gate (scripts/ci.sh, SPEC §7.6) on every pull
-# request to main and on every push to main, so a PR shows pass/fail
-# before it merges.
+# request into main or a feat/** integration branch, and on every push to
+# those branches, so a PR shows pass/fail before it merges.
 on:
   pull_request:
     branches: [main, 'feat/**']
