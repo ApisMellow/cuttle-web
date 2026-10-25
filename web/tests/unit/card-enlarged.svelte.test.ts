@@ -270,7 +270,7 @@ describe('press and hold to enlarge (issue #54)', () => {
     pointer('pointerdown', card, AT.x, AT.y);
     hold(LONG_PRESS_MS);
     expect(q(el, 'card-enlarged')).not.toBeNull();
-    game.curtain = { kind: 'handoff', to: 1 };
+    game.curtain = { kind: 'handoff', to: 1, reason: 'resume' };
     await tick();
     flushSync();
     expect(q(el, 'card-enlarged')).toBeNull();
