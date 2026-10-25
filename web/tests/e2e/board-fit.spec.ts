@@ -163,6 +163,44 @@ test.describe('B2: Mobile Safari with toolbars (393x660): the board scrolls, the
     expect(m.markerTop!).toBeGreaterThanOrEqual(0);
     expect(m.markerBottom!).toBeLessThanOrEqual(m.handBottom);
   });
+
+  // T12b: the score bar is sticky inside the scrolling board, so the board
+  // keeps a scroll padding of the bar's height. `scrollIntoView({block:
+  // 'nearest'})` (the coach, keyboard focus) then stops a card just below the
+  // bar instead of under it.
+  test('393x660: scrolling a card on the far side into view stops it below the sticky score bar', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 660 });
+    await page.goto('/');
+    await page.waitForSelector('body');
+    const r = await page.evaluate(async (harnessUrl) => {
+      const H = (await import(harnessUrl)) as Harness;
+      H.unmountAll();
+      (document.getElementById('app') as HTMLElement).style.display = 'none';
+      const { board } = H.mountGameColumn({ view: H.worstCaseView(), stagedDescription: 'Scuttle 6♥ with 9♣' });
+      const bar = board.querySelector('[data-testid="score-bar"]') as HTMLElement;
+      // The opponent's hand: the top row on the far side.
+      const target = board.querySelector('[data-testid="opp-hand"]') as HTMLElement;
+      board.scrollTop = board.scrollHeight;
+      const hiddenTop = target.getBoundingClientRect().top;
+      target.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      return {
+        boardTop: board.getBoundingClientRect().top,
+        barTop: bar.getBoundingClientRect().top,
+        barBottom: bar.getBoundingClientRect().bottom,
+        barHeight: bar.getBoundingClientRect().height,
+        padding: getComputedStyle(board).scrollPaddingTop,
+        hiddenTop,
+        top: target.getBoundingClientRect().top,
+        scrollTop: board.scrollTop,
+      };
+    }, HARNESS_URL);
+    console.log('[board-fit 393x660 scroll padding]', JSON.stringify(r));
+    // The precondition: scrolled to the bottom, the card is above the bar's bottom edge.
+    expect(r.hiddenTop).toBeLessThan(r.barBottom);
+    expect(r.padding).toBe(`${r.barHeight}px`);
+    expect(r.top).toBeGreaterThanOrEqual(r.barBottom - 0.5);
+    expect(r.top).toBeLessThanOrEqual(r.barBottom + 0.5);
+  });
 });
 
 test.describe('D (R10): a wide permanents row never hides a card, and every permanent is reachable', () => {

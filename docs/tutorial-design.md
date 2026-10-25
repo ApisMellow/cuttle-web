@@ -1,6 +1,7 @@
 # Learn to play: interactive tutorial design
 
-**Status:** design, ready to plan (2026-10-24). Decisions by ApisMellow; PRD §10 amendment A-8; ledger group R25.
+**Status:** built on the `feat/tutorial` integration branch (2026-10-24), pending the merge to `main`. Decisions by ApisMellow; PRD §10 amendment A-8; ledger group R25. Build plan, progress and build-time rulings: `docs/tutorial-plan.md`. Contract: `docs/SPEC.md` §5.11.
+**As-built amendments** are marked *(as built, 2026-10-24)* where the shipped tutorial differs from the original design text. Items marked T12b came with the T12b polish item (PR #100).
 **Reads with:** `docs/PRD.md` (A-8), `docs/SPEC.md` (§2.4 restore, §3.3, §5.2–§5.9, §6.1), `docs/design.md` (tokens, §6–§9), `docs/requirements.yaml` (R25.x), `docs/loop-workflow.md` §4.5.
 **Engine:** `github.com/ApisMellow/cuttle@v0.2.1`. Every rule claim below cites it.
 
@@ -135,7 +136,9 @@ On entry the deal plays (§8.5).
 | 1.2 | next | `opponent-zone` | "This is Blake's side. His hand stays face down. Cards he plays land here." | — | — | — | — |
 | 1.3 | next | `center-zone` | "In the middle: the deck you draw from, and the scrap pile, where used cards go." | — | — | — | — |
 | 1.4 | next | `player-zone` | "This is your side. Only you see your hand. Cards you play go in the rows above it." | — | — | — | — |
-| 1.5 | move | idle `hand-card` 9D · selected + `zone-points` · staged `staging-confirm` | idle/selected: "Your 9 gets you to 21. Drag it onto your Points row." staged: "Nothing counts until you confirm. Tap Confirm." | drag 9D to `zone-points`, then tap `staging-confirm` once staged | PlayPoint 9D | 9D on Blake's 10S (a 9 one-off): "That would send his 10 back to his hand. This time, put your 9 on your Points row." Anything else: "Not this one. Your 9 gets you to 21." | "21. You win!" plus the win wave (§8.6) |
+| 1.5 | move | idle `hand-card` 9D *(as built: and `zone-points`)* · selected + `zone-points` · staged `staging-confirm` | idle/selected: "Your 9 gets you to 21. Drag it onto your Points row." staged: "Nothing counts until you confirm. Tap Confirm." | drag 9D to `zone-points`, then tap `staging-confirm` once staged | PlayPoint 9D | 9D on Blake's 10S (a 9 one-off): "That would send his 10 back to his hand. This time, put your 9 on your Points row." Anything else: "Not this one. Your 9 gets you to 21." | "You reached 21." under the "You win!" headline, plus the win wave (§8.6) |
+
+*(As built, 2026-10-24, T12b.)* The 1.5 success line was "21. You win!". "You win!" is now only the bubble's headline, which sits in the same live region as the line (§8.6, §9), so the win is shown and announced once. *(As built, 2026-10-24, T14fix.)* The line became "You reached 21." (the bare "21." read as a fragment), and the idle spotlight at 1.5, the learner's very first move, lights `zone-points` as well as the 9.
 
 **Done line:** "You know the goal: reach 21 first."
 **Engine:** PlayPoint wins on the spot when the total reaches the threshold (`engine/apply.go:174-192`, `checkWin` `:817-826`, `Threshold` `engine/win.go:5-18`). Legal for 9D here: PlayPoint, and a 9 one-off on Blake's 10S (`apply.go:70-87`). A 9 can't scuttle a 10 (`card/card.go:51-56`).
@@ -174,11 +177,13 @@ On entry the deal plays (§8.5).
 
 | Step | Kind | Spotlight | Coach copy | Demo | Expected | Wrong-move nudge | Success |
 |---|---|---|---|---|---|---|---|
-| 4.1 | move | AS → `zone-oneoff` → Confirm | "Blake has 19, so close. Some cards have a one-off power. Your Ace wipes every point card off the table. Drop it on the middle spot." | drag AS to `zone-oneoff` | OneOff AS | AS for points: "On your Points row an Ace is just 1 point. Drop it on the middle spot to use its power." 5C one-off: "A 5 draws 2 cards, but Blake would still have 19. Use the Ace." Other: "Use your Ace. Drop it on the middle spot." | "Wiped, yours too. A one-off happens right away, then goes to the scrap." |
+| 4.1 | move | AS → `zone-oneoff` → Confirm | "Blake has 19! Your Ace has a one-off power: it wipes every point card off the table. Drop it on the middle spot." *(as built; see below)* | drag AS to `zone-oneoff` | OneOff AS | AS for points: "On your Points row an Ace is just 1 point. Drop it on the middle spot to use its power." 5C one-off: "A 5 draws 2 cards, but Blake would still have 19. Use the Ace." Other: "Use your Ace. Drop it on the middle spot." | "Wiped, yours too. A one-off happens right away, then goes to the scrap." |
 | — | Blake | — | "Blake's turn." | — | Blake: OneOff 4D. Alice holds a 2, so the engine opens a counter window and the counter prompt appears. | — | — |
 | 4.2 | move | `counter-option-*` (the 2) → `staging-confirm` inside `counter-prompt` | "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm." staged: "Tap Confirm to stop his 4." | tap the counter option, then Confirm | Counter with 2H | "Let it resolve": "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (Refused by the gate; the prompt remounts fresh, §5.5.1.) | "Stopped. His 4 does nothing, and his turn is over." |
 
-**Done line:** "A one-off happens at once, and only a 2 can stop it. Rules in the menu lists every one-off."
+*(As built, 2026-10-24, T3.)* The 4.1 main line was "Blake has 19, so close. Some cards have a one-off power. Your Ace wipes every point card off the table. Drop it on the middle spot." At 131 characters it broke the 120-character bubble limit (§5.1), so it was shortened to the line in the table (112 characters).
+
+**Done line:** "A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off." *(As built, 2026-10-24, T14fix: was "Rules in the menu lists every one-off.")*
 **Engine (house rulings, verified):** A one-off resolves at once unless the opponent holds an unfrozen 2 (`apply.go:324-341`, `hasLegalCounter` `:489-497`). Blake holds no 2, so the Ace resolves immediately and wipes both sides (`resolveOneOffWith` case Ace, `apply.go:626-634`). The Ace resolves by where it's dropped: the middle spot is the one-off, the Points row is points, and no chooser opens (PRD R11 clarification, SPEC §6.4). Blake's 4 opens a window because Alice holds 2H. Countering makes the chain odd, so the 4 is cancelled, both cards are scrapped, and the turn passes back to Alice (`MoveCounter` `apply.go:342-365`, `resolvePending` `:591-608`). Rules sheet wording: `ONE_OFF_TIMING` in `lib/cardText.ts`.
 
 #### 5.5.1 Step 4.2 in full: the counter window (decided call, ApisMellow, 2026-10-24)
@@ -209,7 +214,9 @@ Glasses come first, so the learner sees Blake's Queen before he plays it.
 | 5.2 | move | a Jack → `point-1-<7D>` → Confirm | "A Jack steals. Drop one on his 7, and that 7 counts for you." | drag JD to Blake's 7D | Either Jack steals 7D | A Jack on 3H: "That steals 3 points. His 7 is worth more." KH: "Save your King for the finish." | "Stolen. You have 15, he has 3." |
 | — | Blake | — | "Blake played his Queen." | — | Blake: PlayPermanent QS | — | — |
 | 5.3 | appear `card-detail-popover` | the Jack still in Alice's hand (found by rank) | "His Queen protects his other cards. Tap your other Jack and see." | tap the remaining Jack | — | — | (The popover shows the existing reason, "Their Queen protects their cards from your Jack.") |
-| 5.4 | move | KH → `zone-permanents` → Confirm | "A King lowers the points you need to win. With one King you need 14. You have 15." | drag KH to `zone-permanents` | PlayPermanent KH | Draw: "Play your King." | "You need 14, and you have 15. You win!" plus the win wave |
+| 5.4 | move | KH → `zone-permanents` → Confirm | "A King lowers the points you need to win. With one King you need 14. You have 15." | drag KH to `zone-permanents` | PlayPermanent KH | Draw: "Play your King." | "You need 14, and you have 15." under the "You win!" headline, plus the win wave |
+
+*(As built, 2026-10-24, T12b.)* The 5.4 success line was "You need 14, and you have 15. You win!". As at 1.5, "You win!" is only the headline now (§8.6, §9).
 
 **Done line:** "That's Cuttle. Jacks steal, Queens protect, Kings lower your goal, and an 8 can be glasses. You're ready to play."
 **Engine:** Glasses are an 8 as a permanent (`apply.go:127-129`, `:232-242`), and the view shows the opponent's hand to its owner (SPEC §3.2). A Jack moves the point card to Alice's side (`apply.go:201-230`). A Queen blocks every Jack target (`apply.go:88-97`), so the remaining Jack has no move and is dimmed; tapping it opens the popover with `BLOCKED_REASON.jackQueen` (`lib/cardText.ts`). A King lowers the threshold to 14 (`engine/win.go:5-18`). Playing a permanent checks for a win right away (`apply.go:235-241`), so 15 ≥ 14 wins on the spot. **Why this order:** an 8 for points while holding 15 would win (23 ≥ 21), so glasses come before the steal; with 8 points, 8C for points makes only 16.
@@ -269,7 +276,7 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 | `curtain` | `{kind:'none'}`, or `{kind:'ack', to:0}` while the engine is at `PhaseAwaitingCounter` with Alice active (lesson 4.2), so GameScreen mounts the real `CounterPrompt`. The ack holds for the whole counter window, refusals included: it never drops to `none` mid-window (§5.5.1). Never a handoff, reveal, recap or result: there's one player at the phone. |
 | `refusals` *(new optional field, §6.3)* | Starts at 0; the gate adds 1 for every move it refuses. |
 | `drawReveal` | `null` (no lesson resolves a 5 for Alice). |
-| `pending` | `true` while Blake is "thinking" (the board is inert and Confirm disabled, as for online play). |
+| `pending` | `true` while Blake is "thinking" (the board is inert and Confirm disabled, as for online play). *(As built: from the learner's match until Blake's last reply lands, on steps Blake answers; plan P3.)* |
 | `names` *(new optional field, §6.3)* | `[learnerName, 'Blake']`. |
 | `allowsNewGame` *(new optional field, §6.3)* | `false`. |
 | `apply(i)` | The gate. See below. |
@@ -284,7 +291,14 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 3. **Match:** call `motion.capture(move)` synchronously (the pre-apply rects, §8.4), then `engine.apply(i)`. Drop the returned envelope (it is the mover's; for Alice it equals `view(0)`). Fetch `view(0)`, set the state, and advance the step. Then, if the step has Blake replies, set `pending = true` and schedule them (below).
 4. Engine errors (`ok:false`) set a tutorial error. The coach shows "This lesson hit a snag." with **Restart lesson** and **Leave**: never a dead end.
 
+*(As built, 2026-10-24.)*
+- **Outside a move step** the gate refuses every commit (plan P1): "Tap Next first." at a `next` step, "First, tap your other Jack." at 5.3, and no copy change once the lesson is finished or in error.
+- **Step 3's capture** is a hook, not a direct call. `TutorialTableDeps.beforeApply(move, view)` runs before the engine apply and `afterApply()` after the state is set. Both are learner-only and wrapped in try/catch, so a motion failure never breaks a lesson.
+- **The snag** also covers a view that isn't seat 0's. While it shows, the overlay blocks the board below the score bar; the menu row, Restart lesson and Leave stay live.
+
 **Blake's replies.** Each scripted reply is a structured predicate (`{kind, card, target?}`), not a list index. After the think pause (700 ms; 400 ms under reduced motion), the table calls `engine.legalMoves()` for Blake's legal list. Exactly one move must match the predicate (zero or several is a script error, see step 4). The table applies it, fetches `view(0)`, and sets `pending = false`. Blake's legal-move envelope lives only in a local variable inside that call: it is never assigned to a field, never rendered and never stored (a strict test mutates this, §11). The pause is a timer, not an awaited animation, so SPEC §5.9's "no state path awaits an animation" holds. Tests inject the clock.
+
+*(As built, 2026-10-24, T11.)* Blake's flights get two hooks of their own, and both carry seat-0 public data only. `beforeReply(view0)` runs just before his move applies, with the seat-0 view on show. `afterReply(entry)` runs after it, with the new last entry of seat 0's history (`by === 1`), already redacted by the bridge. Neither ever receives his `Move`, his legal list or a seat-1 view, and the S6 walk covers every hook argument.
 
 **Why the gate and not a filtered move list.** Filtering `legalMoves` to the expected move would break the R11 invariant (the UI offers exactly the engine's moves) and SPEC §3.3 (no recomputing engine output). With the gate, every legal card still lights up, the player can explore, and only the commit is checked.
 
@@ -292,17 +306,23 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 
 GameScreen needs three optional read-only fields on `TableSource`. All three are absent on the existing sources, so their behaviour doesn't change:
 
-- `readonly names?: [string, string]`. GameScreen uses `online?.names ?? source.names ?? session.names`. The tutorial must not write the pass-and-play session's names.
+- `readonly names?: [string, string]`. GameScreen uses `online?.names ?? source.names ?? session.names`. The tutorial must not write the pass-and-play session's names. *(As built, 2026-10-24, T2 review.)* "Absent on the existing sources" holds for `GameStore` only. `OnlineGameStore` already has a public `names` (its room names), which fits the optional field. GameScreen reaches it through `online.names` first, and `online` is non-null while that store is attached, so the online screen is unchanged. Nothing may treat "`names` present" as "this is the tutorial" (SPEC §5.4).
 - `readonly allowsNewGame?: boolean`. GameScreen passes `newGame={!isOnline && source.allowsNewGame !== false}` to `GameMenu`, so New game is hidden in the tutorial (Home, Rules and Card style stay).
 - `readonly refusals?: number` *(decided call, ApisMellow, 2026-10-24)*. GameScreen wraps its `<CounterPrompt …/>` in `{#key source.refusals ?? 0}`, so a refused counter-window move remounts a fresh prompt (§5.5.1). For `GameStore` and `OnlineGameStore` the key is the constant 0, so the prompt is never remounted.
 
-**These are the only GameScreen changes:** the `names` fallback, the menu's `newGame` flag, and the `{#key}` around `CounterPrompt`. Nothing inside `CounterPrompt`, `Board` or any board component changes. **The `{#key}` touches counter-window code, so it is strict tier and needs an Opus review** (loop-workflow §4.5). The review mutates it: with the key removed, a refused "Let it resolve" leaves the prompt locked and S3/S4 fail; with the key on any other field, pass-and-play's counter tests must stay green. Table mode never rotates the tutorial, because the viewer is always seat 0 (`screenRotated`, SPEC §5.10). The theme is the player's chosen card style. **SPEC delta to land with the build:** add the three fields to §2.12/W10's TableSource description, the `{#key}` to §4.3's counter-prompt notes, and §5.2's GameScreen notes, and add a §5.11 "Tutorial" pointing here.
+**These are the only GameScreen changes:** the `names` fallback, the menu's `newGame` flag, and the `{#key}` around `CounterPrompt`. Nothing inside `CounterPrompt`, `Board` or any board component changes. **The `{#key}` touches counter-window code, so it is strict tier and needs an Opus review** (loop-workflow §4.5). The review mutates it: with the key removed, a refused "Let it resolve" leaves the prompt locked and S3/S4 fail; with the key on any other field, pass-and-play's counter tests must stay green. Table mode never rotates the tutorial, because the viewer is always seat 0 (`screenRotated`, SPEC §5.10). The theme is the player's chosen card style. **SPEC delta to land with the build:** add the three fields to §2.12/W10's TableSource description, the `{#key}` to §4.3's counter-prompt notes, and §5.2's GameScreen notes, and add a §5.11 "Tutorial" pointing here. *(As built, 2026-10-24, T15.)* The fields went into SPEC §5.4 and §2.4's note, where the `TableSource` text lives (plan P7), not §2.12. §4.3, §5.2 and §5.11 are as listed.
+
+*(As built, 2026-10-24, T12b.)* There is one change below GameScreen. It is layout-neutral and applies to every game: `Board` keeps a `scroll-padding-top` equal to the sticky score bar's measured height, so a target scrolled into view stops below the bar instead of under it (§7.2).
 
 ### 6.4 App routing
 
 - `App.svelte` gets a `'tutorial'` screen when `tutorial.active` is true, checked just before `'home'`. The tutorial starts only from Home, so `game.screen` stays `'home'` underneath.
 - `reportScreen('game')` while in the tutorial, so a waiting app update never reloads a lesson mid-way (SPEC §5.8). The lessons screen reports `'home'`.
 - `{#key lessonId}` around GameScreen and CoachOverlay gives every lesson a fresh GameScreen (staging, drag and menu state), even though every position starts at `seq` 0.
+- *(As built, 2026-10-24, T9.)*
+  - The `{#key}` block holds its own table (`heldLessonTable`) for its whole life. Leave, Lessons and the done sheet's Escape clear `tutorial.table` while GameScreen is still handling that same event, and a GameScreen's `source` must never change under it. The held table is disposed by then, so it applies nothing.
+  - A `#/join/` link is ignored, though still cleared from the URL, while the tutorial is active.
+  - A lesson whose table can't be built stays on the lessons screen with "This lesson hit a snag." (`role="alert"`).
 
 ### 6.5 Isolation from the real game (strict tier)
 
@@ -326,6 +346,10 @@ All overlay layers are `position: fixed` inside the game-screen box, below `Game
 6. **Lesson-done sheet** (`LessonDoneSheet`).
 
 While the menu, Rules, the scrap browser or a card popover is open, the overlay fades to 0 and takes no input. The exception is an `appear` step waiting for that element (step 5.3); that step completes as the element appears, and the next step's coach shows once it closes.
+
+*(As built, 2026-10-24.)*
+- **The fade list** is `COVERING_SHEETS` in `coach.svelte.ts`: `game-menu`, `rules-sheet`, `scrap-browser`, `card-detail-popover` and `ambiguity-chooser`. A new sheet must join it, or the overlay will cover it.
+- **Beat skips** (T9 review): a tap or Enter/Space ends a success or narration beat, and a tap finishes the lesson-1 deal. Presses on the coach's own controls (the bubble's and the done sheet's buttons) and on `menu-button` are excluded, so Leave, Show me and the menu act on their first tap. Taps on the bubble's copy still skip.
 
 ### 7.2 Targets and spotlight stages
 
@@ -351,16 +375,26 @@ A `move` step watches the existing DOM state on the game-screen root with a `Mut
 
 Leaving `staged-wrong` by Cancel returns to `idle` (main line). Confirming anyway reaches the gate, which refuses and goes to `refused`. Two refusals or two `staged-wrong` entries in one step switch the main line to the explicit tap route (§7.4).
 
+*(As built, 2026-10-24.)*
+- **The count** is the table's `wrongTries`: refused commits plus entries into `staged-wrong`, added together. At 2 or more the `idle` and `selected` lines become the tap route.
+- **`refused` on the board** shows the bare nudge. It lasts until the learner next selects or stages a card.
+- **At the counter prompt** the `refused` state is the "Fresh again" row (§5.5.1), so it shows the tap route once `wrongTries ≥ 2`.
+- **The full stage set** on `coach-bubble`'s `data-stage` also has `next`, `appear`, `blake` and `error`.
+
 **The staged-setup matcher** (`match.ts`, pure, tested):
 
 1. **Source:** the hand card with `data-staged="true"` gives its hand index; `deck-pile` staged means the deck. With neither (a Pass, or something the tutorial never stages), the setup is **unknown**.
 2. **Target key:** the staged drop zone (`zone:points`, `zone:permanents`, `zone:oneoff`) or the staged point or permanent card (`point:<o>:<i>`, `perm:<o>:<i>`), mapped with `targetKeyFromTestId` (`lib/dragDrop.ts`). A staged move with no target (a Draw, a one-off whose zone is the only target) uses the zone or `deck`.
-3. **Candidates:** the legal moves in the board's envelope whose affordance slot is that (source, target). This uses the same slot grouping the board uses (`slotKey` and `groupAffordances` in `lib/affordances.ts`, SPEC §6.2); it reads the engine's list and computes no rule.
+3. **Candidates:** the legal moves in the board's envelope whose affordance slot is that (source, target). This uses the same slot grouping the board uses (`slotKey` and `groupAffordances` in `lib/affordances.ts`, SPEC §6.2); it reads the engine's list and computes no rule. *(As built, 2026-10-24, plan P4.)* Candidates group by `boardTargetKey`, the board location the DOM shows, not by `slotKey`. `slotKey` separates a scuttle from a 9 aimed at the same card, but those are one tap and open the chooser, so they must be one group ("unknown" when mixed, step 4). A staged counter takes every Counter, and Decline, Pass and DiscardPair have no slot.
 4. **Verdict:** every candidate matches the step's predicate → **right**. No candidate matches → **wrong**, and the nudge is the step's specific nudge for the first candidate that has one, else the generic one. Some match and some don't (an ambiguity-chooser pair, SPEC §6.4) → **unknown**, and the coach shows the Confirm line, leaving the gate to decide.
 
 **Lesson data rule (enforced by S2):** every expected move's (source, target) slot holds exactly one legal move, so the verdict on an expected setup is never "unknown". Lessons 1–5 satisfy it (§5): no expected move is a 9 or a 2 aimed at a point card it could also scuttle.
 
 Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on the target (instant under reduced motion), because at 393×660 the board scrolls (design.md §6). Holes and the bubble re-measure on resize, on board scroll and after every state change, throttled to one `requestAnimationFrame`.
+
+*(As built, 2026-10-24, T12b.)*
+- **Every spotlit target is scrolled into view, not just the first.** The board scrolls by the union of the targets' boxes, measured below the sticky score bar. When they can't all fit, the first target alone is brought into view. Targets outside the board (the action bar, the counter prompt) never scroll.
+- **The board's scroll padding** is the score bar's measured height. `Board` keeps `scroll-padding-top` at the bar's height (a `ResizeObserver`, with the `--cu-zone-score` token as fallback), so `scrollIntoView` stops a card below the bar instead of under it.
 
 **The counter prompt** (lesson 4.2) is covered in §5.5.1. There the coach reads `counter-prompt` and `staging-confirm` inside it.
 
@@ -379,7 +413,24 @@ Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on
 - `--cu-ink-raised`, 1 px `--cu-ink-line`, `--cu-radius-well`, a soft shadow (as the chooser panel). Width `min(320px, 100% − 32px)`, padding 12/16.
 - `next` steps add **Next** (`coach-next`): a pill with pearl text and a 1 px iris ring. **Ochre stays reserved for the game's own Confirm**, so the learner learns that ochre means "commit".
 - **Show me** (`coach-show-me`) replays the demo. **Leave** (`coach-leave`) exits (§4.3).
+- *(As built, 2026-10-24, T14fix.)*
+  - The footer count reads "Lesson 1/5"; screen readers hear "Lesson 1 of 5". "2 of 5" was unclear, and "Lesson 2 of 5" pushed Next onto a second row at 393 wide.
+  - **Show me** renders only when the step has a demo and the stage plays it (judge M4: it showed with nothing to demonstrate). Otherwise an invisible, unfocusable, `aria-hidden` slot with no testid keeps the footer from jumping.
 - **Placement.** Room is reserved for 4 lines of copy (the staged-wrong case, §7.2). The bubble never covers a spotlight hole, the card being demonstrated, `staging-bar`, `menu-button` or the counter-prompt options. It goes below the lowest hole if it fits above the action bar with 12 px to spare; else above the highest hole; else on the side with more room, allowed to overlap only unspotlit board; else docked under the score bar. Horizontally it centres on the hole and clamps to a 16 px gutter. At the counter prompt it docks under the menu row. An e2e geometry check covers every step at all three viewports (§11).
+
+*(As built, 2026-10-24, T12 and T12b.)*
+- **The dock slides past obstacles** (`dockAt` in `placement.ts`). It starts under the score bar and slides down past every hole or avoid box it would touch. It tries the wanted x, then the left gutter, then the right gutter. It stays at the top only when no free spot exists above the action bar.
+- **At the counter prompt** the dock starts `promptDock` (108 px) under the menu row, below the prompt's heading and its "Blake played a 4…" line.
+- **Final constants** (`PLACEMENT`): clearance 12, gutter 16, hole padding 6, notch 8, dock gap 8, `promptDock` 108. The bubble reserves 150 px of height, plus 34 px with a headline.
+- **The avoid set** is the demonstrated card and its target, `staging-bar`, `menu-button`, the counter options and "Let it resolve", and the staged card and target once Confirm is up. *(T12b)* It also takes:
+  - at `selected`, every lit target of the selected card (`data-state="highlighted"` on a `zone-*`, `point-*` or `perm-*` holder), *when there is room*. *(As built, GEOFIX.)* These are soft boxes, added last to the soft list, so they are the first dropped. Holes, `staging-bar`, `menu-button`, the counter options and the staged cards stay hard. With lit targets hard, no spot cleared them at 393×660 in step 3.1, and the fallback dock covered the spotlit holes;
+  - `opp-hand` during the success beat (stage `done`), so the glasses flip in 5.1 stays in sight;
+  - `opponent-zone` and `deck-pile` during Blake's think pause and narration, where his card leaves his hand and lands.
+- *(As built, 2026-10-24, T14fix.)*
+  - **Soft boxes.** `placeBubble` takes a `soft` list: boxes kept clear when there is room, most important first. When no spot clears them all, they are dropped from the end, one at a time. Holes and hard avoids are never given up for them.
+  - **Flights during beats** feed the soft list (judge M2: the bubble hid Blake's points row during the 3.1 scuttle). In the learner's success beat and in Blake's beats, the move's `flightBoxes` (`motion.ts`) are soft: the hit card, every point card an Ace sweeps, the landing slot, the one-off spot, the scrap and the starting slot, in that order.
+  - **At `staged-wrong`** the step's real target is soft too, because the nudge talks about it.
+  - **Re-measuring after a drag** (judge M1: the bubble covered the staged card after a real drag). The coach also re-measures on `transitionend` and `transitioncancel` inside the GameScreen root, so a dragged card easing back into its slot is measured where it settles.
 
 ### 7.4 Wrong moves: never a dead end
 
@@ -424,6 +475,14 @@ New tokens in `tokens.css`, each zeroed (or set as noted) under `prefers-reduced
 | Success chip (✓) | scale 0.6→1, 240 ms `--cu-ease-land` | appears at once |
 | Lesson-done sheet | translateY 100%→0, 320 ms ease-out (Svelte `fly`) | appears at once |
 
+*(As built, 2026-10-24.)*
+- **No Svelte transitions** (T4 ruling). The bubble, chip and sheet enter with CSS keyframes, not Svelte `fly`/`fade`. Only enter motion exists, so rings vanish at once when removed.
+- **`--cu-ease-land` under reduced motion** is `var(--cu-ease-out)`, because an easing can't be zeroed.
+- **Rings** *(T12b)*:
+  - Each ring is keyed by its target, so a new target gets a fresh ring (fade-in, then pulse) and a target that stays spotlit keeps its ring running.
+  - The pulse starts after the 200 ms fade-in, because both animate opacity and a running pulse would override the fade.
+  - A ring wider than 360 px (a zone, the score bar) pulses in opacity only, so its edges stay on screen.
+
 ### 8.3 Ghost demo ("ghost hand")
 
 **Art-hold call:** the ghost hand is not a drawn hand, which would be new imagery. It is a **fingertip dot** plus a **ghost card**:
@@ -446,6 +505,13 @@ New tokens in `tokens.css`, each zeroed (or set as noted) under `prefers-reduced
 **When it plays:** once on step entry, after the bubble lands (+250 ms). It replays after 3.5 s with no pointer or key input, at most three automatic plays per step, and on **Show me** any time. It stops the moment the player presses anywhere (a `pointerdown` listener on window, passive). It never intercepts input.
 
 **Reduced motion:** nothing moves. Two static numbered markers appear (the order is a real sequence): a "1" dot on the card and a "2" dot on the target, joined by a 2 px dashed iris line drawn as a rotated `div`. Confirm gets a "3" once staged. Show me re-shows them for 3 s.
+
+*(As built, 2026-10-24.)*
+- **The "3" sits just above Confirm's top-right corner** (T14fix), so it never covers the label.
+- **The 4.2 tap demo waits for Blake's 4** (T14fix, motion on). Its first play is held about 990 ms after the prompt appears: the one-off's flight into the prompt (740 ms), then the 250 ms entry gap. Show me releases the hold at once. The hold is spent when it is read (`takeDemoHold()`), so a restart can't carry it into another step.
+- **A tap on a labelled button lands near its right end** (T14fix). A tap target more than twice as wide as it is tall, which in practice is 4.2's counter option, is treated as a labelled button. The tap dot, its ripple and the reduced-motion "1" marker land 28 px in from its right end, vertically centred, which clears the "Counter with 2♥: stop their card." label. The deck is still tapped at its centre.
+- **The markers stay visible.** A press does not clear them, because they are not an animation.
+- **Step 4.2, accepted exception (T13 ruling).** At `staged-right` no Confirm "3" shows. Staging the counter option replaces the option button with the staged line, so the demo's only spot is gone and no marker is drawn until Confirm is tapped. The Confirm ring and the bubble still lead the way.
 
 ### 8.4 Card flights and flips (tutorial-only in v1)
 
@@ -472,14 +538,32 @@ Flight plans (`motion.ts`, one per move kind; any kind without a plan falls back
 
 **Reduced motion:** no clones and no flips. Cards appear where the engine put them, as in the real game today, and each destination gets a static ochre ring for 600 ms so the change is still visible.
 
+*(As built, 2026-10-24, T10 and T11.)* **Opponent flights come from public history only.** Step 1 above holds for the learner's own move: `capture(move, view0, root)` runs from the table's `beforeApply` hook, and it throws unless it is the learner's turn. Blake's flights never see his `Move`, whose hand index and target indices are hidden information (issue #69's class):
+
+1. `snapshot(view0, root)` records rects and seat-0 identities before his apply, from the `beforeReply` hook.
+2. `captureReply(snap, entry)` builds the capture from his redacted seat-0 history entry, from the `afterReply` hook. It reads only `by`, `kind`, `card` and `targetCard`.
+
+Plans take a `FlightMove = { kind, card, targetCard }`, never a `Move`. A target is found on the table by card identity, never by index. His clone leaves a fixed slot (his last) as a back and turns face up at the midpoint. Only when glasses already show his hand does it leave the slot that holds that card. Clones are built from plain `{x, y, width, height}` rects, never from `DOMRect` spreads (T10 review: a spread gave NaN keyframes).
+
+*(As built, 2026-10-24, T14fix.)* **A one-off into a counter window flies into the prompt.** When Blake's one-off opens a counter window (lesson 4's 4), the board is unmounted by the time it lands. `intoPrompt` aims it at the counter prompt's thumbnail of the played card instead of the one-off spot and the scrap: it shrinks into the thumbnail and fades.
+
+*(As built, 2026-10-24, T14fix.)* **An iris ring flashes on `opp-hand` during the glasses flip** (720 ms) to say "look here" while Blake's hand turns over. Ochre stays the colour that answers the learner's own drop.
+
+*(As built, 2026-10-24, T12b.)* **The glasses clone carries the glasses face.** The 8's clone fades into the theme's glasses face (`variant="glasses"`, laid out landscape and turned back) during its quarter turn, so it lands looking like the card that replaces it. This applies to Blake's glasses 8 too, which is public once played.
+
 ### 8.5 The deal (lesson 1 only, about 1.4 s)
 
 The board mounts with the lesson position, its point cards fading in (opacity 0→1, 200 ms). Alice's three hand cards leave `deck-pile` as backs, 80 ms apart (360 ms each, `--cu-ease-land`), and flip to faces over their last 160 ms. Blake's five backs fly to `opp-hand`, interleaved, 70 ms apart. The score meters fill through their existing 200 ms transition. The coach's first bubble appears after the last card lands. Input is never blocked: a tap during the deal finishes it instantly (`animation.finish()`). Reduced motion: the board appears complete.
 
 ### 8.6 Success and win beats
 
-- **Every correct move:** the flight lands, the ring flashes ochre, the bubble switches to the success line with a ✓ chip, and 1.2 s later (or on the next tap) the next step begins.
+- **Every correct move:** the flight lands, the ring flashes ochre, the bubble switches to the success line with a ✓ chip, and 1.2 s later (or on the next tap) the next step begins. *(As built, 2026-10-24, T14fix: 2.2 s, `SUCCESS_BEAT_MS`; Blake's narration beat `BLAKE_DONE_BEAT_MS` is 2.2 s too. The judge found 1.2 s too fast to read. The think pause is unchanged, and a tap still skips.)*
 - **A win (lessons 1 and 5):** Alice's point cards rise in a wave (translateY 0→−10→0 px, 420 ms each, 70 ms apart, `--cu-ease-in-out`). Her score meter pulses once (scaleY 1→1.6→1, 300 ms). The bubble says "You win!" in `--cu-font-display` at `--cu-text-xl`. The lesson-done sheet rises 600 ms later. Reduced motion: the static headline only. The board at engine `PhaseGameOver` stays under the overlay at curtain `none` (builder check B6).
+
+*(As built, 2026-10-24.)*
+- **B6 passed in T1.** The post-win `view(0)` stays on show, inert, under the overlay.
+- **The headline is the only "You win!"** *(T12b)*. It sits inside the bubble's single live region, before the success line ("You reached 21." or "You need 14, and you have 15."). Until T12b, "You win!" appeared in both the headline and the line.
+- **The finale's pips fill in turn** (T14fix). On "You've learned Cuttle" the five pips fill with ochre one after another, 90 ms apart, after the sheet has risen (transform and opacity only). Under reduced motion they are simply ochre.
 
 ### 8.7 Why no motion library
 
@@ -491,7 +575,8 @@ The natural slot is the tutorial finale (after lesson 5's win) or the real game'
 
 ## 9. Accessibility
 
-- **Copy is announced.** The bubble is `<section aria-label="Coach">`. Its copy sits in an `aria-live="polite"` paragraph, so each step, nudge, success line and Blake's narrated reply is read once. The scrim, rings, ghost, flights and markers are `aria-hidden`.
+- **Copy is announced.** The bubble is `<section aria-label="Coach">`. Its copy sits in an `aria-live="polite"` paragraph, so each step, nudge, success line and Blake's narrated reply is read once. The scrim, rings, ghost, flights and markers are `aria-hidden`. *(As built, 2026-10-24, T12b.)* The live region is one element that holds the headline and the copy, headline first, so a win is announced once with its line. Focus at lesson start goes to that region.
+- *(As built, 2026-10-24.)* The lessons screen's snag line, shown when a lesson can't start, is `role="alert"`.
 - **Words carry the instruction.** Every action step names what to do in words that work for taps and keys alike. The two-wrong-tries line spells out the tap route (§7.4). Every board target is already its own `<button>` (SPEC §6.1 "Desktop keyboard"), so all five lessons can be finished by keyboard alone (tested).
 - **Focus.**
   - On lesson start, focus goes to the bubble copy (`tabindex="-1"`), so a screen reader starts there.

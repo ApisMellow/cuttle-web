@@ -1,28 +1,34 @@
 # Learn to play: implementation plan
 
-**Status:** plan, 2026-10-24. Implements `docs/tutorial-design.md` (decisions by ApisMellow, PRD §10 A-8, ledger R25.1–R25.12).
+**Status:** plan, 2026-10-24; built on the `feat/tutorial` integration branch the same day (Progress below), pending T14fix's merge and the final merge to `main`. Implements `docs/tutorial-design.md` (decisions by ApisMellow, PRD §10 A-8, ledger R25.1–R25.12).
 **Executed by:** the loop orchestrator, one dispatch per T-item, in rounds (`docs/loop-workflow.md` §5). Each card below is the WHAT for a brief: the orchestrator copies its goal, files, acceptance and red tests into the dispatch, with the absolute worktree path. `AGENTS.md` stays the HOW.
 **Format precedent:** `docs/two-phone-plan.md`. Work items are `T1`–`T15` (the `W` namespace belongs to two-phone play).
 
 ## Progress
 
+Item PRs merge into the `feat/tutorial` integration branch; one final PR takes it to `main` (§4.1). Build log: `docs/loop-log/tutorial-build.md`.
+
 | # | Item | Round | Status |
 |---|---|---|---|
-| T1 | Spike: the board at game over under curtain `none` (B6) | 1 | todo |
-| T2 | GameScreen seam: `names`, `allowsNewGame`, `refusals` key | 1 | todo |
-| T3 | Lessons as data, positions, move predicate, real-wasm replay | 1 | todo |
-| T4 | Coach visual kit: bubble, spotlight, done sheet, placement, tokens | 1 | todo |
-| T5 | `TutorialTable`: the apply gate, Blake's replies, isolation | 2 | todo |
-| T6 | Staged-setup reader and classifier (nudge before Confirm) | 2 | todo |
-| T7 | Progress storage, `TutorialStore`, Home control, lessons screen | 2 | todo |
-| T8 | `motion.ts` base and the ghost demo | 2 | todo |
-| T9 | Coach controller, `CoachOverlay`, App routing | 3 | todo |
-| T10 | `FlightLayer` and flight plans | 3 | todo |
-| T11 | Motion in the lesson: deal, flights, success and win beats | 4 | todo |
-| T12 | Bubble placement tuning and the geometry e2e | 4 | todo |
-| T13 | End-to-end walkthroughs: touch, keyboard, reduced motion | 5 | todo |
-| T14 | Screenshot judge | 5 | todo |
-| T15 | Docs sync: SPEC, ledger, ROADMAP, AGENTS | 5 | todo |
+| T1 | Spike: the board at game over under curtain `none` (B6) | 1 | merged #81 (B6 PASS) |
+| T2 | GameScreen seam: `names`, `allowsNewGame`, `refusals` key | 1 | merged #84 |
+| T3 | Lessons as data, positions, move predicate, real-wasm replay | 1 | merged #85 |
+| T4 | Coach visual kit: bubble, spotlight, done sheet, placement, tokens | 1 | merged #82 |
+| T5 | `TutorialTable`: the apply gate, Blake's replies, isolation | 2 | merged #89 |
+| T6 | Staged-setup reader and classifier (nudge before Confirm) | 2 | merged #87 |
+| T7 | Progress storage, `TutorialStore`, Home control, lessons screen | 2 | merged #88 |
+| T8 | `motion.ts` base and the ghost demo | 2 | merged #86 |
+| T9 | Coach controller, `CoachOverlay`, App routing | 3 | merged #92 |
+| T10 | `FlightLayer` and flight plans | 3 | merged #90 |
+| T11 | Motion in the lesson: deal, flights, success and win beats | 4 | merged #98 |
+| T12 | Bubble placement tuning and the geometry e2e | 4 | merged #97 |
+| T12b | *(added)* Coach polish from the T11 and T12 reviews | 5 | merged #100 |
+| T13 | End-to-end walkthroughs: touch, keyboard, reduced motion | 5 | merged #99 |
+| T14 | Screenshot judge | 5 | REVISE, then ACCEPT on re-check after T14fix |
+| T14fix | *(added)* The judge's must-fixes M1–M4 | 5 | built; merging |
+| T15 | Docs sync: SPEC, ledger, ROADMAP, AGENTS | 5 | this item |
+
+Also on the integration branch: #83, which runs the CI gate on PRs into and pushes to `feat/**`, so item PRs get checks.
 
 ## 1. Shape of the build
 
@@ -103,13 +109,33 @@ Each is the planner's call unless the design already decided it.
 - **B7, lessons screen:** its own screen. *Reason: the design's recommendation; simpler to focus and test.*
 - **P1, commits outside a move step:** the gate refuses every move during `next` and `appear` steps and once the lesson is finished. Copy: next steps "Tap Next first."; step 5.3 "First, tap your other Jack."; finished: no copy change. *Reason: design §7.4 "nothing the learner can do changes the position except the expected move", and Review focus 2.*
 - **P2, missing copy:** the design gives no tap-route line for most steps, no staged line for some, and no subtitles for lessons 3–5. Appendix A drafts them. *Reason: the developer can't invent lesson copy; ApisMellow can overrule any line before T15.*
-- **P3, beat order after a correct move:** success line (1200 ms, or the next tap) → if Blake replies: "Blake's turn." with `pending = true`, then the think pause, then his move applies and his narration line shows → after 1200 ms (or a tap) the next step begins. `pending` is true from the learner's match until Blake's last reply lands. A tap during the think pause is ignored (never a double apply). *Reason: design §6.2 and §8.6 give the pieces but not their order; this order never cuts the success line short.*
+- **P3, beat order after a correct move:** success line (1200 ms, or the next tap) → if Blake replies: "Blake's turn." with `pending = true`, then the think pause, then his move applies and his narration line shows → after 1200 ms (or a tap) the next step begins. `pending` is true from the learner's match until Blake's last reply lands. A tap during the think pause is ignored (never a double apply). *Reason: design §6.2 and §8.6 give the pieces but not their order; this order never cuts the success line short.* *(As built, T14fix: the success and narration beats are 2200 ms, after the judge found 1200 ms too fast; the think pause is unchanged and a tap still skips.)*
 - **P4, the matcher's slot:** the staged setup's candidates are the legal moves with that `HandIndex` (or Kind Draw for the deck) whose `boardTargetKey` (`lib/affordances.ts`) equals the staged target key. That is the board location, which is what the DOM shows, not `slotKey`, which separates a scuttle from a 9 aimed at the same card. *Reason: a scuttle and a targeted one-off on one card are one tap and open the chooser, so they must be one candidate group ("unknown" when mixed, design §7.2 step 4).*
 - **P5, Card style from the menu during a lesson:** allowed; it is the existing menu writing settings at the player's request. S5 runs lessons without touching it. *Reason: the design keeps Card style in the tutorial menu (§4.3).*
 - **P6, lesson 2 ends on Next:** its last step (2.3) is a `next` step, so its done sheet rises when Next is tapped. *Reason: design §4.4 assumes a move ends each lesson; this is the one that doesn't.*
 - **P7, SPEC location:** the `TableSource` description lives in SPEC §5.4 (and §2.4's note), not §2.12. T15 adds the fields there. *Reason: where the text is today.*
 - **P8, coach state in the DOM:** `CoachBubble`'s root carries `data-step` (e.g. `"1.5"`), `data-stage` (`idle | selected | staged-right | staged-wrong | refused | done | next | appear | blake | error`) and `data-tone`. Each spotlight ring carries `data-coach-hole`. Tests and e2e read the coach from these and never from timers. *Reason: e2e needs a stable, state-based wait, and these carry no game data.*
 - **P9, the engine dependency:** `TutorialTable` defaults to the production `lib/bridge/engine.ts` calls. Tests boot the bridge with `await createWasmEngine()` as `game-restore.test.ts` does. No harness change. *Reason: existing precedent.*
+
+### 4.1 Orchestrator rulings during the build (2026-10-24)
+
+The orchestrator made these calls while the build ran. ApisMellow can overrule any of them. Each is recorded in the design as an as-built amendment where it changes design text, and in SPEC §5.11 where it became contract. The per-item detail is in `docs/loop-log/tutorial-build.md`.
+
+- **Integration branch.** Item PRs merge into `feat/tutorial`; one final PR takes it to `main`, so nothing reaches players (Pages deploys from `main`) until the whole tutorial is in. CI runs on PRs into and pushes to `feat/**` (#83).
+- **No three.js in v1** (design D5, §8.8).
+- **Step 4.2's counter prompt remounts via `{#key refusals}`** (design §5.5.1 option (a), minimal form; T2).
+- **The coach nudges before Confirm** (design §7.2 `staged-wrong`; T6, T9).
+- **The 4.1 copy was shortened** to fit the 120-character limit: "Blake has 19! Your Ace has a one-off power: it wipes every point card off the table. Drop it on the middle spot." (T3).
+- **Refusal copy.** On the board, `refused` shows the bare nudge (no Cancel sentence; the board is already idle). At the counter prompt, the "Fresh again" row shows the tap route once `wrongTries ≥ 2` (T9).
+- **`heldLessonTable`** holds the table for each lesson's `{#key}` block, so GameScreen's `source` never changes under an event that clears `tutorial.table` (T9).
+- **The error phase blocks the board below the score bar**; the menu stays live, and so do Restart lesson and Leave (T9, from the T5 review).
+- **The snag line is `role="alert"`** where a lesson can't start (T9, from the T7 review).
+- **Reduced-motion markers stay visible**: a press doesn't clear them (T8). At step 4.2's `staged-right`, no Confirm "3" marker shows; accepted (T13).
+- **Beat skips exclude the coach's own controls and `menu-button`**, so Leave, Show me and the menu act on their first tap; taps on the copy still skip (T9 review B1, corrected ruling). The deal skip uses the same rule (T11), from one definition (`OWN_CONTROLS`, T12b).
+- **Join links are ignored while the tutorial is active** and still cleared from the URL (T9 review N1).
+- **Blake's flights use public-only hooks** (`beforeReply(view0)`, `afterReply(entry)`), never his `Move` (T10/T11 review, §5 amendment below).
+- **"You win!" is the bubble headline only**, inside its single live region (T12b).
+- **The judge's must-fixes were routed as one new item, T14fix** (an Opus developer, an Opus review and a judge re-check), instead of to the owning items (T4, T11, T12) as the T14 card planned.
 
 ## 5. Interfaces
 
@@ -249,7 +275,27 @@ export interface BubblePlacement { x: number; y: number; notch: 'up' | 'down' | 
 export function placeBubble(input: PlacementInput): BubblePlacement;
 ```
 
-`TableSource` gains (T2), all optional and read-only: `names?: [string, string]`, `allowsNewGame?: boolean`, `refusals?: number`.
+`TableSource` gains (T2), all optional and read-only: `names?: [string, string]`, `allowsNewGame?: boolean`, `refusals?: number`. *(As built: `OnlineGameStore` already has a public `names`, read through `online.names`; see the T2 card.)*
+
+**As-built signature changes** *(2026-10-24, T10 and T11 reviews)*. The plan's flight functions took the opponent's `Move`, whose hand index and target indices are hidden information. As built:
+
+```ts
+// lib/tutorial/motion.ts
+export interface FlightMove { kind: MoveKindValue; card: Card | null; targetCard: Card | null }  // public facts only
+export function flightMoveOf(move: Move, view: PlayerView): FlightMove;                  // the learner's own move
+export function flightPlan(move: FlightMove, side: PlayerId, glasses: boolean): FlightPlanName;  // was (move: Move, by, glasses)
+export function capture(move: Move, view: PlayerView, root: ParentNode): FlightCapture;  // learner only: throws unless view.active === 0
+export function snapshot(view0: PlayerView, root: ParentNode): FlightSnapshot;           // new: pre-apply rects + seat-0 identities; throws for viewer ≠ 0
+export function captureReply(snap: FlightSnapshot,
+  entry: Pick<AppliedMove, 'by' | 'kind' | 'card' | 'targetCard'>): FlightCapture;     // new: Blake's flight from his redacted history entry
+// FlightLayer.svelte
+export function play(cap: FlightCapture, root: ParentNode, after?: PlayerView | null): void;
+// lib/tutorial/table.svelte.ts: TutorialTableDeps gains
+beforeReply?(view: PlayerView): void;   // Blake only: the seat-0 view on show, before his apply
+afterReply?(entry: AppliedMove): void;  // Blake only: the new last seat-0 history entry (by === 1)
+```
+
+`capture` is never called with Blake's `Move`. `TutorialStore` routes the four table hooks to the mounted overlay through `attachMotion`.
 
 ---
 
@@ -269,7 +315,7 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 
 - **Goal:** the only GameScreen changes the tutorial needs (design §6.3), with the counter-window remount proven.
 - **Files:** modify `web/src/lib/stores/tableSource.ts` (three optional read-only fields with doc comments); `web/src/lib/components/GameScreen.svelte`: the `names` derivation (`online?.names ?? source.names ?? session.names`), `GameMenu`'s `newGame={!isOnline && source.allowsNewGame !== false}`, and `{#key source.refusals ?? 0}` around the `<CounterPrompt …/>` branch, with a comment citing design §5.5.1; modify the test helper `web/tests/unit/fake-table-source.svelte.ts` (settable `names`, `allowsNewGame`, `refusals`); create `web/tests/unit/game-screen-tutorial-seam.svelte.test.ts`.
-- **Out of scope:** anything inside `CounterPrompt`, `Board` or board components; `GameStore` and `OnlineGameStore` (the fields stay absent there).
+- **Out of scope:** anything inside `CounterPrompt`, `Board` or board components; `GameStore` and `OnlineGameStore` (the fields stay absent there). *(As built, T2 review: `OnlineGameStore` already has a public `names`, its room names, which fits the optional field. GameScreen reaches it through `online.names` first, so its screen is unchanged. Nothing may treat "`names` present" as "tutorial".)*
 - **Ledger:** R25.6 (second criterion; the `allowsNewGame` half of the first). **Tier:** strict. **Owner:** `cuttle-svelte-dev`, Opus; review Opus. **Depends on:** nothing. **Size:** S.
 - **Red tests first:**
   - `source names win over session names`: source names `['Alice','Blake']`, session names set otherwise → the sr-only `<h1>` reads "Alice vs Blake". With `names` absent, the session's names show (unchanged).
@@ -388,6 +434,9 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 - **Rules:** clones only from public identities in the capture (Blake's hand as backs unless glasses are down; a card Blake plays flips face up at the midpoint). The destination element is held invisible with a WAAPI `[{opacity:0},{opacity:0}]`, `fill: 'none'`; no attribute, class or state is written; nothing awaits. `perspective: 900px` on the layer; flips use `rotateY` with `backface-visibility: hidden`. Reduced motion: no clones, a static 600 ms ochre ring on each destination.
 - **Ledger:** R25.8 (second criterion, unit). **Tier:** light. **Owner:** `cuttle-svelte-dev`, Sonnet; review Sonnet. **Depends on:** T3, T8. **Size:** M.
 - **Tests:** every move kind in the five lessons (PlayPoint, PlayPermanent including the Jack steal and the glasses 8, Scuttle, OneOff including the Ace's sweep, Draw by Alice and by Blake, Counter) maps to a named plan, and an unknown kind to `arrive`; Blake's draw without glasses clones a `Back` only; keyframes use only `transform` and `opacity`; the reduced path calls no `animate` and draws the rings.
+- **As built (review REVISE):**
+  - B1: spreading a `DOMRect` gave NaN keyframes, which left Jack and scuttle movers stuck in a real browser. Rects are now copied to plain objects.
+  - B2: Blake's flights needed his `Move`, which carries hidden indices. They now use the public-only `FlightMove`, `snapshot` and `captureReply` (§5, "As-built signature changes").
 
 ### T11. Motion in the lesson: deal, flights, success and win beats
 
@@ -395,6 +444,7 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 - **Files:** modify `web/src/lib/components/CoachOverlay.svelte` (mount `FlightLayer`; deal on lesson 1; ring flash; win wave, score-meter pulse and "You win!" headline; glasses flip in place), `web/src/lib/tutorial/tutorial.svelte.ts` (pass `beforeApply`/`afterApply` to the table: `capture` then `tick()` and `play`); tests `web/tests/unit/tutorial-motion-wiring.svelte.test.ts`, `tutorial-no-await.svelte.test.ts`.
 - **Ledger:** R25.8 (both criteria), R25.9 (unit side). **Tier:** light. **Owner:** `cuttle-svelte-dev`, Sonnet; review Sonnet. **Depends on:** T9, T10. **Size:** M.
 - **Tests:** L5: with `Element.prototype.animate` stubbed to return animations that never finish, all five lessons complete through the driver and the mounted overlay, and every phase change happens on its timer; a tap during the lesson-1 deal calls `finish()` on every deal animation; reduced motion → no clone and `document.getAnimations()` empty once each step settles; win beats run only in lessons 1 and 5.
+- **As built:** T11 also added the Blake flight hooks `beforeReply(view0)` and `afterReply(entry)` to `table.svelte.ts`, so that part was strict tier. The S6 walk now covers every hook argument. The learner's flights are wired as `beforeApply` → `capture(move, view0, boardRoot)`, then `afterApply` → `tick()` → `play(cap, boardRoot, view(0))`. Blake's are wired as `beforeReply` → `snapshot(view0, boardRoot)`, then `afterReply(entry)` → `captureReply(snap, entry)` → `tick()` → `play`. The board root is passed, never the overlay's.
 
 ### T12. Bubble placement tuning and the geometry e2e
 
@@ -403,6 +453,20 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 - **Ledger:** R25.7 (L2 criterion). **Tier:** light. **Owner:** `cuttle-svelte-dev`, Sonnet; review Sonnet. **Depends on:** T9 (T11 merged first if both are in the integration branch; geometry is measured with motion settled). **Size:** M.
 - **Tests (L2):** at 393×852, 430×932 and 393×660 (`test.use({ viewport })`), for every step of every lesson and each of its stages reachable by the helper (idle, selected, staged-right, one staged-wrong, refused at 4.2): the bubble box intersects no `[data-coach-hole]`, `staging-bar`, `menu-button` or `counter-option-*`; `scrollWidth <= clientWidth`; every new testid is ≥ 44×44. Waits are on `data-stage`, never on fixed timeouts.
 - **Acceptance:** green under `ci.sh` with no `flaky` or retries; the hand-back records the final placement constants (B2).
+- **As built:** the final constants are clearance 12, gutter 16, hole padding 6, notch 8 and dock gap 8, plus a new `promptDock` of 108 px. The counter-prompt dock had covered the prompt's heading and played line. The last-resort dock now slides down past holes and staged cards instead of covering them.
+
+### T12b. Coach polish *(added during round 5)*
+
+- **Goal:** close the non-blocking findings from the T11 and T12 reviews before the judge.
+- **Files:** `CoachSpotlight.svelte`, `CoachBubble.svelte`, `CoachOverlay.svelte`, `FlightLayer.svelte`, `Board.svelte` (scroll padding only), `lib/tutorial/{coach.svelte,lessons,motion}.ts`, `web/tests/e2e/helpers/tutorial.ts`, and their tests.
+- **Content:**
+  - Spotlight rings are keyed by target. The pulse waits out the 200 ms fade-in. Rings wider than 360 px pulse opacity only.
+  - The board keeps `scroll-padding-top` at the sticky score bar's measured height, and the coach scrolls every target into view, not just the first.
+  - Lit drop targets at `selected` join the bubble's avoid set (soft since GEOFIX: kept clear when there is room), as do `opp-hand` during the success beat and `opponent-zone` and `deck-pile` during Blake's beats.
+  - "You win!" is the headline only, inside the bubble's single live region; the 1.5 and 5.4 success lines drop it.
+  - The glasses 8's clone carries the theme's glasses face.
+  - `OWN_CONTROLS` and `ownsInput` are exported from `coach.svelte.ts` and shared with `CoachOverlay`.
+- **Ledger:** R25.7, R25.8, R25.10 (no new criteria). **Tier:** light, with an Opus review. **Depends on:** T13, which merges first because both touch `helpers/tutorial.ts`.
 
 ### T13. End-to-end walkthroughs (final round)
 
@@ -422,6 +486,30 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
 - **Owner:** the playtest judge role (loop-workflow §4), Opus. No repo files change; evidence goes in the round log.
 - **Scope (L6):** at 393×852, the lesson 1 deal, a lesson 3 scuttle flight, the lesson 5 glasses flip and the lesson 5 win. Rule accept or revise on legibility, pacing, liveliness, and whether the spotlight or bubble ever hides what the copy talks about. A revise routes to the owning item's developer (T4, T11 or T12) with screenshots.
 - **Depends on:** T11, T12. Runs in parallel with T13.
+- **As built:** the first pass was REVISE. Legibility and liveliness were ACCEPT; pacing, "hides what the copy talks about" and first-impression clarity were REVISE. Must-fixes:
+  - M1: the bubble covered the staged card after a real drag.
+  - M2: the bubble hid Blake's points row during success beats (the 3.1 scuttle).
+  - M3: the beats were too fast at 1.2 s.
+  - M4: Show me rendered with no demo.
+  They went to a new item, T14fix (below). On re-check M1–M4 were fixed in a real browser at 393×852, and the verdict was ACCEPT on all five criteria. R25.11 is verified.
+
+### T14fix. The judge's must-fixes *(added during round 5)*
+
+- **Goal:** M1–M4 from T14, plus the judge's smaller notes.
+- **Changes:**
+  - Success and narration beats are 2200 ms.
+  - `placeBubble` takes a `soft` list. Flight boxes (`flightBoxes`) are soft during beats, and the step target is soft at `staged-wrong`.
+  - The coach re-measures on `transitionend`/`transitioncancel` in the GameScreen root.
+  - `coach-show-me` is conditional.
+  - The footer reads "Lesson N/5".
+  - Step 1.5 spotlights the 9 and `zone-points`, and its success line is "You reached 21."
+  - Lesson 4's done line names "The Rules page".
+  - The reduced-motion "3" sits above Confirm.
+  - The 4.2 demo is held until Blake's 4 has landed in the prompt (`intoPrompt`).
+  - The finale's pips fill in turn.
+  - An iris ring shows on `opp-hand` during the glasses flip.
+- **Review:** Opus REVISE, test-only (Show me must release the 4.2 hold, plus N1–N4); judge re-check ACCEPT.
+- **Ledger:** R25.11. **Tier:** light, Opus on both sides.
 
 ### T15. Docs sync (final round, after T13 and T14 merge)
 
@@ -434,6 +522,7 @@ Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/s
   - `AGENTS.md`: a short "Tutorial (R25)" playbook section: the gate is `TutorialTable.apply`; the coach reads the DOM, never the staging store; Blake's envelope stays local; tutorial storage is `cuttle-web:tutorial` only; lesson copy lives in `lessons.ts` and is checked by `tutorial-lessons-wasm.test.ts`.
   - `docs/traceability.md`: R25 rows, if the file maps requirement IDs to tests.
   - this file's Progress table.
+- **As built:** written in parallel with T12b and T14, from a base before T12b merged (#100). T12b's changes are checked against its merged code and marked "T12b" in the design and SPEC. It also fixes the `ci.yml` header comment (#83 left it saying main only), records the build-time rulings (§4.1) and the flight signature change (§5), and adds `docs/loop-log/tutorial-build.md`. It records the T14 verdict (REVISE, then ACCEPT on re-check after T14fix), so R25.11 is verified, and folds in T14fix's as-built changes.
 
 ## 7. Rounds
 

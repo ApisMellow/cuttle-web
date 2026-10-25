@@ -135,6 +135,13 @@
   --cu-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --cu-ease-in-out: cubic-bezier(0.6, 0, 0.3, 1);
 
+  /* Tutorial coach motion (docs/tutorial-design.md §8.2). Read once per
+     lesson by lib/tutorial/motion.ts; zeroed under reduced motion below. */
+  --cu-dur-flight: 420ms;       /* a card flying to a zone */
+  --cu-dur-demo-travel: 660ms;  /* the ghost card's travel */
+  --cu-dur-deal-stagger: 80ms;  /* gap between dealt cards */
+  --cu-ease-land: cubic-bezier(0.3, 1.25, 0.5, 1); /* a slight overshoot on landing */
+
   --cu-lift-selected: -8px;
   --cu-lift-staged: -12px;
   --cu-lift-hover: -4px;          /* W25: mouse hover on a hand card */
@@ -165,6 +172,11 @@
     --cu-dur-fast: 0ms;
     --cu-dur-med: 0ms;
     --cu-dur-slow: 0ms;
+    --cu-dur-flight: 0ms;
+    --cu-dur-demo-travel: 0ms;
+    --cu-dur-deal-stagger: 0ms;
+    /* An easing cannot be zeroed; the calm variant has no overshoot. */
+    --cu-ease-land: var(--cu-ease-out);
     /* --cu-dur-hold is NOT zeroed: the hold still takes 600ms, the ring
        fills in three discrete steps instead of a sweep (design.md §7). */
   }

@@ -184,7 +184,7 @@ All functions take and return **JSON strings** (A2). None take or return objects
 | `__cuttleSnapshot()` | — | `SnapshotJson` (full, unredacted) | no |
 | `__cuttleRestore(snapshotJson, viewerId)` | `SnapshotJson, 0 \| 1` | `Envelope` | yes |
 
-**Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). In two-phone play the same envelope arrives over a WebSocket from the server's copy of exactly this code (`internal/game`, §2.11). *(Amended 2026-09-29.)* That is not a pure transport swap: the online store is async and receives pushed states, so online play gets its own store behind the `TableSource` seam (W10, `web/src/lib/stores/tableSource.ts`), and the wire protocol around the envelope is §2.12.
+**Bridge owns the state.** The Go side holds one package-level `engine.GameState` plus the move history. The TypeScript side never holds a `GameState` and never constructs a `Move` (A3). In two-phone play the same envelope arrives over a WebSocket from the server's copy of exactly this code (`internal/game`, §2.11). *(Amended 2026-09-29.)* That is not a pure transport swap: the online store is async and receives pushed states, so online play gets its own store behind the `TableSource` seam (W10, `web/src/lib/stores/tableSource.ts`), and the wire protocol around the envelope is §2.12. *(Amended 2026-10-24, Learn to play.)* The tutorial is the seam's third source: `TutorialTable` restores authored lesson positions into this same held state through `__cuttleRestore` and applies only through `__cuttleApply`, with no bridge change (§5.11). `TableSource` gained three optional read-only fields for it, `names`, `allowsNewGame` and `refusals` (§5.4).
 
 `__cuttleApply` takes an **index into the legal-move list of the current state** (A3). The bridge recomputes `engine.LegalMoves(state)` and bounds-checks the index. An out-of-range index is an error, not a panic. Illegal moves are unrepresentable because the client can only name a position in a list the engine produced.
 
@@ -973,6 +973,8 @@ handoff  →  reveal  →  [recap]  →  [ack (the counter prompt)]  →  live v
 
 **The board never mounts at `ack`** *(amended 2026-09-28, W13 GameScreen review; reason restated 2026-09-29)*. At the counter window the one-off has not resolved yet; the prompt is a full-screen decision. The card and chain are read from `game.history`, never `pending`.
 
+**GameScreen keys `CounterPrompt` on `source.refusals ?? 0`** *(added 2026-10-24, tutorial T2; decided call, ApisMellow)*. `CounterPrompt` is once-only: after any of its buttons fires it ignores every later tap until it unmounts. `GameScreen` wraps it in `{#key source.refusals ?? 0}`, so a move the source refuses without applying remounts a fresh prompt (`acted` and `staged` reset, heading focused, key guard re-armed). Only the tutorial's source sets `refusals` (§5.11: step 4.2's refused "Let it resolve"). `GameStore` and `OnlineGameStore` leave it absent, so their key is the constant 0 and the prompt is never remounted; reconnects, `seq`, `pending` and equal-history updates don't remount it either. Nothing inside `CounterPrompt` changed. Evidence: `game-screen-tutorial-seam.svelte.test.ts` 'T2: the refusals key on the counter prompt'.
+
 **The `ack` screen must not be skippable, fast-forwardable, or auto-dismissed.** It is a decision.
 
 **The 7 costs no round trip any more.** A 7 resolves to `PhaseSevenChoosing` with `Active` back on the player who played it (`engine/apply.go`, `case card.Seven`). With no 2 against it the actor keeps the phone and goes straight to the seven panel. With a 2 against it: curtain to the opponent → counter prompt → Decline → curtain back to the actor for the reveal. **OQ-6** (§8) is resolved by the ruling.
@@ -1183,7 +1185,17 @@ App.svelte                        # ensureEngine(), global error boundary, route
 │   ├── GameMenu.svelte           # in-game menu: Rules, Card style, Card gallery, Home, New game (§5.5, §5.6 rule 5, §5.7)
 │   └── StuckState.svelte         # §2.10 — E-1/E-2 diagnostic + scenario export
 ├── ResultScreen.svelte           # R2/R3: win or stalemate, tally, final score, Rematch, Home
-└── RulesScreen.svelte            # R17 — overlay, never unmounts the game
+├── RulesScreen.svelte            # R17 — overlay, never unmounts the game
+└── screen 'tutorial'             # R25 Learn to play (§5.11), from Home's `learn-to-play` only
+    ├── TutorialLessons.svelte    # the lessons screen (tutorial.lessonId === null)
+    └── {#key tutorial.lessonId}  # a lesson: two siblings, the overlay never inside GameScreen
+        ├── GameScreen.svelte     # source = TutorialTable; unchanged board
+        └── CoachOverlay.svelte   # layers, bottom to top:
+            ├── CoachSpotlight.svelte   # scrim with spotlight holes, one ring per hole (aria-hidden)
+            ├── FlightLayer.svelte      # card flights on clones (aria-hidden)
+            ├── GhostDemo.svelte        # fingertip dot + ghost card; numbered markers under reduced motion (aria-hidden)
+            ├── CoachBubble.svelte      # the only overlay element that takes input
+            └── LessonDoneSheet.svelte  # end of a lesson
 ```
 
 `PointRow.svelte` renders a `PointEntry` including its `JackStack`: only the top (newest) Jack is drawn, full card size, offset downward only, so the point card's upper-left corner index stays visible above it; extra Jacks are not drawn separately, and at 2 or more a thin "deck thickness" edge (two card-back slivers past the Jack's bottom-right corner) shows there's more than one. No count number and no player colour render on the stack; the count is exposed only via the aria-label ("stolen, N Jacks"), and only the top Jack is a legal tap target — including as the target of a 2 or a 9. Buried Jacks are never targetable and never answer a tap (the engine only ever offers the top Jack). An ownership badge is driven by `Controller` (§2.8(f)) when the controller differs from the owner. A stolen point renders in the **controller's** row — which is where the engine already puts it (`engine/state.go:3-22`) — with a marker indicating the original `Owner`, so a player can see at a glance which of their points is on loan. (Amended 2026-09-28, ApisMellow — supersedes "fanned above" and the multi-Jack cascade; the card-face redo the same day further supersedes the "top strip" phrasing with the corner index; see `docs/design.md` §6–§7.)
@@ -1203,6 +1215,14 @@ App.svelte                        # ensureEngine(), global error boundary, route
 **In-game menu** *(2026-09-29, `loop/r12-menu`)*. One menu button (`menu-button`, 44×44, `aria-label` "Menu", `aria-haspopup="dialog"`, `aria-expanded`), in one of two places and never both: in `ScoreBar`'s reserved `menu` slot on the live board (Board passes GameScreen's snippet through), and fixed top right of the screen, under the safe area, in a score-bar-high box with the board gutter, on every other game screen (handoff, reveal, recap, counter prompt). Those screens are full width, so on a desktop the button sits at the screen's edge rather than the column's; on a phone the two spots coincide (within 0.5 px). The panel drops from under whichever button opened it. It opens `GameMenu`, a dialog (`game-menu`) dropping from the top-right corner over a backdrop (`menu-backdrop`): Rules (`menu-rules`), Card style (`menu-theme-option-<id>`, §5.6 rule 5) with a Card gallery link under it (`menu-gallery`, see the gallery paragraph after rule 5), Home (`menu-home`), New game (`menu-new-game`, behind the §5.7 confirm) and Close (`menu-close`). Focus moves to the first item; Tab stays inside; Escape, Close and a backdrop tap close it and return focus to the button. While the menu or its Rules sheet is open, Escape is handled in a window capture listener and stopped there, so GameScreen's Escape (clear a selection or staged move) never fires under it. *(Amended r16, 2026-09-29 playtest, friction 8:)* Rules opens over the menu, which stays open underneath; closing the sheet (Close or Escape) comes back to the menu with focus on its Rules item, and a second Escape closes the menu. It used to close the whole menu.
 
 *Curtain policy.* The menu is available on every game screen, curtains included, as §5.5 requires for the rules. That is safe because the menu carries no game state (no card, count, score or hand; the players' names appear only in the New game confirm), reads only the settings store and the theme catalog, and calls no store method except the host's Home (`goHome()`) and New game (`newGame()`). Opening it, Rules and a style swap never move the curtain, fetch a view, stamp `lastSeenSeq` or write the save, and the board stays gated on curtain `none` as before, so nothing the menu does can mount the board behind a curtain. The button and the panel are identical for every `HandoffReason` (§4.5 invariance): `game-menu.svelte.test.ts` 'menu invariance behind the curtain' asserts the floating button's `outerHTML` and the open panel's `outerHTML` are byte-identical across `turn`, `counter`, `discard` and `seven-return` *(the synthetic-ack comparison was dropped with the synthetic ack, 2026-09-29)*. A half-finished New game confirm is dropped whenever the menu closes, so reopening it always shows the list. Evidence: `web/tests/unit/game-menu.svelte.test.ts`, `web/tests/unit/game-go-home.test.ts` and `web/tests/e2e/menu.spec.ts`.
+
+**GameScreen and Board notes for the tutorial** *(added 2026-10-24, Learn to play, §5.11)*. GameScreen has exactly three tutorial changes, each driven by an optional `TableSource` field (§5.4) and inert for the other sources:
+
+- **Names:** `online?.names ?? source.names ?? session.names`. A source that sets `names` never writes the session's.
+- **New game:** `GameMenu` gets `newGame={!isOnline && source.allowsNewGame !== false}`, so the tutorial's menu keeps Rules, Card style, the gallery link and Home but has no `menu-new-game`.
+- **Counter prompt:** `{#key source.refusals ?? 0}` around `CounterPrompt` (§4.3).
+
+Nothing inside `CounterPrompt`, `Board` or the board components changed for the tutorial, with one layout-neutral exception that applies to every game: *(T12b)* `Board` keeps a `scroll-padding-top` equal to the sticky score bar's height (measured with a `ResizeObserver` into `--cu-score-bar-height`; the `--cu-zone-score` token stands in without one), so `scrollIntoView({block:'nearest'})` stops a card just below the bar instead of under it. Table mode never turns the tutorial, because its viewer is always seat 0 (§5.10). The board at `PhaseGameOver` under curtain `none` renders cleanly and inert (no Pass, no staging bar, deck not lit, no card stages; the menu works), so a lesson's winning move leaves the post-win board on show (design B6, `game-screen-game-over.svelte.test.ts`).
 
 ### 5.3 State design
 
@@ -1251,6 +1271,16 @@ lib/bridge/
 ```
 
 `engine.ts` is the seam A2 exists to create. ~~In v2 its implementation is replaced with a WebSocket client speaking the identical `Envelope`; no store and no component changes.~~ *(Superseded 2026-09-29, two-phone plan §2.)* `engine.ts` stays the local-play bridge. It can't simply be swapped for a socket: `GameStore.apply` is synchronous, the server pushes moves the store never asked for, and the curtain machine means nothing when each player has a phone. Online play instead adds `web/src/lib/online/` (connection, frames, HTTP; W11) and `OnlineGameStore` (W12), and `GameScreen` reads either store through the `TableSource` interface (W10, `lib/stores/tableSource.ts`). The wire contract is §2.12. What survives as a review criterion: the envelope is the only game data either store holds, both validate it with `schema.ts`, and no bridge-shaped or rule logic leaks into a component.
+
+**`TableSource` sources and optional fields** *(added 2026-10-24, Learn to play; tutorial plan P7)*. Three classes implement `TableSource`: `GameStore` (pass-and-play), `OnlineGameStore` (two phones) and `TutorialTable` (`lib/tutorial/table.svelte.ts`, §5.11). The interface has three optional, read-only fields that the tutorial needed; absent means today's behaviour:
+
+| Field | Meaning | Who sets it |
+|---|---|---|
+| `names?: [string, string]` | Seat names for a source with its own pair. GameScreen reads `online?.names ?? source.names ?? session.names`, and a source that sets it never writes the session's names. | `TutorialTable`: `[learnerName, 'Blake']`. `OnlineGameStore` already has a public `names` (its room names), which fits the field; GameScreen reaches it through `online.names`, which is non-null while that store is attached, so the online screen is unchanged. `GameStore`: absent. |
+| `allowsNewGame?: boolean` | `false` hides the menu's New game. Absent or `true`: offered, except online, which never offers it. | `TutorialTable`: `false`. Others: absent. |
+| `refusals?: number` | How many moves the source refused without applying. GameScreen keys `CounterPrompt` on it (§4.3). Absent is 0. | `TutorialTable` only. |
+
+**Nothing may treat "`names` present" as "this is the tutorial".** `OnlineGameStore` has `names` too. Code that needs to know it is in the tutorial reads the tutorial store (`tutorial.active`), never the shape of a source.
 
 `schema.ts` validates envelopes against the §2.7 shape in dev and test builds and is tree-shaken from production. It is the tripwire for the §2.8 normalization bugs — particularly `JackOwners`, which typechecks as an array while being a base64 string at runtime and would otherwise surface as a rendering oddity in the rare Jack-chain case rather than as a loud failure.
 
@@ -1442,6 +1472,60 @@ The page asks for a new `sw.js` when it reaches the home screen and when it retu
 - **When a change takes effect.** GameScreen reads the setting only when the curtain, the viewer or the move count changes. A change never turns the screen mid-turn or mid-staged-move; it applies at the next curtain or view change. The turn is instant (no animation), so `prefers-reduced-motion` needs nothing extra.
 - **Handoff copy.** The phone is never passed in table mode, so the handoff heading reads "`NAME`'s turn" instead of "Pass the phone to `NAME`" (§4.5), for every reason and in both the handoff and reveal stages. The sub-label follows `handoffLabel(reason, tableMode)`: `turn` and `seven-return` read "Hold to show your hand" (the reveal control) rather than repeat "Your turn"; `counter` and `discard` keep the single neutral "Your response" (R14); `resume` keeps "Resume game". The heading is the same for every reason, so §4.5's no-reason-in-the-DOM rule is unchanged. Normal pass-and-play copy is unchanged.
 - **Privacy is unchanged.** Table mode changes orientation and handoff wording only. What mounts behind each curtain kind (§3.3, §4), the reveal gate, the key auto-repeat guard and the finger-lift guard are exactly as in normal pass-and-play.
+
+### 5.11 Tutorial (R25, Learn to play)
+
+*(Added 2026-10-24.)* The design is `docs/tutorial-design.md` (decisions by ApisMellow, PRD §10 A-8); the build plan, its interfaces and the rulings made during the build are `docs/tutorial-plan.md`; the ledger group is R25. This section states only what became contract. The design and plan carry the reasoning, the lesson copy and the motion detail.
+
+**Entry, routing and exits.**
+
+- The one way in is the static `learn-to-play` control on Home, under the title. The app never prompts, nudges, badges or suggests the tutorial anywhere (D1, R25.12).
+- `App.svelte` shows screen `'tutorial'` while `tutorial.active`, checked inside the `game.screen === 'home'` branch before the online checks. With `tutorial.lessonId === null` it shows `TutorialLessons` (`reportScreen('home')`); in a lesson, `{#key tutorial.lessonId}` wraps `GameScreen source={table}` and `CoachOverlay` as siblings (`reportScreen('game')`, so a waiting update never reloads a lesson). The `{#key}` block holds its table (`heldLessonTable`) for its whole life: Leave, Lessons and the done sheet's Escape clear `tutorial.table` while GameScreen is still handling that same event, and a GameScreen's `source` never changes under it. The held table is disposed by then and applies nothing.
+- The tutorial store is memory only, so a reload lands on Home.
+- Exits: `coach-leave` and the done sheet's `coach-lessons` go to the lessons screen; `menu-home` goes Home; `coach-play` (after lesson 5) goes Home. None asks for confirmation.
+- A `#/join/` link is ignored, and still cleared from the URL, while the tutorial is active (the lessons screen or a lesson).
+- A lesson whose table can't be built leaves the player on the lessons screen with the snag line "This lesson hit a snag." in a `role="alert"` paragraph; it never throws out of the tap.
+
+**`TutorialTable`, the third `TableSource`** (§5.4). Its `envelope` is always `view(0)`, the learner's own; `viewer` is always 0; `history` is `envelope.history` (redacted for seat 0 by the bridge); `seq` is `history.length`; `drawReveal` is `null`; `names` is `[learnerName, 'Blake']`; `allowsNewGame` is `false`. `curtain` is `{kind:'ack', to:0}` exactly while `view(0)` is at `PhaseAwaitingCounter` with seat 0 active (step 4.2), else `none`; it never drops to `none` mid-window. `newGame()` restarts the lesson; `goHome()` disposes the table, then goes Home; `advanceCurtain()` and `dismissDrawReveal()` are no-ops. A lesson's winning move leaves the post-win `view(0)` on show at curtain `none` (§5.2, design B6).
+
+**The apply gate is `TutorialTable.apply(i)` and nothing else.** GameScreen reaches it through its one `applyMove` path, whatever the input (tap, drag, the deck's second tap, Confirm, a counter option, "Let it resolve"). The legal-move list GameScreen gets is the engine's, unfiltered (R11): every legal card still lights up, and only the commit is checked.
+
+- While `pending`, `apply` does nothing. A commit during a success or narration beat first ends that beat (as a tap would), then meets the gate of whatever step that leads to.
+- At a `move` step in its `step` phase, a move that matches the step's predicate (kind, card identity, target card identity from the learner's view) is applied by the engine's own index. The envelope `apply` returns is dropped unread; the table fetches `view(0)`.
+- Anything else is refused: nothing reaches the engine, `refusals` rises by 1, and the promise resolves normally (no throw, so GameScreen logs nothing). At a move step the coach line becomes the step's nudge for that move (or its generic line) and `wrongTries` rises by 1. **Outside a move step (plan P1)** every commit is refused too: at a `next` step the line is "Tap Next first.", at the `appear` step (5.3) it is that step's own line ("First, tap your other Jack."), and once the lesson is finished or in error the line doesn't change. An index past the end of the list is refused like a wrong move.
+- On the board a refusal leaves staging idle; at the counter prompt the `refusals` key remounts a fresh prompt (§4.3).
+- Engine `ok:false`, a view that isn't seat 0's, or a scripted reply matching zero or several of Blake's moves puts the table in phase `error`: the line "This lesson hit a snag.", with Restart lesson (`coach-restart`) and Leave. In `error` the overlay blocks the board below the score bar; the menu row stays live, and so do Restart and Leave.
+
+**Beats after a correct move (plan P3).** Success line, for 2200 ms (`SUCCESS_BEAT_MS`; 1200 ms until T14fix) or until a tap. If the step has Blake replies: "Blake's turn." with `pending` true, a think pause of 700 ms (`BLAKE_THINK_MS`; 400 ms, `BLAKE_THINK_REDUCED_MS`, under reduced motion), then his move applies and its narration line shows for 2200 ms (`BLAKE_DONE_BEAT_MS`) or until a tap. A reply with no narration line hands straight on (lesson 4's 4, whose window is step 4.2). Then the next step begins. `pending` is true from the learner's match until Blake's last reply lands, and only on steps Blake answers. A tap during the think pause is ignored, so a move is never applied twice. Every beat is a timer carrying a generation number; a skip, `dispose`, `restart` or `newGame` bumps it, so a stale callback is a no-op. No state path awaits an animation (§5.9).
+
+**Blake's moves stay local.** Each scripted reply is a predicate resolved against Blake's own `legalMoves()` envelope, which lives only in a local variable inside the reply callback: never a field, never a hook argument, never rendered.
+
+**Motion hooks** (`TutorialTableDeps`; each runs inside a try/catch, so a motion failure never breaks a lesson):
+
+- Learner moves only: `beforeApply(move, view)` runs synchronously before the engine apply, with the matched `Move` and the learner's view; `afterApply()` runs after the new state is set.
+- Blake's replies only: `beforeReply(view0)` runs just before his move applies, with the seat-0 view on show; `afterReply(entry)` runs after, with the new last entry of seat 0's history (`by === 1`), already redacted for seat 0. Neither ever gets his `Move`, his legal list or anything from seat 1's view.
+
+**Flight API** (`lib/tutorial/motion.ts`, `FlightLayer.svelte`). A flight plan reads only a `FlightMove = { kind, card, targetCard }`: what kind of move, the card played (public once it lands) and the targeted table card (public). `capture(move, view, root)` is for the learner's own move and throws unless `view.active === 0`. Blake's flights use `snapshot(view0, root)`, taken before his apply (it throws for any view but seat 0's), then `captureReply(snap, entry)` from his public history entry; it reads only `entry.by`, `kind`, `card` and `targetCard`, never an index. His clone leaves a fixed slot, his last, as a back and turns face up at the midpoint, unless glasses already show his hand. `FlightLayer.play(capture, root, after)` animates clones with `transform` and `opacity` only and holds the real destination invisible with a no-fill WAAPI animation; it writes no attribute, class or state, and nothing awaits it. Clones and the ghost demo carry no `data-testid`, `data-staged`, `aria-pressed` or `data-state="staged"`.
+
+**The coach reads only the GameScreen root's DOM.** `CoachController` (`lib/tutorial/coach.svelte.ts`) watches the `game-screen` root with a `MutationObserver` (attributes and child list) and reads it with `readStagedPage` (`lib/tutorial/match.ts`): `aria-pressed` and `data-staged` on hand cards, `data-state="staged"` on `deck-pile`, the drop zones and the faces in `point-*`/`perm-*`, and the presence of `staging-confirm` and `counter-prompt`. It never reads the staging store or the document, and never writes the board. `classifyStaged` groups the staged setup's candidates by `boardTargetKey` (the board location, not `slotKey`), gives a staged counter every Counter, and gives Decline, Pass and DiscardPair no slot; right, wrong (with the step's nudge) or unknown (a mixed chooser group, treated as right and left to the gate). The coach nudges before Confirm: a wrong setup shows the nudge plus " Tap Cancel to try again." with Cancel spotlit and never mentions Confirm; a refused commit on the board shows the bare nudge. `wrongTries` counts refused commits plus entries into `staged-wrong`; at 2 or more the idle line becomes the step's tap route, and at the counter prompt the "fresh again" state shows the tap route too.
+
+**The overlay never covers a sheet.** While `game-menu`, `rules-sheet`, `scrap-browser`, `card-detail-popover` or `ambiguity-chooser` is in the game-screen root, the overlay is at opacity 0 with `pointer-events: none` (`COVERING_SHEETS`). An `appear` step waiting for that element (5.3) completes first. A new sheet joins this list or it will be covered, because `.game-screen` sets `isolation: isolate` and the overlay is its sibling.
+
+**Taps during beats.** A `pointerdown` anywhere, or Enter or Space, ends a success or narration beat (never the think pause), and a tap during the lesson-1 deal finishes the deal, except on the coach's own controls (the bubble's and the done sheet's buttons) and `menu-button` (`OWN_CONTROLS`), which act on their first tap. Taps on the bubble's copy still skip.
+
+**Storage.** The tutorial's only key is `cuttle-web:tutorial` = `{"v":1,"done":[…]}`: the finished lesson numbers, sorted, unique, 1–5, with exactly those two keys. It is written when a lesson's done sheet mounts and read when Home and the lessons screen mount. Every access is in try/catch; a throwing storage keeps progress in memory for the tab. A malformed value, a wrong `v` or unknown numbers read as nothing done (unknown numbers dropped). There is no "seen" flag. The tutorial never writes `cuttle-web:game`, `cuttle-web:tally`, `cuttle-web:settings` or the session's names; the learner's label is read once per lesson from `settings.lastNames[0]` ("You" when blank or "Player 1").
+
+**Testids (contract, §5.1).** `learn-to-play`, `tutorial-lessons`, `tutorial-lessons-back`, `tutorial-lesson-1` … `tutorial-lesson-5`, `tutorial-continue`, `coach-bubble`, `coach-next`, `coach-show-me`, `coach-leave`, `coach-restart`, `coach-lesson-done`, `coach-next-lesson`, `coach-lessons`, `coach-play`. Select them by exact match: `coach-next` is a prefix of `coach-next-lesson`. *(T14fix)* `coach-show-me` is conditional: it renders only when the current step has a demo and the stage plays it; otherwise its footer slot is an invisible, unfocusable, `aria-hidden` element with no testid. `coach-next` and `coach-restart` are conditional as before (a `next` step; the error phase). The scrim, rings, ghost demo, flights and markers carry no testid and are `aria-hidden`.
+
+**Coach state in the DOM (plan P8).** Tests and e2e read the coach from these, never from timers:
+
+- `coach-bubble` carries `data-step` (the step id, e.g. `"1.5"`), `data-stage` (`idle | selected | staged-right | staged-wrong | refused | done | next | appear | blake | error`) and `data-tone` (`main | nudge | success | blake | error`).
+- Each spotlight ring carries `data-coach-hole`; *(T12b)* its value is the testid of the target it rings.
+- The overlay root carries `data-coach-targets`, the spotlit testids, space-separated.
+
+**Accessibility.** The bubble is `<section aria-label="Coach">`. Its copy sits in one `aria-live="polite"` region; *(T12b)* the win headline "You win!" sits in that same region, before the success line, which no longer repeats it, so a win is announced once. Focus goes to that region at lesson start; Next takes focus only after key input; the done sheet is a non-modal `role="dialog"` that focuses its heading, and Escape there means Lessons.
+
+**Reduced motion** (the media query or `settings.reducedMotion`): no clones, flips or travel; the ghost demo becomes static numbered markers, which stay visible (a press doesn't clear them); each flight destination gets a static ochre ring for 600 ms. Accepted gap: at step 4.2's `staged-right` no Confirm "3" marker shows, because staging the counter option removes the demo's only spot; the Confirm ring and the bubble still lead.
 
 ---
 
@@ -1784,3 +1868,15 @@ For the ledger seeder: where each PRD requirement's binding detail lives.
 | R21 style lock (P-ART) | §5.6 (target contract only — the brief itself is P-ART's output) | screenshot-judge |
 | R22 full-deck generation | §5.6 asset budget, §5.8, §7.6 | screenshot-judge, e2e-test |
 | R23 theme integration | §5.6 (whole) | e2e-test, screenshot-judge |
+| R25.1 Learn to play entry and lessons screen | §5.11 (entry, routing) | unit-test |
+| R25.2 lessons replay through the real engine | §2.4, §5.11 | unit-test |
+| R25.3 apply gate, nudge before Confirm, no dead end | §4.3 (`refusals` key), §5.4, §5.11 (gate, coach) | unit-test |
+| R25.4 isolation and seat-0 view only | §2.4, §3.3, §5.11 (`TutorialTable`, Blake local, hooks, storage) | unit-test |
+| R25.5 progress storage | §5.11 (storage) | unit-test |
+| R25.6 exits and the GameScreen seam | §4.3, §5.2 (tutorial notes), §5.4, §5.11 | unit-test |
+| R25.7 coach overlay | §5.11 (coach, sheets, DOM attributes) | unit-test, e2e-test |
+| R25.8 motion | §5.9, §5.11 (flight API, beats) | unit-test |
+| R25.9 reduced motion | §5.9, §5.11 (reduced motion) | e2e-test |
+| R25.10 accessible coach, keyboard-complete | §5.11 (accessibility) | unit-test, e2e-test |
+| R25.11 looks alive and stays readable | §5.11 (pointer to the design, §8) | screenshot-judge |
+| R25.12 never prompts | §5.11 (entry) | unit-test |
