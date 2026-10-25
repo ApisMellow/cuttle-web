@@ -95,6 +95,8 @@ describe('theme registry (SPEC §5.6)', () => {
         // r16: a card's accessible name in words ("King of Hearts"). Words,
         // never a glyph, and only ever an aria-label.
         'cardSpokenName',
+        // #106: the suit-order reference strip, a component (no glyph helper).
+        'SuitOrder',
       ].sort(),
     );
   });

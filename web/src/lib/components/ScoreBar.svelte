@@ -9,6 +9,7 @@
   import type { Snippet } from 'svelte';
 
   import type { PlayerView } from '../bridge/schema';
+  import { SuitOrder } from '../theme';
 
   interface ScoreBarProps {
     scoreboard: PlayerView['scoreboard'];
@@ -53,6 +54,7 @@
     {/if}
     <span class="score-bar__meter" aria-hidden="true"><span style={`--fill: ${fill(scoreboard.opponent)}`}></span></span>
   </div>
+  <SuitOrder />
   <div class="score-bar__menu">
     {@render menu?.()}
   </div>
