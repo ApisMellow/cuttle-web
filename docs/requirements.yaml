@@ -1,3 +1,7 @@
+# Lean testing (2026-10-24, ApisMellow): from this date, entries are updated
+# once per feature, at merge, with the PR number as evidence. Older evidence
+# strings and "Strict tier" notes are history and are not rewritten.
+
 meta:
   round: 3
   launch: 1

@@ -1,8 +1,8 @@
 # Lean testing and agent process: plan
 
-**Status:** proposal, approved in direction by ApisMellow on 2026-10-24. No code changes yet.
+**Status:** adopted by ApisMellow on 2026-10-24. Process docs and CI/script changes (§3.1, §3.6) landed with the consolidation PR; the test cuts (§3.4, §3.5) are a follow-up.
 **Branch:** `docs/lean-testing-plan`, cut from `main` at `2514079`.
-**Hand-off:** a later session merges this plan with the privacy-spec branch, which is being written in parallel, and then carries out the changes below in one pass.
+**Hand-off:** a later session merges this plan with the privacy-spec branch, which is being written in parallel, and then carries out the changes below in one pass. The privacy-spec branch is `fix/93-counter-rewind` (the #93 counter-rewind spec), merged in the same consolidation.
 
 ## 1. Why
 
@@ -28,7 +28,7 @@ Review gates (19 reviewer agents) and one git agent per merge (28) made up most 
 2. **The full suite runs once, when the feature is done.** That is the PR `gate` on GitHub. No local full `ci.sh` by default.
 3. **Logic changes get unit tests with assertions.** Don't replay hundreds of games to prove a rule.
 4. **Changes with no visual effect run no Playwright.**
-5. **No "privacy" or strict tier.** The threat model is honest players, not attackers. The one requirement is that a player never sees the opponent's cards on screen. That is an ordinary display check, covered by normal tests and playtests.
+5. **No "privacy" or strict tier.** The threat model is honest players, not attackers. The one requirement is that the opponent's hand is not shown on screen, except to a player with an 8 (glasses) in play. That is an ordinary display check, covered by normal tests and playtests.
 6. **Subtle hints are gameplay issues.** For example, #93's counter pause hints that the opponent holds a 2. Handle these as normal gameplay work, without a special tier.
 7. **Dev agents work from the brief alone.** The brief carries everything the task needs. Agents don't read `AGENTS.md` or the long plan and design docs.
 8. **`AGENTS.md` shrinks to about 100 to 150 lines.** ApisMellow reviews the new file before it merges.
@@ -44,7 +44,7 @@ Review gates (19 reviewer agents) and one git agent per merge (28) made up most 
   - the repo layout
   - the commands (quick check, single-test commands, full gate)
   - the testing rules in §2
-  - the few hard rules (no machine-local paths; attribution to ApisMellow; the opponent's cards never on screen)
+  - the few hard rules (no machine-local paths; attribution to ApisMellow; the opponent's hand not shown, except under an 8)
   - the small-fix lane (§3.2)
 
   Delete, don't move, the overnight-loop ceremony: red-evidence records, mutation protocol, round logs, brief-boundary rules and pasted gate tables. Most of it repeats `docs/SPEC.md` or `docs/loop-workflow.md`.
@@ -76,7 +76,7 @@ Whole-game seed loops are replaced by a few fixed games, each asserting specific
 
 | File | Loop today | Proposal |
 |---|---|---|
-| `internal/server/ws_privacy_sweep_test.go` (`TestW9_WirePrivacySweep`) | 240 seeds (35 with `-short`); the only Go failure seen (a known stall, #72/#74) | **Decided by the privacy-spec branch.** Recommendation: out of the default run; available by hand behind an env var or build tag |
+| `internal/server/ws_privacy_sweep_test.go` (`TestW9_WirePrivacySweep`) | 240 seeds (35 with `-short`); the only Go failure seen (a known stall, #72/#74) | **Settled against the #93 spec (2026-10-24):** out of the default run, opt-in by an env var (`CUTTLE_SWEEP=1`). #93's B1 (240-seed twin check) becomes 3 to 5 fixed twin-state games; its S2 (sweep covers counters) is met by running the opt-in sweep by hand once before the #93 code merges. |
 | `internal/game/discard_redaction_test.go:227` | 160 seeds | 3 to 5 fixed scenarios with exact asserts |
 | `internal/game/drawn_test.go:206` | 160 seeds | 3 to 5 fixed scenarios |
 | `internal/game/session_test.go` (lines 137, 166, 251, 406, 641, 859+) | 30 to 120 games each | 3 to 5 games each; merge overlapping loops |
@@ -103,12 +103,12 @@ Whole-game seed loops are replaced by a few fixed games, each asserting specific
 
 ## 4. Order of work for the hand-off session
 
-1. Merge this branch and the privacy-spec branch, and settle §3.4's sweep row against that spec.
-2. Make the process doc changes (§3.1), with the `AGENTS.md` rewrite shown to ApisMellow before merge.
-3. Make the test cuts (§3.4, §3.5) and the CI and script changes (§3.6).
+1. **Done.** Merge this branch and the privacy-spec branch, and settle §3.4's sweep row against that spec.
+2. **Done.** Make the process doc changes (§3.1), with the `AGENTS.md` rewrite shown to ApisMellow before merge.
+3. **Split.** Make the test cuts (§3.4, §3.5) and the CI and script changes (§3.6). The CI and script changes are done; the test cuts are pending.
 4. Run quick mode once locally. Then one PR; the `gate` (FULL) must pass on GitHub.
 5. Check that a merge to `main` runs no second gate (only Pages).
-6. Send the next small fix (#93 or #77) through the §3.2 lane, and record its time and token cost as the benchmark.
+6. **Deferred** (no development in the consolidation). Send the next small fix (#93 or #77) through the §3.2 lane, and record its time and token cost as the benchmark.
 
 ## 5. Success measures
 

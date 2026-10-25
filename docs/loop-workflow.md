@@ -65,7 +65,7 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 | Role | Does | Model |
 |---|---|---|
 | **Orchestrator** | Runs rounds: reads ledger, batches work, writes briefs, dispatches, routes verdicts, integrates, updates ledger, writes logs. Never writes application code. | Claude Opus 5.5 |
-| **Developer** (N per round) | Implements assigned requirement IDs in an isolated git worktree, TDD, returns a branch + test evidence. | Claude, sized per work item by the orchestrator |
+| **Developer** (N per round) | Implements assigned requirement IDs in an isolated git worktree, with tests per §4.5, returns a branch + the tests it ran. | Claude, sized per work item by the orchestrator |
 | **Code reviewer** | Reviews a submission's diff against SPEC + acceptance criteria; flags correctness, contract violations (envelope/move-index/redaction), and drift. | Claude, sized by the orchestrator (Opus for high-risk diffs) |
 | **Playtest judge** | Runs the built app in a browser at phone viewport (Playwright, 390×844 — a stand-in for the iPhone targets of PRD §10 A-5, 393×852 primary, until the iPhone design pass retargets it), plays real moves, screenshots, and rules each `screenshot-judge` acceptance criterion accept/revise with written reasons. Also scores UX regressions (tap targets, overflow, curtain leaks). | Claude Opus — taste and rules-correctness verdicts are where model quality pays |
 | **Art generators (P-ART)** | Generate reference candidates, then the full-deck fan-out conditioned on the locked references. Parallel batches; each worker gets the style lock + its asset list, nothing else. | Image-generation tooling (photographer-agent pipeline); orchestration by Claude, sized by the orchestrator |
@@ -75,38 +75,50 @@ Status meanings: `implemented` = a dev submitted it and mechanical gates passed;
 
 Dispatch briefs are curated: they name exact requirement IDs with acceptance criteria verbatim, the SPEC sections that bind them, the files in scope, and explicit out-of-scope lines. Developers never "scan the repo for what to do."
 
-## 4.5 Testing policy for the family beta
+## 4.5 Testing policy: lean testing
 
-Set by ApisMellow, 2026-09-28 (PRD §10 amendment A-4). Splits developer and
-reviewer rigor by risk, so the loop can spend Opus-grade scrutiny where a
-bug is a real defect and a lighter pass where it's taste.
+Set by ApisMellow, 2026-10-24. It replaces the strict and light tiers of
+2026-09-28 (PRD §10 amendment A-4). The threat model is honest players, not
+attackers. Full plan: `docs/lean-testing-plan.md`.
 
-**Strict tier** — game rules, move wiring, hidden-information privacy
-(curtain, counter prompts, redaction), save/resume:
+**Rules:**
 
-- Test-first is mandatory. The developer's report must show red evidence
-  (the failing run) before the code. A test that's green on its first run
-  needs a hand-applied mutant to prove it bites.
-- Opus developers.
-- Opus reviewers with mutation probes, per §5 GATE(b) and the reviewer's
-  mutation-testing protocol.
+1. While building, run only the test file for the code you touched, at
+   natural stopping points. Not after every line.
+2. The full suite runs only as the PR `gate` on GitHub
+   (`FULL=1 scripts/ci.sh`). Nobody runs `FULL=1` locally. Locally the quick
+   check `scripts/ci.sh` is the norm; if the gate fails, rerun just the
+   failing test file.
+3. Logic changes get unit tests with exact assertions. Don't replay hundreds
+   of games to prove a rule.
+4. Changes with no visual effect run no Playwright.
+5. There is no privacy or strict tier. The one requirement is display: the
+   opponent's hand is not shown on screen, except to a player with an 8
+   (glasses) in play. That is an ordinary display
+   check, covered by normal tests and playtests.
+6. Subtle hints (a pause that suggests the opponent holds a 2) are gameplay
+   issues, handled as normal gameplay work.
 
-**Light tier** — pure look and layout:
+**Small-fix lane** (a fix or tweak of about 100 lines or less): one Sonnet
+developer with a short brief. It writes a regression test with the fix and
+runs only the touched tests. No reviewer, no local full gate, no ledger edit,
+no screenshot judge.
 
-- One render/smoke test per component, plus a screenshot or browser fit
-  check.
-- Sonnet developers.
-- The review blocks only on real defects: broken layout, overflow,
-  unreadable cards, tap targets under 44px. No mutation hunting.
+**Feature work:** developers commit on the feature branch, with no PR per
+work item into it. One PR to `main` at the end. The reviewer is opt-in, for
+large or risky features, and reads the PR `gate` result instead of re-running
+`ci.sh`. The ledger is updated once per feature, at merge, with the PR number
+as evidence.
 
-**Both tiers:** reviewers keep the bar proportionate to a family beta —
-block only on real defects, and list nice-to-haves as non-blocking rather
-than folding them into a revise.
+**Playtest judge:** only for new visual surfaces. One pass, with no re-check
+round unless something blocks. There is no per-item screenshot fit check.
+
+Reviewers keep the bar proportionate to a family beta: block only on real
+defects, and list nice-to-haves as non-blocking.
 
 **Deferred to after the beta (roadmap, not scheduled into a round):**
 
 - full per-item e2e evidence for `verified` across the ledger
-- mutation testing on light-tier items
 - the `failOnFlakyTests` gate
 - an accessibility audit
 - PWA/offline polish
@@ -119,20 +131,22 @@ than folding them into a revise.
               items (max ~4 work items; prefer unblocking + same-subsystem
               grouping). If zero eligible items → go to TERMINATE.
 2. DISPATCH   One developer per work item, parallel, isolated worktrees.
-              TDD required: failing test first, then implementation.
+              Tests per §4.5: touched tests only while building.
 3. GATE       Per submission, in order:
-              a. MECHANICAL (hard fail): go build (incl. WASM target),
+              a. MECHANICAL (hard fail): the PR `gate` on GitHub
+                 (`FULL=1 scripts/ci.sh`: go build incl. WASM target,
                  go test ./..., go vet, svelte-check, vitest, playwright
-                 suite, lint. Any red → verdict: revise.
-              b. CODE REVIEW: reviewer agent verdict accept/revise.
-              c. PLAYTEST: judge runs only for UI-visible items.
+                 suite, lint). Any red → verdict: revise.
+              b. CODE REVIEW: opt-in, for large or risky features; the
+                 reviewer reads the gate result, never re-runs it.
+              c. PLAYTEST: judge runs only for new visual surfaces.
               Verdicts: accept | revise (back to a developer with the
               evidence — same or fresh, orchestrator's call) | reject
               (work discarded, item stays todo with notes).
 4. INTEGRATE  Merge accepted branches into the integration branch
-              (`loop/integration`). Re-run the full mechanical gate
-              post-merge. A post-merge failure reopens the offending
-              item as revise for next round.
+              (`loop/integration`). The full mechanical gate runs once,
+              as the PR `gate` on the final PR. A gate failure reopens
+              the offending item as revise for next round.
 5. LEDGER     Flip statuses with evidence strings. Increment fails
               counters on items that failed any gate this round; reset
               on success. Item with fails ≥ 3 → status: stalled, entry
@@ -141,6 +155,8 @@ than folding them into a revise.
               judge reasoning), merges, ledger delta, next-round intent.
               Commit everything on loop/integration.
 ```
+
+*(Amended 2026-10-24, ApisMellow: lean testing, §4.5. The full gate is the PR `gate`, run once per feature, not a local `ci.sh` per submission.)*
 
 ### Revise routing rule
 
@@ -165,12 +181,12 @@ The loop ends a launch when **any** of:
 
 - **10 rounds per launch** (hard cap, §6). Stall detection (3 fails) keeps a stuck requirement from eating rounds.
 - Batch size ≤ 4 work items/round keeps a round's cost bounded and verdicts reviewable.
-- The playtest judge runs only on UI-visible items and the final gate — not on every submission.
+- The playtest judge runs only on new visual surfaces, one pass — not on every submission (§4.5).
 
 ## 9. Orchestrator bootstrap (start of any loop session)
 
 1. Read `docs/PRD.md`, `docs/SPEC.md`, `docs/requirements.yaml`, and the highest-numbered `docs/loop-log/round-NN.md` (plus `blockers.md` if present).
-2. Verify the mechanical gate passes on `loop/integration` as-is. If red, round 1 of this launch is a repair round (dispatch a developer; the orchestrator still doesn't fix code).
+2. Verify the quick check `scripts/ci.sh` passes on `loop/integration` as-is (the full gate is the PR `gate`, §4.5). If red, round 1 of this launch is a repair round (dispatch a developer; the orchestrator still doesn't fix code).
 3. Announce (in the round log) the launch number, rounds remaining, and the intended first batch.
 4. Run rounds per §5 until a §6 terminator fires.
 

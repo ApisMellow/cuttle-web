@@ -1,7 +1,7 @@
 # Counter rewind: design for issue #93 (v4, final)
 
 **Status:** ruled by ApisMellow on 2026-10-24. No open decisions. The PRD, SPEC and requirements amendments are applied (§10). There is no production code yet.
-**Tier:** strict, covering rules, hidden-information privacy and save/resume.
+**Testing:** lean rules (AGENTS.md; `docs/lean-testing-plan.md` §2). §8 is the list of cases to cover, not a red-first mandate.
 **Engine:** needs a release, `github.com/ApisMellow/cuttle` v0.3.0.
 **Priority:** online play.
 
@@ -362,7 +362,10 @@ the 4 instead of discarding. The tutorial branch needs to rework that step.
 
 ---
 
-## 8. Test plan (strict tier, red first)
+## 8. Test plan (cases to cover)
+
+Cover these with unit tests that make exact assertions. There is no red-first
+record and no mutants. Where a case says "seeds", use a few fixed games instead.
 
 **Twin states:** two positions that differ only in whether Blake holds a 2
 (with the same card count). Everything Alice can observe must be
@@ -398,7 +401,7 @@ where the difference is the accepted leak.
 - **E9** The legacy phase-1 and phase-3 paths still work.
 
 **Bridge**
-- **B1** Over seeds 1 to 240, the mover's post-apply envelope and `View` are
+- **B1** In 3 to 5 fixed twin-state games, the mover's post-apply envelope and `View` are
   byte-identical in both twins after every non-winning move.
 - **B2** No `Decline` appears in new play except "Let it happen". Seq goes up
   by exactly 1 per move. `counterable` and `owedDiscards` are correct.
@@ -408,9 +411,10 @@ where the difference is the accepted leak.
 **Server**
 - **S1** No `responding` frame is ever sent. Both seats get `state` at once,
   and Alice's frames are byte-identical in both twins.
-- **S2** The W9 sweep exercises counters, counter-backs, a countered 7 and a
-  countered 5, an owed discard and a pending win. The no-op flag is
-  accepted.
+- **S2** The opt-in W9 sweep (`CUTTLE_SWEEP=1`, out of the default run)
+  covers counters, counter-backs, a countered 7 and a countered 5, an owed
+  discard and a pending win; run it by hand once before this work merges.
+  The no-op flag is accepted.
 
 **Client**
 - **C1** Store twins through the real wasm: identical curtain sequences and
@@ -435,7 +439,7 @@ where the difference is the accepted leak.
 ## 9. Work breakdown
 
 All work goes on one integration branch, `fix/93-counter-rewind`, with one
-full gate at the end (reviewer N8). The engine is developed in
+PR gate at the end. The engine is developed in
 `ApisMellow/cuttle` against a local `replace` that is never committed.
 Before the final gate, tag v0.3.0 and bump `go.mod`.
 
@@ -445,7 +449,7 @@ Before the final gate, tag v0.3.0 and bump `go.mod`.
 | 2 | bridge | `counterable`, `owedDiscards`, phase 5 and the new phase-3 uses in the view and `validateState`, snapshot v3, golden transcript, `schema.ts`, B1–B3 | `cuttle-bridge-dev` |
 | 3a | server | remove the hold, protocol v2, S1–S2 | `cuttle-bridge-dev` |
 | 3b | client | board counter, "Let it happen", the "Not So Fast!" beat and waiting state, owed-discard step, recap, curtain `REACHABLE`, snapshot v3, online store, C1–C7, e2e | `cuttle-svelte-dev` |
-| 4 | all | tag v0.3.0, bump `go.mod`, full `scripts/ci.sh`, review, ledger; deploy the server, then the app | `cuttle-reviewer`, orchestrator |
+| 4 | all | tag v0.3.0, bump `go.mod`, PR `gate`, opt-in review, ledger; deploy the server, then the app | orchestrator (reviewer opt-in) |
 
 Batches 3a and 3b run in parallel after batch 2. The tutorial rework (§7)
 follows 3b on the tutorial branch.

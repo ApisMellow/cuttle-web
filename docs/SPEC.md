@@ -13,6 +13,8 @@
 
 This is the implementation contract for Cuttle Web v1. A developer agent with no conversation context implements from this file plus the PRD. Every behavioral claim below is cited to a PRD requirement ID (`R1`–`R20`, `A1`–`A7`) or to engine source as `file:line`.
 
+*(Note 2026-10-24: the `engine/*.go:NNN` line numbers throughout predate engine v0.2.1. Find code by symbol, and cite v0.2.1 lines in new work.)*
+
 The governing principle from PRD §2 is absolute and repeated here because every section depends on it:
 
 > **The engine is canon. The web UI implements zero game rules.** Every rule question — what is legal, what a move does, who decides next, who won — is answered by engine output. The UI derives presentation from engine state and never computes a rule.
@@ -61,6 +63,8 @@ cuttle-web/
   scripts/build-wasm.sh
   docs/
 ```
+
+*(Note 2026-10-24: `web/src/routes/` doesn't exist. The shell is `web/src/App.svelte` and `web/src/main.ts`.)*
 
 ### 1.4 Terminology
 
@@ -537,6 +541,8 @@ When every revealed card is a Jack and the opponent has no stealable point (none
 
 **Resolution note (2026-09-26):** both E-1 and E-2 are now fixed upstream in the engine, verified against the exact repros above at `engine/seven_test.go:209` (E-1) and `:242` (E-2), plus a green 500-game random playout. The smoke exclusion list (`web/tests/smoke/exclusions.json`) is expected to go away in P1b Batch 2; the diagnostic UI behavior above remains required as defense-in-depth.
 
+*(Note 2026-10-24: the smoke exclusion list is gone. The smoke corpus is seeds 1–240, unfiltered.)*
+
 Two smaller contract notes for the same reason:
 
 - `MovePass` is emitted only as a fallback when nothing else is legal (`engine/apply.go:131-133`) and `Apply` re-checks that gate (`engine/apply.go:160-166`). The UI therefore never shows Pass alongside other actions — this is engine-enforced, not a UI policy (R10).
@@ -909,7 +915,7 @@ It also makes the privacy property structural rather than disciplinary. A develo
 
 Enforced by code review; each is a hard reject.
 
-1. **No component may import from `lib/bridge/types` anything other than the exported view/envelope types.** There is no `GameState` type in TypeScript. If one appears, redaction has been bypassed.
+1. **No component may import from `lib/bridge/types` anything other than the exported view/envelope types.** There is no `GameState` type in TypeScript. If one appears, redaction has been bypassed. *(Note 2026-10-24: `lib/bridge/types.ts` doesn't exist; the wire types live in `lib/bridge/schema.ts`. The rule applies to that module.)*
 2. **No recomputation of engine-derived values.** Point totals, thresholds, King counts, win state, controller of a Jack stack, whether a scuttle is legal, whether a Queen protects — all arrive in the view. Re-deriving any of them in TS is rule logic in the UI, forbidden by PRD §2.
 3. **No component may index `legalMoves` by anything but a value the engine produced.** Move submission is by index (A3); constructing or mutating a `Move` object is forbidden.
 4. **No caching of a previous player's view across a curtain.** When the viewer changes, the store discards the old view and requests a fresh one via `__cuttleView(newViewer)`. A stale view retained in a component's closure is a hidden-information leak with a rendering bug attached.
@@ -923,6 +929,8 @@ v1 is two people sharing one phone. The adversary is **a person glancing at the 
 - What is *not* accepted is unredacted state reaching the **DOM or the JS heap during play**, because that is reachable by a shoulder-glance, a screenshot, a mis-fired reactive statement, or an accidental render. Hence §3.1.
 
 Recorded as **OQ-9** so ApisMellow can overrule if he wants the snapshot redacted-and-reconstructed instead.
+
+*Amended 2026-10-24 (ApisMellow, lean testing):* the players are honest family members, not attackers, and this applies online too. The one requirement is display: the opponent's hand is not shown on screen, except to a player with an 8 (glasses) in play (§3.2). A hint a player could infer, such as a pause that suggests a held 2, is a gameplay issue, not a privacy defect.
 
 ---
 
@@ -1312,6 +1320,8 @@ lib/bridge/
   schema.ts      # dev/test-only runtime validation of envelope shape.
 ```
 
+*(Note 2026-10-24: `raw.ts` and `types.ts` don't exist. The wire types live in `lib/bridge/schema.ts`.)*
+
 `engine.ts` is the seam A2 exists to create. ~~In v2 its implementation is replaced with a WebSocket client speaking the identical `Envelope`; no store and no component changes.~~ *(Superseded 2026-09-29, two-phone plan §2.)* `engine.ts` stays the local-play bridge. It can't simply be swapped for a socket: `GameStore.apply` is synchronous, the server pushes moves the store never asked for, and the curtain machine means nothing when each player has a phone. Online play instead adds `web/src/lib/online/` (connection, frames, HTTP; W11) and `OnlineGameStore` (W12), and `GameScreen` reads either store through the `TableSource` interface (W10, `lib/stores/tableSource.ts`). The wire contract is §2.12. What survives as a review criterion: the envelope is the only game data either store holds, both validate it with `schema.ts`, and no bridge-shaped or rule logic leaks into a component.
 
 **`TableSource` sources and optional fields** *(added 2026-10-24, Learn to play; tutorial plan P7)*. Three classes implement `TableSource`: `GameStore` (pass-and-play), `OnlineGameStore` (two phones) and `TutorialTable` (`lib/tutorial/table.svelte.ts`, §5.11). The interface has three optional, read-only fields that the tutorial needed; absent means today's behaviour:
@@ -1441,7 +1451,7 @@ interface Snapshot {
   - *Failure.* If the fetch at the reveal fails, `error` is set and the gate stays at `reveal`; a retry passes it.
   - *Withheld curtains are unchanged.* A save at `handoff`, `reveal` or `recap` comes back to that curtain, which is already a gate.
   - *`result` is not gated.* The result screen is public: it renders neither hand (§5.2), only names, the tally, the final score and the winning move, all public. The finished game's envelope is held for those figures, as before.
-  - This supersedes "B4" in `game.svelte.ts` and AGENTS.md "Stores" (which exposed the saved viewer's envelope at `none` and either `ack` straight after restore). Evidence: `web/tests/unit/game-resume-gate.test.ts`, `resume-gate-dom.svelte.test.ts`, and `web/tests/e2e/menu.spec.ts` "R4 privacy".
+  - This supersedes "B4" in `game.svelte.ts` and the old AGENTS.md "Stores" section (`git show 2514079:AGENTS.md`), which exposed the saved viewer's envelope at `none` and either `ack` straight after restore. Evidence: `web/tests/unit/game-resume-gate.test.ts`, `resume-gate-dom.svelte.test.ts`, and `web/tests/e2e/menu.spec.ts` "R4 privacy".
 - **Home from the in-game menu keeps the game** *(2026-09-29)*. No confirm, like the result screen's Home: nothing is lost. `goHome()` writes nothing (§5.3); Resume restores the saved position, withheld curtains included, so Home at a handoff comes back to that handoff, never to a board.
 
 ### 5.8 PWA and offline (R18)
@@ -1520,6 +1530,8 @@ The page asks for a new `sw.js` when it reaches the home screen and when it retu
 ### 5.11 Tutorial (R25, Learn to play)
 
 *(Added 2026-10-24.)* The design is `docs/tutorial-design.md` (decisions by ApisMellow, PRD §10 A-8); the build plan, its interfaces and the rulings made during the build are `docs/tutorial-plan.md`; the ledger group is R25. This section states only what became contract. The design and plan carry the reasoning, the lesson copy and the motion detail.
+
+*(Note 2026-10-24: lesson 4.2, the counter lesson with "Let it resolve", is built on the legacy counter prompt. It must be reworked when the #93 client work lands; see `docs/counter-rewind-design.md` §7.)*
 
 **Entry, routing and exits.**
 
@@ -1727,6 +1739,8 @@ The app exposes a test-only hook — `window.__cuttleTestHook.affordances()`, co
 
 Pure TypeScript, **no WASM**, fast enough to run on every save. Everything here is a pure function precisely so it can be tested this way.
 
+*(Note 2026-10-24: superseded in practice. Several unit files boot the real wasm through `createWasmEngine()` in `web/tests/scenario/wasm-engine.ts`.)*
+
 | Suite | What it pins |
 |---|---|
 | **Normalization** (§2.8) | Golden raw-JSON inputs → expected normalized output. **Must include the `JackOwners` base64 case**: `"AQA="` → `[1, 0]`. Also nil→`[]`, `FrozenIDs` string keys → sorted `number[]`, `Rank:0` → `null`, `Winner` bare number, `opponent.hand` `null`-vs-`[]`. |
@@ -1751,7 +1765,7 @@ Node, headless, the **real compiled `.wasm`**. This is PRD §9's named mitigatio
    - `seq` increments by exactly 1 and `history.length === seq`.
 4. **Termination** — every game ends in ≤ 3,000 steps (observed max in the 4,000-game survey: 109). Both endings occur across the corpus: wins ~95.6%, stalemates ~2.5%.
 5. **Redaction** — for a sample of positions, `view(0)` and `view(1)` are each free of the other player's hand (absent glasses) and neither contains deck contents.
-6. **E-1/E-2 corpus policy** — the committed seed corpus **excludes known-bad seeds** and the exclusion list cites §2.10 with the specific seeds. When the engine is fixed upstream, deleting the exclusion list is the whole re-enablement.
+6. **E-1/E-2 corpus policy** — the committed seed corpus **excludes known-bad seeds** and the exclusion list cites §2.10 with the specific seeds. When the engine is fixed upstream, deleting the exclusion list is the whole re-enablement. *(Note 2026-10-24: the exclusion list is gone; the corpus is seeds 1–240, unfiltered.)*
 
 Cost: seconds. Value: it fails loudly on the Go/JS lifecycle mistakes that are otherwise diagnosed as mysterious UI bugs three rounds later.
 
@@ -1814,7 +1828,7 @@ Real browser, **390×844 portrait**, driven by scenarios.
 
 Per `loop-workflow.md` §4, a Claude Opus model, at 390×844, playing real moves. It rules on the criteria a machine cannot: board legibility at phone size, whether the curtain flow feels like a chore (PRD §9's named risk), animation quality, theme-swap consistency (§5.6), and whether a rules-aware human would find the board readable.
 
-It runs on UI-visible items and on the final gate only — not on every submission (`loop-workflow.md` §8).
+It runs on UI-visible items and on the final gate only — not on every submission (`loop-workflow.md` §8). *(Amended 2026-10-24, ApisMellow, lean testing: it runs only for new visual surfaces, one pass, with no re-check round unless something blocks; `loop-workflow.md` §4.5.)*
 
 ### 7.6 Mechanical gate alignment
 
@@ -1831,6 +1845,8 @@ npm --prefix web run test:unit      # vitest
 npm --prefix web run test:smoke     # bridge smoke (§7.2)
 npm --prefix web run test:e2e       # Playwright
 ```
+
+*(Amended 2026-10-24, ApisMellow, lean testing.)* These nine commands are the PR gate: `FULL=1 scripts/ci.sh`, the GitHub `gate` job, on pull requests only. Locally the default `scripts/ci.sh` is a quick check: Go build, the wasm target build, vet, `go test -short`, svelte-check, lint and the vitest files changed against `origin/main`.
 
 Two additions specific to this spec, run as part of `test:smoke`:
 
