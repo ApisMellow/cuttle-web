@@ -61,12 +61,14 @@
   import { resolveBoardTap, type TargetKey } from '../targetKey';
   import { DragGesture, dropKeyAt, dropTarget, targetKeyFromTestId, testIdForKey, type HandDrag } from '../dragDrop';
   import { keyActivationGuard, type KeyActivationGuard } from '../keyGuard';
+  import { cardForKey, LongPress } from '../longPress';
   import { screenRotated, toViewDelta } from '../tableMode';
   import { installTestHook } from '../testHook';
   import { clearImageFailures, getTheme } from '../theme';
   import AmbiguityChooser from './AmbiguityChooser.svelte';
   import Board from './Board.svelte';
   import CardDetailPopover from './CardDetailPopover.svelte';
+  import CardEnlarged from './CardEnlarged.svelte';
   import CounterPrompt from './CounterPrompt.svelte';
   import Curtain from './Curtain.svelte';
   import DiscardPicker from './DiscardPicker.svelte';
@@ -189,6 +191,7 @@
     }
     untrack(() => {
       endDrag();
+      endHold();
       staging.reset();
       browsingScrap = false;
       notice = null;
@@ -420,6 +423,44 @@
     drag = null;
   }
 
+  // ---- Press and hold to enlarge (issue #54) --------------------------------
+  // Holding a face-up card the viewer can see (their own hand, either side's
+  // points and permanents) for LONG_PRESS_MS shows it large; releasing hides
+  // it and is not a tap (the click that may follow is swallowed). A move past
+  // the drag threshold first hands the press to the drag; once the hold has
+  // fired, the pointer is no longer a drag. The card comes from the board's
+  // own view, never from the DOM, and the view is gone with the board.
+  let enlarged = $state<Card | null>(null);
+  const press = new LongPress((key) => {
+    const card = board === null ? null : cardForKey(key, board.state);
+    if (card === null) {
+      press.cancel();
+      return;
+    }
+    endDrag();
+    enlarged = card;
+  });
+
+  function endHold(): void {
+    press.cancel();
+    enlarged = null;
+  }
+
+  const CARD_SELECTOR = '[data-testid^="hand-card-"], [data-testid^="point-"], [data-testid^="perm-"]';
+
+  function onHoldPointerdown(event: PointerEvent): void {
+    if (!event.isPrimary || event.button !== 0 || board === null) return;
+    const target = event.target;
+    if (!(target instanceof Element) || screenEl === undefined || !screenEl.contains(target)) return;
+    const cardEl = target.closest(CARD_SELECTOR);
+    if (cardEl === null) return;
+    const key = targetKeyFromTestId(cardEl.getAttribute('data-testid') ?? '');
+    if (key === null) return;
+    if (key.startsWith('hand:') && cardEl.closest('[data-testid="player-hand"]') === null) return;
+    if (!key.startsWith('hand:') && !key.startsWith('point:') && !key.startsWith('perm:')) return;
+    press.down(event.pointerId, key, event.clientX, event.clientY);
+  }
+
   /** A hand card may start a drag only where a tap on it would select it for a play. */
   function canDrag(handIndex: number): boolean {
     return (
@@ -447,6 +488,7 @@
   }
 
   function onDragPointermove(event: PointerEvent): void {
+    press.move(event.pointerId, event.clientX, event.clientY);
     const step = gesture.move(event.pointerId, event.clientX, event.clientY);
     if (step === null) return;
     const handIndex = gesture.handIndex as number;
@@ -472,6 +514,11 @@
   }
 
   function onDragPointerup(event: PointerEvent): void {
+    if (press.pointerId === event.pointerId) {
+      const wasHold = press.up(event.pointerId, performance.now());
+      enlarged = null;
+      if (wasHold) return;
+    }
     const handIndex = gesture.handIndex;
     if (gesture.up(event.pointerId) !== 'drop' || handIndex === null) return;
     armClickSwallow(handIndex);
@@ -494,6 +541,7 @@
 
   /** The system took the pointer (a call, a gesture): the card goes back, still selected, and nothing is dropped. */
   function onDragPointercancel(event: PointerEvent): void {
+    if (event.pointerId === press.pointerId) endHold();
     if (event.pointerId !== gesture.pointerId) return;
     if (gesture.phase === 'dragging' && gesture.handIndex !== null) armClickSwallow(gesture.handIndex);
     endDrag();
@@ -512,6 +560,12 @@
       if (gesture.phase !== 'idle') event.preventDefault();
     };
     const onClick = (event: MouseEvent): void => {
+      // Issue #54: the click that ends a hold is not a tap.
+      if (event.target instanceof Element && event.target.closest(CARD_SELECTOR) !== null && press.swallowClick(performance.now())) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const pending = swallowClick;
       swallowClick = null;
       if (pending === null || performance.now() >= pending.until) return;
@@ -521,14 +575,21 @@
       event.preventDefault();
       event.stopPropagation();
     };
+    // Issue #54: the OS menu must not hijack a hold on a card.
+    const onContextmenu = (event: Event): void => {
+      if (event.target instanceof Element && event.target.closest(CARD_SELECTOR) !== null) event.preventDefault();
+    };
     window.addEventListener('touchmove', onTouchmove, { passive: false });
     window.addEventListener('dragstart', onDragstart);
     window.addEventListener('click', onClick, true);
+    window.addEventListener('contextmenu', onContextmenu);
     return () => {
       window.removeEventListener('touchmove', onTouchmove);
       window.removeEventListener('dragstart', onDragstart);
       window.removeEventListener('click', onClick, true);
+      window.removeEventListener('contextmenu', onContextmenu);
       endDrag();
+      endHold();
     };
   });
 
@@ -730,6 +791,7 @@
     keyboardActivation = false;
     lastInputKeyboard = false;
     onDragPointerdown(event);
+    onHoldPointerdown(event);
   }}
   onpointermove={onDragPointermove}
   onpointerup={onDragPointerup}
@@ -923,6 +985,10 @@
 
     {#if inspectCard !== null}
       <CardDetailPopover card={inspectCard} reason={inspectReason} onclose={() => (staging.inspect = null)} {theme} />
+    {/if}
+
+    {#if enlarged !== null}
+      <CardEnlarged card={enlarged} {theme} />
     {/if}
   {:else if online !== null}
     <!-- W12/W13b: an online source with no state yet (connecting, or the

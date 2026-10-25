@@ -158,6 +158,10 @@
     border-radius: 7%;
     box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
     background: none;
+    /* Issue #54: a 2 s hold enlarges the card; no iOS callout or selection. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     cursor: pointer;
     /* Opt back in under a DropZones content layer (pointer events off). */
     pointer-events: auto;
