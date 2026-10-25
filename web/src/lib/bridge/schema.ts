@@ -12,7 +12,9 @@
 export type PlayerId = 0 | 1;
 export type Suit = 0 | 1 | 2 | 3; // Clubs, Diamonds, Hearts, Spades
 export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
-export type Phase = 0 | 1 | 2 | 3 | 4;
+/** 5 is PhasePendingWin (engine v0.3.0, #93). 3 is the owed discard at turn
+ * start when `pending` is null, or the legacy in-turn discard with one. */
+export type Phase = 0 | 1 | 2 | 3 | 4 | 5;
 export type MoveKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type TargetZone = 0 | 1;
 
@@ -89,6 +91,11 @@ export interface PlayerView {
     target: Target | null;
     counterChain: Card[];
   } | null;
+
+  /** Whether the opponent's last turn can be countered: it held a one-off or began with a counter. Public, and never derived from either hand: the same for both viewers and both twins. */
+  counterable: boolean;
+  /** Owed discards from 4s (§4.3). Public counts. */
+  owedDiscards: { you: number; opponent: number };
 }
 
 /**
@@ -330,7 +337,7 @@ function validatePlayerView(value: unknown, path: string): PlayerView {
   return {
     viewer: expectPlayerId(obj.viewer, `${path}.viewer`),
     active: expectPlayerId(obj.active, `${path}.active`),
-    phase: expectNumber(obj.phase, `${path}.phase`) as Phase,
+    phase: validatePhase(obj.phase, `${path}.phase`),
     passesInARow: expectNumber(obj.passesInARow, `${path}.passesInARow`),
     winner: expectPlayerIdOrNull(obj.winner, `${path}.winner`),
     stalemate: expectBoolean(obj.stalemate, `${path}.stalemate`),
@@ -364,6 +371,28 @@ function validatePlayerView(value: unknown, path: string): PlayerView {
     },
     sevenRevealed: obj.sevenRevealed === null ? null : validateCardArray(obj.sevenRevealed, `${path}.sevenRevealed`),
     pending: validatePending(obj.pending, `${path}.pending`),
+    counterable: expectBoolean(obj.counterable, `${path}.counterable`),
+    owedDiscards: validateOwedDiscards(obj.owedDiscards, `${path}.owedDiscards`),
+  };
+}
+
+function validatePhase(value: unknown, path: string): Phase {
+  const n = expectNumber(value, path);
+  if (!Number.isInteger(n) || n < 0 || n > 5) fail(path, `must be 0..5, got ${n}`);
+  return n as Phase;
+}
+
+function expectCount(value: unknown, path: string): number {
+  const n = expectNumber(value, path);
+  if (!Number.isInteger(n) || n < 0) fail(path, `must be a non-negative integer, got ${n}`);
+  return n;
+}
+
+function validateOwedDiscards(value: unknown, path: string): PlayerView['owedDiscards'] {
+  const obj = expectObject(value, path);
+  return {
+    you: expectCount(obj.you, `${path}.you`),
+    opponent: expectCount(obj.opponent, `${path}.opponent`),
   };
 }
 

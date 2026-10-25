@@ -30,10 +30,11 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 // Learn to play, plan T13 (R25.7 criterion L3): a player's walk through all
 // five lessons by touch, at 393x852. Real touch input (Chromium's
 // CDP `Input.dispatchTouchEvent`, so the browser's own gesture handling runs):
-// play moves are DRAGGED onto their target, the deck and the counter are
-// TAPPED. Each lesson also gets one deliberate wrong staging (the coach must
-// call it wrong, spotlight Cancel and say nothing about Confirm), then Cancel
-// and the right move; lesson 4 also gets one "Let it resolve" tap.
+// play moves are DRAGGED onto their target (4.2: the 2 onto the last-turn
+// marker, issue #93), the deck is TAPPED. Each lesson also gets one
+// deliberate wrong staging (the coach must call it wrong, spotlight Cancel
+// and say nothing about Confirm), then Cancel and the right move; lesson 4
+// also pays the owed discard at 4.2, which the gate refuses.
 //
 // Every wait is on `data-step` / `data-stage` / the done sheet. Nothing here
 // asserts exact success copy or bubble positions: stages, testids, the nudge
@@ -63,20 +64,25 @@ async function wrongThenCancel(page: Page, lessonStepId: string, step: MoveStep)
   await waitStage(page, 'idle');
 }
 
-/** Lesson 4, step 4.2: "Let it resolve" is the one wrong move; the prompt comes back usable. */
-async function declineThenCounter(page: Page, step: MoveStep): Promise<void> {
-  await expect(page.getByTestId('counter-prompt')).toBeVisible();
-  await page.getByTestId('counter-resolve').tap();
+/** Lesson 4, step 4.2: paying the owed discard is the wrong move; the gate refuses it and the board stays usable. */
+async function discardRefused(page: Page, step: MoveStep): Promise<void> {
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('counter-prompt')).toHaveCount(0);
+  const setup = wrongSetup(step.id);
+  if (!setup) throw new Error('no wrong setup for 4.2');
+  await stageWrong(page, setup, 'tap');
+  await waitStage(page, 'staged-wrong');
+  await page.getByTestId('staging-confirm').tap();
   await waitStage(page, 'refused');
 
   const text = await coachText(page);
   expect(nudgeTexts(step), 'a refusal shows the nudge').toContain(text);
   expect(text, 'a refusal has no Cancel sentence').not.toContain('Tap Cancel');
-  // A fresh prompt: its counter option and "Let it resolve" are both present and enabled.
-  const prompt = page.getByTestId('counter-prompt');
-  await expect(prompt).toBeVisible();
-  await expect(prompt.locator('[data-testid^="counter-option-"]').first()).toBeEnabled();
-  await expect(page.getByTestId('counter-resolve')).toBeEnabled();
+  // Nothing was paid: both cards are still in hand, enabled, and the board is up.
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('staging-confirm')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(2);
+  for (const i of [0, 1]) await expect(page.getByTestId(`hand-card-${i}`)).toBeEnabled();
 }
 
 function touchIO(finger: Finger): WalkIO {
@@ -92,7 +98,7 @@ function touchIO(finger: Finger): WalkIO {
     },
     beforeMove: async (page, lesson, step) => {
       if (step.id === '4.2') {
-        await declineThenCounter(page, step);
+        await discardRefused(page, step);
       } else if (WRONG_STEP[lesson.id] === step.id) {
         await wrongThenCancel(page, step.id, step);
       }

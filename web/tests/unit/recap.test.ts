@@ -118,9 +118,9 @@ describe('formatRecapLine — SPEC §4.6 table, opponent-of-actor viewpoint', ()
     expect(formatRecapLine(withTarget, 0, NAMES)).not.toBe(formatRecapLine(withoutTarget, 0, NAMES));
   });
 
-  it('R20.2: Counter — "NAME countered with CARD."', () => {
+  it('issue #93: Counter — "NAME countered with CARD and undid your last turn."', () => {
     const entry = move({ by: 0, kind: 5, description: 'counter with 2♠' });
-    expect(formatRecapLine(entry, 1, NAMES)).toBe('Alice countered with 2♠.');
+    expect(formatRecapLine(entry, 1, NAMES)).toBe('Alice countered with 2♠ and undid your last turn.');
   });
 
   it('R20.2: Decline is never shown in the recap (R14)', () => {
@@ -330,9 +330,9 @@ describe('formatRecapLine — SPEC §4.6, viewer-is-the-actor (own moves)', () =
     expect(formatRecapLine(entry, 0, NAMES)).toBe('You passed.');
   });
 
-  it('R20.2: Counter, own move — "You countered with CARD." (Counter from both viewpoints)', () => {
+  it('issue #93: Counter, own move — "You countered with CARD and undid NAME\'s last turn."', () => {
     const entry = move({ by: 0, kind: 5, description: 'counter with 2♠' });
-    expect(formatRecapLine(entry, 0, NAMES)).toBe('You countered with 2♠.');
+    expect(formatRecapLine(entry, 0, NAMES)).toBe("You countered with 2♠ and undid Blake's last turn.");
   });
 });
 

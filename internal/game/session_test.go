@@ -258,24 +258,24 @@ func TestW2_SeatBindingRejectsTheOtherSeat(t *testing.T) {
 					wantErr(t, "game over", err, ErrGameOver, CodeGameOver)
 				}
 			} else {
-				// The actor is always engine Active: the responder at a
-				// counter window, the discarder at a 4, the 7's player
-				// while choosing (engine/apply.go:337, :653, :834).
+				// The actor is always engine Active: the debtor paying an
+				// owed discard, the 7's player while choosing, the
+				// decider at a pending win (engine/apply.go:1037-1057).
 				if st.Actor != Seat(s.g.state.Active) {
 					t.Fatalf("seed %d: actor %d != engine Active %d", seed, st.Actor, s.g.state.Active)
 				}
 				switch st.Phase {
 				case engine.PhaseNormal:
 					normal++
-				case engine.PhaseAwaitingCounter:
-					if Seat(s.g.state.Pending.PlayedBy) == st.Actor && len(s.g.state.Pending.CounterChain)%2 == 0 {
-						t.Fatalf("seed %d: counter window actor is the one-off's player", seed)
-					}
-					counter++
 				case engine.PhaseAwaitingDiscard:
 					discard++
 				case engine.PhaseSevenChoosing:
 					seven++
+				}
+				// Engine v0.3.0 (#93): no counter window opens in new
+				// play; a counter is the actor's first move of a turn.
+				if engine.CounterAvailable(s.g.state) {
+					counter++
 				}
 				n := len(engine.LegalMoves(s.g.state))
 				for _, idx := range []int{0, n - 1} {
@@ -692,7 +692,7 @@ func TestW2_RestoreUpgradesV1Snapshot(t *testing.T) {
 	}
 	b := NewBridge()
 	okEnvelope(t, b.Restore(string(v1), 0.0))
-	if persisted(t, s) != b.Snapshot() || !strings.Contains(persisted(t, s), `"v":2`) {
+	if persisted(t, s) != b.Snapshot() || !strings.Contains(persisted(t, s), `"v":3`) {
 		t.Fatal("v1 restore differs from the bridge's")
 	}
 }
@@ -711,8 +711,8 @@ func TestW2_RestoreRejectsInvalidSnapshots(t *testing.T) {
 		"array":          []byte(`[]`),
 		"trailing data":  []byte(good + `{}`),
 		"unknown field":  edit(`"ok":true`, `"ok":true,"x":1`),
-		"version 3":      edit(`"v":2`, `"v":3`),
-		"no version":     edit(`"v":2,`, ``),
+		"version 4":      edit(`"v":3`, `"v":4`),
+		"no version":     edit(`"v":3,`, ``),
 		"bad seed":       edit(`"seed":"9"`, `"seed":"nine"`),
 		"no seed":        edit(`,"seed":"9"`, ``),
 		"dealer 2":       edit(`"dealer":0`, `"dealer":2`),

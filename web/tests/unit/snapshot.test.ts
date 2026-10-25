@@ -11,7 +11,7 @@ import { appliedMove } from './game-test-support';
 
 function validSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
-    v: 2,
+    v: 3,
     savedAt: '2026-09-27T00:00:00.000Z',
     engineState: '{"ok":true,"v":2,"state":{},"history":[],"seed":"42","dealer":0}',
     history: [],
@@ -32,15 +32,32 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     expect(result).toEqual({ ok: true, snapshot: snap });
   });
 
-  it('R4.4: a snapshot with v !== 2 decodes as version-mismatch, not thrown', () => {
-    const raw = JSON.stringify({ ...validSnapshot(), v: 3 });
+  it('R4.4: a snapshot with v outside {1, 2, 3} decodes as version-mismatch, not thrown', () => {
+    const raw = JSON.stringify({ ...validSnapshot(), v: 4 });
     expect(() => decodeSnapshot(raw)).not.toThrow();
     const result = decodeSnapshot(raw);
-    expect(result).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=3' });
+    expect(result).toEqual({ ok: false, reason: 'version-mismatch', detail: 'found v=4' });
   });
 
-  it('SPEC §5.7 (ruling 2026-09-28): v is 2; a v1 save migrates, gaining drawn: null on every history entry', () => {
-    expect(SNAPSHOT_VERSION).toBe(2);
+  it('issue #93 (SPEC §5.7 v3): v is 3; a v2 save migrates with only v changed, its engine state untouched', () => {
+    expect(SNAPSHOT_VERSION).toBe(3);
+    const entry = appliedMove({ by: 1, kind: 4, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
+    const v2 = { ...validSnapshot(), v: 2, viewer: 0, history: [entry], curtain: { kind: 'ack', to: 0 } };
+    const result = decodeSnapshot(JSON.stringify(v2));
+    expect(result).toEqual({ ok: true, snapshot: { ...v2, v: 3 } });
+  });
+
+  it('issue #93: a v2 save at a legacy counter window written before 2026-09-29 (synthetic: false) still decodes to its ack', () => {
+    const entry = appliedMove({ by: 1, kind: 4, seq: 1, card: { Rank: 6, Suit: 2 }, description: 'play 6♥ as one-off' });
+    const v2 = { ...validSnapshot(), v: 2, viewer: 0, history: [entry], curtain: { kind: 'ack', to: 0, synthetic: false } };
+    const result = decodeSnapshot(JSON.stringify(v2));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.v).toBe(3);
+    expect(result.snapshot.curtain).toEqual({ kind: 'ack', to: 0 });
+  });
+
+  it('SPEC §5.7 (ruling 2026-09-28): a v1 save migrates through v2 to v3, gaining drawn: null on every history entry', () => {
     const entry = appliedMove({ by: 1, kind: 4, seq: 1, card: { Rank: 5, Suit: 2 }, description: 'play 5♥ as one-off' });
     const v1Entry: Record<string, unknown> = { ...entry };
     delete v1Entry.drawn;
@@ -48,7 +65,7 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     const result = decodeSnapshot(JSON.stringify(v1));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.snapshot.v).toBe(2);
+    expect(result.snapshot.v).toBe(3);
     expect(result.snapshot.history).toEqual([{ ...entry, drawn: null }]);
     expect(result.snapshot.curtain).toEqual({ kind: 'reveal', to: 0 });
     // The opaque engine state is passed through untouched (the bridge migrates it).
@@ -61,8 +78,8 @@ describe('snapshot encode/decode (SPEC §5.7)', () => {
     expect(result).toMatchObject({ ok: false, reason: 'malformed' });
   });
 
-  it('R4.4: a v outside {1, 2} is classified even when the rest of the shape is also missing (no migration attempted)', () => {
-    // Only v1 migrates (SPEC §5.7, ruling 2026-09-28). Any other version with
+  it('R4.4: a v outside {1, 2, 3} is classified even when the rest of the shape is also missing (no migration attempted)', () => {
+    // Only v1 and v2 migrate (SPEC §5.7). Any other version with
     // an old/foreign shape that also fails the structural check must still
     // report version-mismatch, not 'malformed'.
     const raw = JSON.stringify({ v: 0, somethingElseEntirely: true });

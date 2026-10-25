@@ -6,7 +6,7 @@
 // (SPEC §5.6 rule 1).
 //
 // `tests/unit/tutorial-lessons-wasm.test.ts` replays every lesson through
-// the real engine (v0.2.1) and checks the copy fits; it cites the engine
+// the real engine (v0.3.0) and checks the copy fits; it cites the engine
 // rules each step relies on.
 
 import { MoveKind } from '../enums';
@@ -29,7 +29,6 @@ const ZONE_POINTS: SpotTarget = { kind: 'testid', id: 'zone-points' };
 const ZONE_PERMANENTS: SpotTarget = { kind: 'testid', id: 'zone-permanents' };
 const ZONE_ONEOFF: SpotTarget = { kind: 'testid', id: 'zone-oneoff' };
 const DECK: SpotTarget = { kind: 'testid', id: 'deck-pile' };
-const CONFIRM: SpotTarget = { kind: 'testid', id: 'staging-confirm' };
 
 // ---------------------------------------------------------------------------
 // Lesson 1, The goal (design §5.2)
@@ -249,18 +248,20 @@ const LESSON_3: Lesson = {
 };
 
 // ---------------------------------------------------------------------------
-// Lesson 4, One-offs and the 2 (design §5.5, §5.5.1)
+// Lesson 4, One-offs and the 2 (design §5.5, §5.5.1; issue #93)
 // ---------------------------------------------------------------------------
 
 const L4_AS: SpotTarget = { kind: 'hand', card: c(1, 'S') };
-const COUNTER_OPTION: SpotTarget = { kind: 'counterOption' };
-const L4_DECLINE_NUDGE = 'Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm.';
+const L4_2H: SpotTarget = { kind: 'hand', card: c(2, 'H') };
+/** The centre last-turn marker a selected 2 lights (SPEC §4.3). */
+const COUNTER_LINK: SpotTarget = { kind: 'testid', id: 'counter-link' };
+const L4_DISCARD_NUDGE = "Discarding costs you 2 cards. Drag your 2 onto Blake's last turn instead.";
 
 const LESSON_4: Lesson = {
   id: 4,
   title: 'One-offs and the 2',
   subtitle: 'Powers, and how to stop them',
-  done: 'A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off.',
+  done: 'A one-off happens at once, but a 2 at the start of the next turn undoes it. The Rules page in the menu lists every one-off.',
   win: false,
   deal: false,
   position: {
@@ -292,25 +293,26 @@ const LESSON_4: Lesson = {
       generic: 'Use your Ace. Drop it on the middle spot.',
       success: 'Wiped, yours too. A one-off happens right away, then goes to the scrap.',
       demo: { kind: 'drag', from: L4_AS, to: ZONE_ONEOFF, thenConfirm: false },
-      // Alice holds a 2, so Blake's 4 opens a counter window (design §5.5).
+      // Blake's 4 resolves at once (engine v0.3.0): Alice's turn opens on the
+      // board owing a discard of 2, with Counter 2H beside the discard pairs.
       // No done line: step 4.2's main line follows it (plan Appendix A).
       blake: [blake({ kind: MoveKind.OneOff, card: c(4, 'D') })],
     },
     {
       kind: 'move',
       id: '4.2',
-      main: "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm.",
-      spot: [COUNTER_OPTION],
+      main: "Blake's 4 means you throw away 2 cards. You hold a 2: drag it onto his last turn in the middle to undo it.",
+      spot: [L4_2H],
       expect: { kind: MoveKind.Counter, card: c(2, 'H') },
-      source: COUNTER_OPTION,
-      target: CONFIRM,
-      staged: 'Tap Confirm to stop his 4.',
-      tapRoute: 'Tap your 2, then Confirm.',
-      nudges: [{ when: { kind: MoveKind.Decline }, text: L4_DECLINE_NUDGE }],
-      // The window's only wrong move is the Decline (design §5.5.1).
-      generic: L4_DECLINE_NUDGE,
-      success: 'Stopped. His 4 does nothing, and his turn is over.',
-      demo: { kind: 'tap', at: [COUNTER_OPTION], thenConfirm: true },
+      source: L4_2H,
+      target: COUNTER_LINK,
+      staged: 'Tap Confirm to undo his 4.',
+      tapRoute: 'Tap your 2, then tap his last turn in the middle, then Confirm.',
+      nudges: [{ when: { kind: MoveKind.DiscardPair }, text: L4_DISCARD_NUDGE }],
+      // Every other legal move is a discard (design §5.5.1).
+      generic: L4_DISCARD_NUDGE,
+      success: "Undone. His 4 never happened, and it's your turn.",
+      demo: { kind: 'drag', from: L4_2H, to: COUNTER_LINK, thenConfirm: false },
       blake: [],
     },
   ],

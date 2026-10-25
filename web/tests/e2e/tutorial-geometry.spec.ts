@@ -28,11 +28,11 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 
 // Learn to play, plan T12 (R25.7, criterion L2): design §7.3 holds at 393x852
 // for a representative set of steps (see STOP_AFTER). For each step walked and
-// each stage the helper can reach (idle, selected, staged-right, staged-wrong, refused
-// at 4.2 and on the board, the success and Blake beats, the done sheet):
+// each stage the helper can reach (idle, selected, staged-right, staged-wrong,
+// refused, the success and Blake beats, the done sheet):
 //   - the bubble box intersects no `[data-coach-hole]`, `staging-bar`,
-//     `menu-button` or `counter-option-*`, and none of the counter prompt's
-//     own text (its heading and the played line);
+//     `menu-button` or `discard-picker`, nor `counter-link` once a 2 lights
+//     it (4.2, issue #93);
 //   - every spotlit target is really hit-testable at its centre, which proves
 //     the overlay's scrollIntoView worked at 393x660 (jsdom can't);
 //   - scrollWidth <= clientWidth on the page, the game screen, the board, the
@@ -43,8 +43,8 @@ import type { MoveStep } from '../../src/lib/tutorial/types';
 
 // One viewport (393x852, the primary phone) and a small representative set:
 // every lesson's first move step, plus lessons 1 and 4 played to their done
-// sheet (1 is all next-steps and one move; 4 holds the counter prompt, the
-// widest bubble-avoidance case). `null` = play the lesson to the end.
+// sheet (1 is all next-steps and one move; 4 holds the owed discard and the
+// counter from the board, the widest bubble-avoidance case). `null` = play the lesson to the end.
 const VIEWPORT = { width: 393, height: 852 };
 const STOP_AFTER: Record<number, string | null> = { 1: null, 2: '2.1', 3: '3.1', 4: null, 5: '5.1' };
 const LESSON_IDS = [1, 2, 3, 4, 5] as const;
@@ -129,12 +129,7 @@ async function afterConfirm(page: Page, lessonId: number, index: number, note: (
             await waitStage(page, 'staged-wrong');
             await confirm(page);
             note(`${step.id} refused`, await reach(page, 'refused'));
-          } else if (step.id === '4.2') {
-            // The counter window's only wrong move is the one-tap Decline (design §5.5.1).
-            await page.getByTestId('counter-resolve').click();
-            note(`${step.id} refused`, await reach(page, 'refused'));
-            await expect(page.getByTestId('counter-prompt')).toBeVisible();
-            if (primary) await shot(page, 'step-4.2-refused');
+            if (primary && step.id === '4.2') await shot(page, 'step-4.2-refused');
           }
 
           // The right move: select, stage, confirm.

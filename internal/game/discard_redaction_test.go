@@ -224,8 +224,9 @@ func TestSPEC3_2_DiscardPairOneCardRedactedForOtherSeat(t *testing.T) {
 // didn't make it, and every other entry's description is the engine's,
 // unchanged, for both seats.
 func TestSPEC3_2_DiscardPairRedactionAcrossRandomGames(t *testing.T) {
-	// 3 and 14: two-card discards; 15 and 19: one-card discards (DiscardB -1).
-	discardSeeds := []uint64{3, 14, 15, 19}
+	// Engine v0.3.0 (#93, owed discards at turn start): 2 and 31 reach both
+	// shapes, 15 two-card discards, 16 a one-card discard (DiscardB -1).
+	discardSeeds := []uint64{2, 15, 16, 31}
 	seeds := len(discardSeeds)
 	var twoCard, oneCard, otherKinds int
 

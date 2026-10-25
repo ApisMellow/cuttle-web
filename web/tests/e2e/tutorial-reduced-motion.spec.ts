@@ -65,14 +65,8 @@ function calmIO(): WalkIO {
       await tapTarget(page, step);
       await waitStage(page, 'staged-right');
       await settledCalm(page);
-      // Confirm gets the last number once the move is staged (design §8.3). Step
-      // 4.2 is the known exception: staging the counter option replaces the
-      // option button with the staged line, so the demo's only spot is gone and
-      // no marker is drawn at all until Confirm is tapped (reported in the T13
-      // hand-back; the Confirm ring and the bubble still lead the way).
-      if (step.id !== '4.2') {
-        expect(await markers(page), `${step.id}: Confirm is numbered too`).toEqual(numbered(demoSpots(step) + 1));
-      }
+      // Confirm gets the last number once the move is staged (design §8.3).
+      expect(await markers(page), `${step.id}: Confirm is numbered too`).toEqual(numbered(demoSpots(step) + 1));
       await confirm(page);
     },
     atDone: async (page) => {

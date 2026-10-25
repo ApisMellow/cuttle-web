@@ -8,8 +8,7 @@
 // has selected or staged is whatever the page shows (design §7.2).
 //
 // The stage machine for a move step (design §7.2, plan P8):
-//   - `staged-right` / `staged-wrong` only while Confirm is on the page (a
-//     staged counter puts its Confirm inside the prompt). The verdict is
+//   - `staged-right` / `staged-wrong` only while Confirm is on the page. The verdict is
 //     `classifyStaged` against the table's envelope, read in the same
 //     callback; unknown counts as right (the gate decides). While the move
 //     is in flight (Confirm disabled, or the table pending) the last verdict
@@ -118,8 +117,9 @@ export interface CoachDeps {
   flights?: () => CoachFlights | null;
   /**
    * T14: ms before a new step's first demo may play, read as the step
-   * begins (a flight still landing where the demo would point, lesson 4's 4
-   * flying into the counter prompt). Never shorter than `DEMO_ENTRY_MS`.
+   * begins (a flight still landing where the demo would point: lesson 4's 4
+   * crossing the middle spot that 4.2's demo drags to). Never shorter than
+   * `DEMO_ENTRY_MS`.
    */
   entryDelay?: () => number;
 }
@@ -136,7 +136,7 @@ export type CoachDemo = { kind: 'drag'; from: Box; to: Box; card: Card } | { kin
 /** Page geometry changes these end; each one schedules a measure (T14 M1). */
 const SETTLE_EVENTS = ['transitionend', 'transitioncancel'] as const;
 
-const EMPTY_PAGE: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, counter: null };
+const EMPTY_PAGE: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, pair: null };
 const START_PLACEMENT: BubblePlacement = { x: PLACEMENT.gutter, y: 56, notch: null, notchX: PLACEMENT.gutter + BUBBLE_MAX_WIDTH / 2 };
 
 const defaultClock: CoachClock = {
@@ -195,7 +195,7 @@ export function ownsInput(target: EventTarget | null): boolean {
  * page marks `data-state="highlighted"`. Read by the holder's testid, so the
  * drop-zone well (no testid of its own) and a hand card never count.
  */
-const LIT_TARGET = /^(zone-|point-|perm-)/;
+const LIT_TARGET = /^(zone-|point-|perm-|counter-link$)/;
 
 /** A px length from computed style, or 0. */
 function pxOf(raw: string | undefined): number {
@@ -345,7 +345,7 @@ export class CoachController {
     for (const type of SETTLE_EVENTS) this.#root.addEventListener(type, this.#onLayout, { capture: true, passive: true });
 
     // The table's run state changes without touching the page (a beat timer,
-    // a refusal at the counter prompt), so it is watched too.
+    // a refusal), so it is watched too.
     this.#stopEffects = $effect.root(() => {
       $effect(() => {
         const t = this.#table;
@@ -562,7 +562,7 @@ export class CoachController {
   ): { stage: CoachStage; text: string; tone: LineTone; ids: string[] } {
     const t = this.#table;
     const env = t.envelope;
-    const staged = page.confirm || page.counter === 'staged';
+    const staged = page.confirm;
     const idle = page.selectedHand === null && !staged;
 
     if (this.#refused) {
@@ -587,12 +587,8 @@ export class CoachController {
     // The resting spotlight: the step's `spot`, its source card (1.5 adds the Points row, T14).
     const source = step.spot.flatMap((s) => this.#resolve(s, view, null));
     if (this.#refused) {
-      // On the board the refusal shows its own nudge, without the Cancel
-      // sentence. At the counter prompt the refused state IS the fresh prompt
-      // (§5.5.1 "Fresh again"), so two tries there bring the tap route.
-      const nudge = t.lastNudge ?? step.generic;
-      const text = page.counter !== null && t.wrongTries >= 2 ? step.tapRoute : nudge;
-      return { stage: 'refused', text, tone: 'nudge', ids: source };
+      // The refusal shows its own nudge, without the Cancel sentence.
+      return { stage: 'refused', text: t.lastNudge ?? step.generic, tone: 'nudge', ids: source };
     }
     if (page.selectedHand !== null) {
       const card = this.#resolve(step.source, view, page.selectedHand);
@@ -628,11 +624,6 @@ export class CoachController {
         }
         return out;
       }
-      case 'counterOption': {
-        const el = this.#root.querySelector('[data-testid^="counter-option-"]');
-        const id = el?.getAttribute('data-testid');
-        return id ? [id] : [];
-      }
     }
   }
 
@@ -661,7 +652,7 @@ export class CoachController {
    * their boxes, `nearest`-style, below the sticky score bar (the board's
    * scroll-padding-top, or the bar's own height). When the union can't fit,
    * the first target alone is brought into view. Targets outside the board
-   * (the action bar, the counter prompt) never scroll.
+   * (the action bar) never scroll.
    */
   #scrollToTargets(ids: readonly string[]): void {
     const els = ids.flatMap((id) => {
@@ -761,18 +752,22 @@ export class CoachController {
     this.#confirmBox = confirmBox;
 
     // The bubble never covers a hole, the demonstrated card or its target,
-    // the staging bar, the menu button or the counter options (design §7.3),
-    // nor what is staged: the line is about that setup.
+    // the staging bar, the menu button, the discard picker or the last-turn
+    // marker (design §7.3, issue #93), nor what is staged: the line is about
+    // that setup.
     const avoid: Box[] = [...demoBoxes];
-    for (const id of ['staging-bar', 'menu-button']) {
+    for (const id of ['staging-bar', 'menu-button', 'discard-picker']) {
       const el = this.#el(id);
       if (el) avoid.push(boxOf(el));
     }
-    for (const el of this.#root.querySelectorAll('[data-testid^="counter-option-"], [data-testid="counter-resolve"]')) avoid.push(boxOf(el));
+    // The marker is always in the DOM; it is a place to go only while lit or staged.
+    const link = this.#el('counter-link');
+    if (link && link.getAttribute('data-state') !== 'normal') avoid.push(boxOf(link));
     const page = this.#page;
     if (page.confirm) {
       const staged = [
         ...(typeof page.source === 'object' && page.source !== null ? [`hand-card-${page.source.hand}`] : []),
+        ...(page.pair !== null ? page.pair.map((i) => `hand-card-${i}`) : []),
         ...(page.target !== null ? [testIdForKey(page.target)] : []),
       ];
       for (const id of staged) {
@@ -841,7 +836,6 @@ export class CoachController {
       actionBarTop,
       scoreBarBottom,
       bubble,
-      dock: page.counter !== null ? 'under-menu' : undefined,
     });
   }
 }

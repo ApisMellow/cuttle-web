@@ -30,6 +30,8 @@ function envelope(overrides: { opponentHand?: Card[] | null } = {}): Envelope {
       },
       sevenRevealed: null,
       pending: null,
+      counterable: false,
+      owedDiscards: { you: 0, opponent: 0 },
     },
     legalMoves: [],
     descriptions: [],

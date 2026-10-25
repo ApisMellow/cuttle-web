@@ -8,6 +8,9 @@
 //   point:<owner>:<i>     entry i of <owner>'s points row (engine Target.Owner/Index)
 //   perm:<owner>:<i>      entry i of <owner>'s permanents row
 //   seven:<i>             revealed card i of a 7 (view.sevenRevealed[i], P2 W15)
+//   counter-link          the centre last-turn marker a selected 2 lights to
+//                         counter (issue #93, SPEC §4.3)
+//   let-it-happen         the pending win's Decline button (issue #93, SPEC §4.3)
 
 import type { PlayerId } from './bridge/schema';
 
@@ -21,9 +24,12 @@ export type TargetKey =
   | ZoneKey
   | `point:${PlayerId}:${number}`
   | `perm:${PlayerId}:${number}`
-  | `seven:${number}`;
+  | `seven:${number}`
+  | 'counter-link'
+  | 'let-it-happen';
 
-const TARGET_KEY = /^(?:hand:\d+|deck|scrap|pass|zone:(?:points|permanents|oneoff)|(?:point|perm):[01]:\d+|seven:\d+)$/;
+const TARGET_KEY =
+  /^(?:hand:\d+|deck|scrap|pass|counter-link|let-it-happen|zone:(?:points|permanents|oneoff)|(?:point|perm):[01]:\d+|seven:\d+)$/;
 
 /** Narrows a raw string (a DOM-reported key) to a `TargetKey`, or `null` if it is not one. */
 export function parseTargetKey(raw: string): TargetKey | null {

@@ -24,7 +24,9 @@ const MOVE_SEVEN_PICK = MoveKind.SevenPick;
 const MOVE_DISCARD_PAIR = MoveKind.DiscardPair;
 const MOVE_PASS = MoveKind.Pass;
 
+const PHASE_AWAITING_COUNTER = Ph.AwaitingCounter;
 const PHASE_AWAITING_DISCARD = Ph.AwaitingDiscard;
+const PHASE_PENDING_WIN = Ph.PendingWin;
 
 /** Identifies a card for the SevenPick slot key's nested `cardKey` term (SPEC §6.2). */
 function cardKey(c: Card): string {
@@ -205,14 +207,18 @@ export type DiscardPickerModel =
  */
 export function deriveDiscardPicker(phase: Phase, legalMoves: Move[]): DiscardPickerModel | null {
   if (phase !== PHASE_AWAITING_DISCARD) return null;
-  if (legalMoves.length === 1) {
-    const [only] = legalMoves;
-    return { mode: 'preselected', moveIndex: 0, discardA: only.DiscardA, discardB: only.DiscardB };
+  // Issue #93: an owed discard (phase 3 with no `pending`) also offers the
+  // Counters, last in the list. The picker models only the DiscardPairs, by
+  // their own engine indices.
+  const pairs: DiscardCandidate[] = [];
+  legalMoves.forEach((m, moveIndex) => {
+    if (m.Kind === MOVE_DISCARD_PAIR) pairs.push({ moveIndex, discardA: m.DiscardA, discardB: m.DiscardB });
+  });
+  if (pairs.length === 1) {
+    const [only] = pairs;
+    return { mode: 'preselected', moveIndex: only.moveIndex, discardA: only.discardA, discardB: only.discardB };
   }
-  return {
-    mode: 'select',
-    candidates: legalMoves.map((m, moveIndex) => ({ moveIndex, discardA: m.DiscardA, discardB: m.DiscardB })),
-  };
+  return { mode: 'select', candidates: pairs };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,10 +243,13 @@ function ownerZoneKey(t: Target): TargetKey {
  *
  * Total over all ten `MoveKind`s so it stays safe to call on any legal move,
  * including the ones the current round doesn't route to a target step:
- * - `Pass`, `Decline`, `Counter`, `DiscardPair` have no board location at all
- *   (Pass and Decline are phase controls; Counter is "not a board
- *   interaction", SPEC §6.3; DiscardPair is a picker, not a tap-a-target
- *   affordance) — `null`.
+ * - `Pass` and `DiscardPair` have no board location at all (Pass is a phase
+ *   control; DiscardPair is a picker, not a tap-a-target affordance) — `null`.
+ * - `Counter` (issue #93, SPEC §4.3) is a board play: a selected 2's target
+ *   is the centre last-turn marker, `'counter-link'`.
+ * - `Decline` (issue #93) is the pending win's one-tap button,
+ *   `'let-it-happen'`. A legacy counter window's Decline ("Let it resolve")
+ *   never reaches the board: its CounterPrompt has its own buttons.
  * - `Draw`'s target step *is* the deck itself — `'deck'`.
  * - `SevenPick` recurses into `SubMove`; a dead-end SevenPick (§6.2 amended)
  *   has no sub-move to recurse into and scraps the revealed card instead —
@@ -249,10 +258,12 @@ function ownerZoneKey(t: Target): TargetKey {
 export function boardTargetKey(m: Move): TargetKey | null {
   switch (m.Kind) {
     case MOVE_PASS:
-    case MOVE_DECLINE:
-    case MOVE_COUNTER:
     case MOVE_DISCARD_PAIR:
       return null;
+    case MOVE_COUNTER:
+      return 'counter-link';
+    case MOVE_DECLINE:
+      return 'let-it-happen';
     case MOVE_DRAW:
       return 'deck';
     case MOVE_PLAY_POINT:
@@ -311,12 +322,19 @@ export function stagingAffordances(legalMoves: Move[]): Record<string, number[]>
  * P2 W15 — what the live board makes reachable at curtain `none` once the
  * pickers exist: every slot `groupAffordances` produces, including SevenPick
  * (SevenRevealPanel), DiscardPair (DiscardPicker) and a rank-3 scrap-pick
- * group (ScrapBrowser pick mode). Counter and Decline are left out: they
- * belong to the CounterPrompt, which never shares a screen with the board.
- * `stagingAffordances` above stays as W11 scoped it.
+ * group (ScrapBrowser pick mode). `stagingAffordances` above stays as W11
+ * scoped it.
+ *
+ * Issue #93 (SPEC §4.3): Counter is a board play in phases 0, 3 and 5 (a
+ * selected 2 lights `counter-link`), and phase 5's Decline is the board's
+ * `let-it-happen` button, so both are included. Only a legacy counter
+ * window (phase 1, a v0.2.x save) leaves them out: they belong to its
+ * CounterPrompt, which never shares a screen with the board. Without a
+ * `phase` nothing is left out.
  */
-export function boardAffordances(legalMoves: Move[]): Record<string, number[]> {
+export function boardAffordances(legalMoves: Move[], phase?: Phase): Record<string, number[]> {
   const grouped = groupAffordances(legalMoves);
+  if (phase !== PHASE_AWAITING_COUNTER) return grouped;
   const result: Record<string, number[]> = {};
   for (const [key, indices] of Object.entries(grouped)) {
     const kind = legalMoves[indices[0]].Kind;
@@ -324,4 +342,16 @@ export function boardAffordances(legalMoves: Move[]): Record<string, number[]> {
     result[key] = indices;
   }
   return result;
+}
+
+/**
+ * Issue #93 (SPEC §4.3) — the engine index of the pending win's "Let it
+ * happen" (phase 5's one Decline), or null when the board has no such
+ * button. A legacy counter window's Decline ("Let it resolve") is the
+ * CounterPrompt's, never the board's.
+ */
+export function letItHappenIndex(phase: Phase, legalMoves: Move[]): number | null {
+  if (phase !== PHASE_PENDING_WIN) return null;
+  const i = legalMoves.findIndex((m) => m.Kind === MOVE_DECLINE);
+  return i < 0 ? null : i;
 }

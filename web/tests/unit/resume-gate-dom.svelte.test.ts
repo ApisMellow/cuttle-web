@@ -83,7 +83,7 @@ const ONE_OFF = appliedMove({ by: 1, kind: Kind.OneOff, seq: 1, card: { Rank: 9,
 
 function saved(curtain: CurtainState, viewer: PlayerId = 0): Snapshot {
   return {
-    v: 2,
+    v: 3,
     savedAt: '2026-09-29T00:00:00.000Z',
     engineState: '"fake-engine-state"',
     history: [ONE_OFF],

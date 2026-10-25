@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { plainMoveText } from '../../src/lib/recap';
+import { loadLegacyCounterWindow } from './helpers/legacy-counter-window';
 
 // W25 item 6 (desktop keyboard): every lit target is reachable with Tab and
 // activates with Enter or Space, with a visible focus ring. Reached through
@@ -223,22 +224,15 @@ test('R12: a repeated Enter on the board\'s staged Confirm applies nothing', asy
 });
 
 // r16 (d-16): on a desktop the counter prompt keeps to the 560 px column,
-// centred, and focus starts on its heading.
+// centred, and focus starts on its heading. Issue #93: engine v0.3.0 opens
+// no counter window, so the prompt is reached from a legacy phase-1 save
+// (helpers/legacy-counter-window.ts): Blake, holding 2♣, is in the window.
 test('1440x900: the counter prompt keeps to the board column, with focus on a control', async ({ page }) => {
-  await startGolden(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  // Ruling 2026-09-29: a prompt only for a responder who holds a 2. Alice
-  // draws (keeping her 2♥); Blake plays 5♥ as a one-off into her window.
-  await page.getByTestId('deck-pile').click();
-  await page.getByTestId('staging-confirm').click();
-  await page.getByTestId('reveal-two-step').click();
-  await page.getByTestId('reveal-two-step').click();
-  const moves = await hook(page, (h) => h.moves());
-  const five = moves.find((m) => m.kind === 4 && /^play 5. as one-off$/.test(m.description))!;
-  await page.getByTestId(`hand-card-${five.handIndex}`).click();
-  await page.getByTestId('zone-oneoff').click();
-  await page.getByTestId('staging-confirm').click();
-  // Alice's response: the curtain, then the prompt (no recap: it would only repeat the 5).
+  await page.goto('/');
+  await loadLegacyCounterWindow(page);
+  await page.getByTestId('resume').click();
+  // The resume gate, then Blake's prompt.
   await page.getByTestId('reveal-two-step').click();
   await page.getByTestId('reveal-two-step').click();
   await expect(page.getByTestId('counter-prompt')).toBeVisible();

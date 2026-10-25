@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // T11 (docs/tutorial-plan.md §6 T11; design §8.1, §8.4-§8.6, §9): the motion
 // wired into a lesson. The REAL GameScreen and CoachOverlay over the REAL
-// TutorialTable (engine v0.2.1 through the wasm bridge), built by a real
+// TutorialTable (engine v0.3.0 through the wasm bridge), built by a real
 // TutorialStore, so the store forwards the table's flight hooks to the
 // overlay exactly as in the app.
 //
@@ -25,7 +25,7 @@ import { MoveKind } from '../../src/lib/enums';
 import { session } from '../../src/lib/stores/session.svelte';
 import { settings } from '../../src/lib/stores/settings.svelte';
 import { DEMO_ENTRY_MS, type CoachClock, type CoachFrames } from '../../src/lib/tutorial/coach.svelte';
-import { COUNTER_ONEOFF_MS } from '../../src/lib/tutorial/motion';
+import { ONEOFF_FLIGHT_MS } from '../../src/lib/tutorial/motion';
 import { BLAKE_DONE_BEAT_MS, BLAKE_THINK_MS, SUCCESS_BEAT_MS, TutorialTable } from '../../src/lib/tutorial/table.svelte';
 import { TutorialStore } from '../../src/lib/tutorial/tutorial.svelte';
 import type { LessonId } from '../../src/lib/tutorial/types';
@@ -567,33 +567,59 @@ describe('the glasses ring (5.1)', () => {
   });
 });
 
-// T14 judge nice-to-have 3: Blake's 4 (4.1 -> 4.2) opens the counter window,
-// so the board unmounts under the prompt. His card flies to the prompt's own
-// thumbnail of it, not into the empty space where the one-off spot was, and
-// the step's first demo waits until it has landed.
-describe('the counter window flight (4.2)', () => {
-  it("Blake's 4 ends on the prompt's thumbnail of it", async () => {
+// Issue #93: Blake's 4 (4.1 -> 4.2) resolves at once, so it lands like any
+// one-off, on the board: into the middle spot, then the scrap. Alice's
+// counter at 4.2 reuses that landing: her 2 flies from her hand through the
+// middle to the scrap as the rewind happens.
+describe('the one-off and counter flights around 4.2', () => {
+  /** Where a flight's last keyframe puts the clone's centre. */
+  function endCentre(a: FakeAnimation): { x: number; y: number } {
+    const el = a.el as HTMLElement;
+    const box = { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) };
+    const last = String(a.frames[a.frames.length - 1].transform);
+    const [dx, dy] = [...last.matchAll(/(-?[\d.]+)px/g)].slice(0, 2).map((m) => Number(m[1]));
+    return { x: box.x + box.w / 2 + dx, y: box.y + box.h / 2 + dy };
+  }
+
+  it("Blake's 4 ends on the scrap pile, with the board on show", async () => {
     const table = await startLesson(4);
     await playMove(table); // 4.1: the Ace
     await advance(SUCCESS_BEAT_MS);
     calls = [];
-    await advance(BLAKE_THINK_MS); // he plays the 4; the window opens
+    await advance(BLAKE_THINK_MS); // he plays the 4; it resolves
     expect(table.step?.id).toBe('4.2');
-    expect(q('[data-testid="board"]')).toBeNull();
-    const thumb = q('[data-testid="counter-prompt"] .counter-prompt__line:last-child .counter-prompt__face')!.getBoundingClientRect();
+    expect(table.curtain).toEqual({ kind: 'none' });
+    expect(q('[data-testid="board"]')).not.toBeNull();
+    expect(q('[data-testid="counter-prompt"]')).toBeNull();
+    const scrap = q('[data-testid="scrap-pile"]')!.getBoundingClientRect();
     const flight = calls.find((a) => a.el.getAttribute('data-actor') === 'mover');
     expect(flight, 'his card flies').toBeDefined();
+    const end = endCentre(flight!);
+    expect(end.x).toBeCloseTo(scrap.x + scrap.width / 2, 1);
+    expect(end.y).toBeCloseTo(scrap.y + scrap.height / 2, 1);
+  });
+
+  it('the counter: her 2 flies from her hand to the scrap', async () => {
+    const table = await startLesson(4, '4.2');
+    const env = table.envelope!;
+    const counter = env.legalMoves.findIndex((m) => m.Kind === MoveKind.Counter);
+    const handSlot = q(`[data-testid="hand-card-${env.legalMoves[counter].HandIndex}"]`)!.getBoundingClientRect();
+    calls = [];
+    await playMove(table);
+    expect(table.phase).toBe('success');
+    const scrap = q('[data-testid="scrap-pile"]')!.getBoundingClientRect();
+    const flight = calls.find((a) => a.el.getAttribute('data-actor') === 'mover');
+    expect(flight, 'her 2 flies').toBeDefined();
     const el = flight!.el as HTMLElement;
-    const box = { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) };
-    const last = String(flight!.frames[flight!.frames.length - 1].transform);
-    const [dx, dy] = [...last.matchAll(/(-?[\d.]+)px/g)].slice(0, 2).map((m) => Number(m[1]));
-    expect(box.x + box.w / 2 + dx).toBeCloseTo(thumb.x + thumb.width / 2, 1);
-    expect(box.y + box.h / 2 + dy).toBeCloseTo(thumb.y + thumb.height / 2, 1);
-    expect(flight!.frames[flight!.frames.length - 1].opacity).toBe(0);
+    expect(parseFloat(el.style.left)).toBeCloseTo(handSlot.x, 1);
+    expect(parseFloat(el.style.top)).toBeCloseTo(handSlot.y, 1);
+    const end = endCentre(flight!);
+    expect(end.x).toBeCloseTo(scrap.x + scrap.width / 2, 1);
+    expect(end.y).toBeCloseTo(scrap.y + scrap.height / 2, 1);
   });
 });
 
-// T14 review N1, N4: the overlay's entry hold for the counter window's demo.
+// T14 review N1, N4: the overlay's entry hold for 4.2's demo (Blake's 4 crosses the middle spot it drags to).
 describe('the 4.2 entry hold, from the overlay', () => {
   /** The coach's own clock and frames, run by hand (the table's beats stay on vi's timers). */
   function coachTime() {
@@ -624,7 +650,7 @@ describe('the 4.2 entry hold, from the overlay', () => {
   }
   const played = (name: string) => calls.filter((a) => a.el.getAttribute('data-part') === name);
 
-  it("N1: the tap demo waits for Blake's 4 to land in the prompt (COUNTER_ONEOFF_MS + 250), not the usual 250 ms", async () => {
+  it("N1: the drag demo waits for Blake's 4 to land (ONEOFF_FLIGHT_MS + 250), not the usual 250 ms", async () => {
     const t = coachTime();
     const table = await startLesson(4, null, 0, t);
     await playMove(table);
@@ -633,11 +659,11 @@ describe('the 4.2 entry hold, from the overlay', () => {
     expect(table.step?.id).toBe('4.2');
     calls = [];
     await t.tick(0);
-    expect(played('tap-dot'), 'no demo while his card lands').toEqual([]);
+    expect(played('dot'), 'no demo while his card lands').toEqual([]);
     await t.tick(DEMO_ENTRY_MS);
-    expect(played('tap-dot'), 'not at the usual entry time').toEqual([]);
-    await t.tick(COUNTER_ONEOFF_MS + 250 - DEMO_ENTRY_MS);
-    expect(played('tap-dot').length).toBeGreaterThan(0);
+    expect(played('dot'), 'not at the usual entry time').toEqual([]);
+    await t.tick(ONEOFF_FLIGHT_MS + 250 - DEMO_ENTRY_MS);
+    expect(played('dot').length).toBeGreaterThan(0);
   });
 
   it('N4: a restart from 4.2 does not carry the hold back to 4.1 (its drag demo shows at once)', async () => {

@@ -25,7 +25,7 @@
 import { boardTargetKey, isAmbiguousSlot } from '../affordances';
 import type { Card, Move } from '../bridge/schema';
 import { MoveKind } from '../enums';
-import { discardStagingText, scrapPickStagingText, scrapTakeStagingText } from '../recap';
+import { counterStagingText, discardStagingText, scrapPickStagingText, scrapTakeStagingText } from '../recap';
 import type { TargetKey } from '../targetKey';
 import { MoveNotSent } from './tableSource';
 
@@ -56,6 +56,12 @@ export interface StagingEnv {
   revealed?: Card[] | null;
   /** P2 W15: `view.scrap`, for naming the card a 3 takes once picked (R6). */
   scrap?: Card[];
+  /**
+   * Issue #93: the opponent's name, for a staged Counter's line ("Counter
+   * with 2♣: undo Blake's last turn.", SPEC §4.3). Omitted, a staged
+   * Counter shows the engine's description.
+   */
+  opponentName?: string;
 }
 
 /** P2 W15 — one scrap card the engine offered a 3 (SPEC §6.3 rank-3 row): its move index and the scrap index it takes. */
@@ -75,14 +81,18 @@ export interface DiscardModel {
 }
 
 // SPEC §6.3 — the MoveKinds this round's pipeline can carry all the way to
-// `staged`. A hand card playable only through a kind NOT in this set (e.g.
-// Counter, during a counter window) contributes to `dimmedHand` instead of
-// `selected` (see `HAND_ROOTED_KINDS` below and its doc comment).
+// `staged`. A hand card playable only through a kind NOT in this set
+// contributes to `dimmedHand` instead of `selected` (see `HAND_ROOTED_KINDS`
+// below and its doc comment). Issue #93 (SPEC §4.3): a Counter is a board
+// play in phases 0, 3 and 5; a selected 2 lights `counter-link`. A legacy
+// counter window's Counters never reach this store: its CounterPrompt
+// replaces the board.
 const IN_SCOPE_HAND_KINDS: ReadonlySet<Move['Kind']> = new Set([
   MoveKind.PlayPoint,
   MoveKind.PlayPermanent,
   MoveKind.Scuttle,
   MoveKind.OneOff,
+  MoveKind.Counter,
 ]);
 
 // Kinds that name a specific hand card at all — the in-scope ones, plus
@@ -132,24 +142,47 @@ function candidatesByTargetKey(handIndex: number, legalMoves: Move[]): Map<Targe
 }
 
 /**
- * P2 W15 — a discard position: every legal move is a DiscardPair. Read from
- * the move shapes only, so the store needs no phase (SPEC §4.4: in
- * PhaseAwaitingDiscard the legal moves are exactly the pairs).
+ * P2 W15 — a discard position: the legal moves offer DiscardPairs. Read from
+ * the move shapes only, so the store needs no phase. A legacy discard
+ * (SPEC §4.4) offers only the pairs; an owed discard (issue #93, SPEC §4.3)
+ * offers the pairs and then a Counter per unfrozen 2.
  */
 function isDiscardPosition(env: StagingEnv | null): env is StagingEnv {
-  return env !== null && env.legalMoves.length > 0 && env.legalMoves.every((m) => m.Kind === MoveKind.DiscardPair);
+  return env !== null && env.legalMoves.some((m) => m.Kind === MoveKind.DiscardPair);
+}
+
+function discardPairs(env: StagingEnv): Move[] {
+  return env.legalMoves.filter((m) => m.Kind === MoveKind.DiscardPair);
 }
 
 /** R15.2 — a one-card hand yields the single `{DiscardA: 0, DiscardB: -1}` move (apply.go:485-488). */
 function discardNeed(env: StagingEnv): 1 | 2 {
-  return env.legalMoves.length === 1 && env.legalMoves[0].DiscardB === -1 ? 1 : 2;
+  const pairs = discardPairs(env);
+  return pairs.length === 1 && pairs[0].DiscardB === -1 ? 1 : 2;
 }
 
 function discardHandSize(env: StagingEnv): number {
   if (env.handSize !== undefined) return env.handSize;
   let max = -1;
-  for (const m of env.legalMoves) max = Math.max(max, m.DiscardA, m.DiscardB);
+  for (const m of discardPairs(env)) max = Math.max(max, m.DiscardA, m.DiscardB);
   return max + 1;
+}
+
+/** Issue #93: the Counter the engine offers for hand card `handIndex` (one per unfrozen 2), or -1. */
+function counterIndexFor(env: StagingEnv, handIndex: number): number {
+  return env.legalMoves.findIndex((m) => m.Kind === MoveKind.Counter && m.HandIndex === handIndex);
+}
+
+/** Issue #93: the pending win's Decline ("Let it happen"), or -1. Only phase 5 puts a Decline on the board. */
+function declineIndexFor(env: StagingEnv | null): number {
+  return env === null ? -1 : env.legalMoves.findIndex((m) => m.Kind === MoveKind.Decline);
+}
+
+/** Issue #93, SPEC §4.3: the staged line for a Counter, when the opponent's name is known. */
+function counterText(env: StagingEnv, index: number): string | undefined {
+  const m = env.legalMoves[index];
+  if (m?.Kind !== MoveKind.Counter || m.Card === null || env.opponentName === undefined) return undefined;
+  return counterStagingText(m.Card, env.opponentName);
 }
 
 function sameCard(a: Card | null, b: Card | undefined): boolean {
@@ -256,6 +289,11 @@ export class StagingStore {
   inert = $derived(this.state === 'applying');
   passAvailable = $derived.by(() => passAvailableFor(this.#getEnv()));
   dimmedHand = $derived.by(() => computeDimmedHand(this.#getEnv()));
+  /**
+   * Issue #93 (SPEC §4.3): whether the board shows the pending win's
+   * "Let it happen" button (`let-it-happen`). One tap applies it.
+   */
+  letItHappen = $derived.by(() => declineIndexFor(this.#getEnv()) >= 0);
   /** P2 W15, R15: the discard picker's model, or null outside a discard position. */
   discard = $derived.by((): DiscardModel | null => {
     const env = this.#getEnv();
@@ -286,6 +324,7 @@ export class StagingStore {
     this.inspect = null; // any tap dismisses a prior detail popover
 
     if (this.scrapPick) return; // the pick sheet is modal; only pickScrap()/cancel() act
+    if (key === 'let-it-happen') return this.#letItHappen(env);
     if (isDiscardPosition(env)) {
       this.#handleDiscardTap(key, env);
       return;
@@ -302,6 +341,21 @@ export class StagingStore {
     }
     // state === 'staged': only confirm()/cancel() act (SPEC §6.1 — Confirm/Cancel are the only controls once staged),
     // plus the deck re-tap above, which is a confirm().
+  }
+
+  /**
+   * Issue #93 (SPEC §4.3): "Let it happen" is one tap. It still runs through
+   * `#stage` and `confirm()`, the only caller of apply (R12); nothing else
+   * may be staged at the time (Confirm/Cancel own a staged move), and the
+   * chooser keeps its own modal.
+   */
+  #letItHappen(env: StagingEnv): Promise<void> | undefined {
+    if (this.state === 'staged' || this.chooser !== null) return;
+    const index = declineIndexFor(env);
+    if (index < 0) return;
+    this.#clearToIdle();
+    this.#stage(index, env);
+    return this.confirm();
   }
 
   #stagedIsDraw(env: StagingEnv): boolean {
@@ -404,8 +458,12 @@ export class StagingStore {
     const env = this.#getEnv();
     if (!isDiscardPosition(env)) return;
     if (stageSingle && discardNeed(env) === 1) {
-      this.#stageDiscard(0, env);
-      return;
+      const pairs = discardPairs(env);
+      // Issue #93: a lone 2 that can counter is the player's choice, not a pre-staged discard.
+      if (counterIndexFor(env, pairs[0].DiscardA) < 0) {
+        this.#stageDiscard(env.legalMoves.indexOf(pairs[0]), env);
+        return;
+      }
     }
     const keys: TargetKey[] = [];
     for (let i = 0; i < discardHandSize(env); i++) keys.push(`hand:${i}`);
@@ -413,21 +471,46 @@ export class StagingStore {
     this.highlighted = new Set(keys);
   }
 
-  /** R15 — a hand tap toggles that card; the pick that completes a legal DiscardPair stages it. */
+  /**
+   * R15 — a hand tap toggles that card; the pick that completes a legal
+   * DiscardPair stages it.
+   *
+   * Issue #93 (SPEC §4.3), an owed discard: the debtor may counter instead.
+   * A lone pick that is a 2 with a Counter also lights `counter-link` (and
+   * is `selectedHand`, so it can be dragged there); a tap on the marker
+   * stages that Counter. A one-card hand holding such a 2 isn't pre-staged
+   * and doesn't stage on its pick: the pick lights `counter-link` and
+   * `scrap`, and a tap on the scrap stages the discard.
+   */
   #handleDiscardTap(key: TargetKey, env: StagingEnv): void {
     if (this.state === 'staged') return; // only confirm()/cancel() act once staged
+    const need = discardNeed(env);
+    const lone = this.#discardPicks.length === 1 ? this.#discardPicks[0] : null;
+    if (key === 'counter-link' || key === 'scrap') {
+      if (lone === null || !this.highlighted.has(key)) return;
+      if (key === 'counter-link') {
+        const counter = counterIndexFor(env, lone);
+        if (counter >= 0) this.#stage(counter, env, counterText(env, counter));
+        return;
+      }
+      const pairs = discardPairs(env);
+      if (pairs.length === 1) this.#stageDiscard(env.legalMoves.indexOf(pairs[0]), env);
+      return;
+    }
     if (!key.startsWith('hand:')) return;
     const handIndex = Number(key.slice('hand:'.length));
     const picks = this.#discardPicks.includes(handIndex)
       ? this.#discardPicks.filter((i) => i !== handIndex)
       : [...this.#discardPicks, handIndex];
-    const need = discardNeed(env);
-    if (picks.length === need) {
+    const counterOnPick = picks.length === 1 && counterIndexFor(env, picks[0]) >= 0;
+    if (picks.length === need && !(need === 1 && counterOnPick)) {
       const [p, q] = picks;
       const index = env.legalMoves.findIndex((m) =>
-        need === 1
-          ? m.DiscardA === p && m.DiscardB === -1
-          : (m.DiscardA === p && m.DiscardB === q) || (m.DiscardA === q && m.DiscardB === p),
+        m.Kind !== MoveKind.DiscardPair
+          ? false
+          : need === 1
+            ? m.DiscardA === p && m.DiscardB === -1
+            : (m.DiscardA === p && m.DiscardB === q) || (m.DiscardA === q && m.DiscardB === p),
       );
       if (index >= 0) {
         this.#stageDiscard(index, env);
@@ -437,16 +520,22 @@ export class StagingStore {
     if (picks.length > need) return; // never more picks than the engine asks for
     this.#discardPicks = picks;
     this.state = picks.length === 0 ? 'idle' : 'selected';
+    this.selectedHand = counterOnPick ? picks[0] : null;
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale.
     this.staged = new Set(picks.map((i): TargetKey => `hand:${i}`));
     const lit: TargetKey[] = [];
-    for (let i = 0; i < discardHandSize(env); i++) if (!picks.includes(i)) lit.push(`hand:${i}`);
+    if (picks.length < need) {
+      for (let i = 0; i < discardHandSize(env); i++) if (!picks.includes(i)) lit.push(`hand:${i}`);
+    }
+    if (counterOnPick) lit.push('counter-link');
+    if (counterOnPick && need === 1) lit.push('scrap');
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- replaced wholesale.
     this.highlighted = new Set(lit);
   }
 
   #stageDiscard(index: number, env: StagingEnv): void {
     const m = env.legalMoves[index];
+    if (m === undefined) return;
     const picks = m.DiscardB === -1 ? [m.DiscardA] : [m.DiscardA, m.DiscardB];
     this.#discardPicks = picks;
     this.stagedIndex = index;
@@ -564,7 +653,7 @@ export class StagingStore {
       // name the card it takes (null for every other move → engine text).
       const index = indices[0];
       const take = env.scrap ? scrapTakeStagingText(env.legalMoves[index], env.descriptions[index], env.scrap) : null;
-      this.#stage(index, env, take ?? undefined);
+      this.#stage(index, env, take ?? counterText(env, index));
       return;
     }
 

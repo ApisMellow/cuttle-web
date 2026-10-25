@@ -75,7 +75,7 @@ describe('recap: a 3 and a 4 say what they do (R14 strict: never the outcome)', 
   });
 });
 
-describe('counter prompt / recap: a 2 names what it stops (R14 strict)', () => {
+describe('legacy counter prompt (v0.2.x saves): a 2 names what it stops (R14 strict)', () => {
   it('each counter line names the card before it, from the run', () => {
     const run = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣'), counter(0, 3, '2♦')];
     expect(formatRecapLines(run, 0, NAMES)).toEqual([
@@ -86,9 +86,10 @@ describe('counter prompt / recap: a 2 names what it stops (R14 strict)', () => {
     expect(formatRecapLines(run, 1, NAMES)[1]).toBe("You countered with 2♣ to stop Alice's 5♥.");
   });
 
-  it('with history the first counter of a recap slice still names its target', () => {
+  it('without history (the legacy prompt) a lone counter names nothing more; with it, it reads as the rewind', () => {
     const history = [oneOff(0, 1, '9♥'), counter(1, 2, '2♣')];
-    expect(formatRecapLines([history[1]], 0, NAMES, history)).toEqual(['Blake countered with 2♣ to stop your 9♥.']);
+    // Issue #93: given the history (anything but the legacy prompt), a Counter reads as the rewind.
+    expect(formatRecapLines([history[1]], 0, NAMES, history)).toEqual(['Blake countered with 2♣ and undid your last turn.']);
     expect(formatRecapLines([history[1]], 0, NAMES)).toEqual(['Blake countered with 2♣.']);
   });
 
@@ -107,25 +108,26 @@ describe('counter prompt / recap: a 2 names what it stops (R14 strict)', () => {
   });
 });
 
-describe('board line after a counter: the original card was stopped', () => {
-  it('one 2: "Blake countered with 2♣: your 5♥ was stopped."', () => {
-    const atOnce = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
-    const real = [...atOnce, decline(0, 3)];
-    expect(lastMoveLine(atOnce, 0, NAMES)).toBe('Blake countered with 2♣: your 5♥ was stopped.');
-    expect(lastMoveLine(atOnce, 1, NAMES)).toBe("You countered with 2♣: Alice's 5♥ was stopped.");
-    for (const viewer of [0, 1] as const) expect(lastMoveLine(real, viewer, NAMES)).toBe(lastMoveLine(atOnce, viewer, NAMES));
+describe('issue #93 (SPEC §4.3): the board line after a counter is the rewind', () => {
+  it('a counter: "Blake countered with 2♣ and undid your last turn." / "You countered with 2♣ and undid Alice\'s last turn."', () => {
+    const h = [oneOff(0, 1, '5♥'), counter(1, 2, '2♣')];
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♣ and undid your last turn.');
+    expect(lastMoveLine(h, 1, NAMES)).toBe("You countered with 2♣ and undid Alice's last turn.");
   });
 
-  it('three 2s: the last line, then the one-off was stopped', () => {
+  it('a counter-back reads the same way, from the counter-backer', () => {
+    // Alice's 9, Blake's counter and his 7♥ for points, then Alice counters back.
+    const points = appliedMove({ by: 1, kind: Kind.PlayPoint, seq: 3, card: { Rank: 7, Suit: 2 }, description: 'play 7♥ as point card' });
+    const h = [oneOff(0, 1, '9♥'), counter(1, 2, '2♣'), points, counter(0, 4, '2♦')];
+    expect(lastMoveLine(h, 1, NAMES)).toBe('Alice countered with 2♦ and undid your last turn.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe("You countered with 2♦ and undid Blake's last turn.");
+    expect(lastMoveLine(h, 0, NAMES)).not.toMatch(/was stopped|to stop/);
+  });
+
+  it('a legacy chain closed by a Decline reads the closing counter the same way', () => {
     const h = [oneOff(0, 1, '9♥'), counter(1, 2, '2♣'), counter(0, 3, '2♦'), counter(1, 4, '2♠')];
-    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠ to stop your 2♦. Your 9♥ was stopped.');
+    expect(lastMoveLine(h, 0, NAMES)).toBe('Blake countered with 2♠ and undid your last turn.');
     expect(lastMoveLine([...h, decline(0, 5)], 0, NAMES)).toBe(lastMoveLine(h, 0, NAMES));
-  });
-
-  it('two 2s: the one-off went through, nothing says stopped', () => {
-    const h = [oneOff(0, 1, '9♥'), counter(1, 2, '2♣'), counter(0, 3, '2♦')];
-    expect(lastMoveLine(h, 1, NAMES)).toBe("Alice countered with 2♦ to stop your 2♣.");
-    expect(lastMoveLine(h, 1, NAMES)).not.toMatch(/was stopped/);
   });
 
   it('a lone 4 on the board (their hand was empty) drops the "you’ll discard" intent', () => {
@@ -139,6 +141,13 @@ describe('discard picker centre line', () => {
     expect(discardPromptLine([oneOff(0, 1, '4♠'), decline(1, 2)], NAMES, 1)).toBe("Alice's 4♠: discard your last card.");
     expect(discardPromptLine([oneOff(0, 1, '4♠'), counter(1, 2, '2♣'), counter(0, 3, '2♦')], NAMES, 2)).toBe("Alice's 4♠: choose 2 to discard.");
     expect(discardPromptLine([oneOff(0, 1, '5♠')], NAMES, 2)).toBe('');
+  });
+
+  it('issue #93: an owed discard opens the next turn with the 4 last; a debt of 4 still names it after the first pair', () => {
+    const pair = appliedMove({ by: 1, kind: Kind.DiscardPair, seq: 2, description: 'discard hand[0] and hand[1]' });
+    expect(discardPromptLine([oneOff(0, 1, '4♠')], NAMES, 2)).toBe("Alice's 4♠: choose 2 to discard.");
+    expect(discardPromptLine([oneOff(0, 1, '4♠'), pair], NAMES, 2)).toBe("Alice's 4♠: choose 2 to discard.");
+    expect(discardPromptLine([oneOff(0, 1, '4♠'), pair], NAMES, 1)).toBe("Alice's 4♠: discard your last card.");
   });
 });
 

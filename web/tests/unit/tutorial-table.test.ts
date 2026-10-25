@@ -14,13 +14,13 @@
 // step (Review focus 2), P3 beat order, stale timers (Review focus 3),
 // motion hooks, and B6 (PASS in round 1: the post-win view(0) stays on show).
 //
-// Engine v0.2.1 facts relied on (module github.com/ApisMellow/cuttle):
+// Engine facts relied on (module github.com/ApisMellow/cuttle, v0.3.0):
 //   - Legal moves and descriptions go only to the actor: internal/game/envelope.go:245-250,
 //     so view(0) carries none while Blake is active.
-//   - Blake's 4 opens a counter window because Alice holds an unfrozen 2:
-//     engine/apply.go:324-341, hasLegalCounter :489-497; the window offers
-//     Decline plus one Counter: apply.go:576-586. The counter cancels the
-//     4 and hands the turn back: apply.go:342-365, resolvePending :591-608.
+//   - Blake's 4 resolves at once; Alice's turn opens in phase 3 owing a
+//     discard of 2 (pending null), with Counter 2H beside the discard pairs.
+//     The counter rewinds Blake's turn to the end of Alice's own last turn
+//     (issue #93, docs/counter-rewind-design.md).
 //   - PlayPoint/PlayPermanent win on the spot: apply.go:174-192, :232-242,
 //     checkWin :817-826.
 //   - Glasses show Blake's hand in Alice's view: internal/game/view.go:78-88.
@@ -310,61 +310,72 @@ describe('refuses every commit outside a move step (Review focus 2, plan P1)', (
 });
 
 describe('S3c step 4.2 at the store', () => {
-  it('ack on arrival, ack through every refused Decline, none after the counter', () => {
+  it('owed discard on arrival, curtain none throughout, a refused discard keeps the board, the counter rewinds', () => {
     const t = make(4);
     const curtains: string[] = [];
     walkTo(t, '4.2', {
       observe: (tt, ev) => {
         if (ev === 'blake') {
-          // The moment Blake's 4 lands: the counter window is open.
-          expect(view0().state.phase).toBe(Phase.AwaitingCounter);
-          expect(tt.curtain).toEqual({ kind: 'ack', to: 0 });
+          // The moment Blake's 4 lands: it has resolved, and Alice's turn
+          // opens owing a discard of 2 (engine v0.3.0, issue #93).
+          const v = view0().state;
+          expect(v.phase).toBe(Phase.AwaitingDiscard);
+          expect(v.pending).toBeNull();
+          expect(v.active).toBe(0);
           expect(tt.step?.id).toBe('4.2');
           expect(tt.phase).toBe('step');
         }
         curtains.push(tt.curtain.kind);
       },
     });
-    expect(curtains).toContain('ack');
-    expect(t.curtain).toEqual({ kind: 'ack', to: 0 });
+    expect(new Set(curtains)).toEqual(new Set(['none']));
+    expect(t.curtain).toEqual({ kind: 'none' });
     expect(t.pending).toBe(false);
 
-    const decline = t.envelope!.legalMoves.findIndex((m) => m.Kind === MoveKind.Decline);
-    const counter = t.envelope!.legalMoves.findIndex((m) => m.Kind === MoveKind.Counter);
-    expect(decline).toBeGreaterThanOrEqual(0);
-    expect(counter).toBeGreaterThanOrEqual(0);
+    const kinds = t.envelope!.legalMoves.map((m) => m.Kind);
+    expect(new Set(kinds)).toEqual(new Set([MoveKind.DiscardPair, MoveKind.Counter]));
+    const discard = kinds.indexOf(MoveKind.DiscardPair);
+    const counter = kinds.indexOf(MoveKind.Counter);
+    expect(t.envelope!.legalMoves[counter].Card).toEqual(c(2, 'H'));
     for (let n = 1; n <= 3; n++) {
-      void t.apply(decline);
+      void t.apply(discard);
       const v = view0().state;
-      expect(v.phase).toBe(Phase.AwaitingCounter);
+      expect(v.phase).toBe(Phase.AwaitingDiscard);
       expect(v.active).toBe(0);
-      expect(t.curtain).toEqual({ kind: 'ack', to: 0 });
+      expect(v.you.hand).toEqual([c(2, 'H'), c(5, 'C')]);
+      expect(t.curtain).toEqual({ kind: 'none' });
       expect(t.refusals).toBe(n);
-      expect(t.lastNudge).toBe('Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm.');
+      expect(t.lastNudge).toBe("Discarding costs you 2 cards. Drag your 2 onto Blake's last turn instead.");
+      expect(t.line).toEqual({ text: t.lastNudge, tone: 'nudge' });
+      expect(t.phase).toBe('step');
       vi.advanceTimersByTime(5000);
-      expect(t.curtain).toEqual({ kind: 'ack', to: 0 });
+      expect(t.curtain).toEqual({ kind: 'none' });
     }
     void t.apply(counter);
     const after = view0().state;
+    // The rewind: Alice is back at the end of her own last turn, in a normal
+    // turn, with the 4 and her 2 both in the scrap.
     expect(after.phase).toBe(Phase.Normal);
     expect(after.active).toBe(0);
+    expect(after.pending).toBeNull();
+    expect(after.you.hand).toEqual([c(5, 'C')]);
+    expect(after.scrap).toEqual(expect.arrayContaining([c(4, 'D'), c(2, 'H')]));
     expect(t.curtain).toEqual({ kind: 'none' });
     expect(t.phase).toBe('success');
+    expect(t.line).toEqual({ text: "Undone. His 4 never happened, and it's your turn.", tone: 'success' });
     settleBeats(t);
     expect(t.phase).toBe('finished');
     expect(t.curtain).toEqual({ kind: 'none' });
   });
 
-  it('the curtain is ack exactly while view(0) is at phase 1 with Alice active, at every observation', () => {
+  it('the curtain is none at every observation of lesson 4', () => {
     for (let seed = 1; seed <= 5; seed++) {
       const t = make(4);
       driveLesson(t, {
         seed,
         wrongFirst: 4,
         observe: (tt) => {
-          const v = view0().state;
-          const window = v.phase === Phase.AwaitingCounter && v.active === 0;
-          expect(tt.curtain).toEqual(window ? { kind: 'ack', to: 0 } : { kind: 'none' });
+          expect(tt.curtain).toEqual({ kind: 'none' });
         },
       });
       expect(t.phase).toBe('finished');
@@ -485,7 +496,7 @@ describe('P3 beat order', () => {
     expect(t.step?.id).toBe('4.2');
     expect(t.phase).toBe('step');
     expect(t.pending).toBe(false);
-    expect(t.curtain).toEqual({ kind: 'ack', to: 0 });
+    expect(t.curtain).toEqual({ kind: 'none' });
     expect(t.line).toEqual({ text: (t.step as MoveStep).main, tone: 'main' });
   });
 

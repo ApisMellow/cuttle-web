@@ -178,30 +178,26 @@ On entry the deal plays (§8.5).
 | Step | Kind | Spotlight | Coach copy | Demo | Expected | Wrong-move nudge | Success |
 |---|---|---|---|---|---|---|---|
 | 4.1 | move | AS → `zone-oneoff` → Confirm | "Blake has 19! Your Ace has a one-off power: it wipes every point card off the table. Drop it on the middle spot." *(as built; see below)* | drag AS to `zone-oneoff` | OneOff AS | AS for points: "On your Points row an Ace is just 1 point. Drop it on the middle spot to use its power." 5C one-off: "A 5 draws 2 cards, but Blake would still have 19. Use the Ace." Other: "Use your Ace. Drop it on the middle spot." | "Wiped, yours too. A one-off happens right away, then goes to the scrap." |
-| — | Blake | — | "Blake's turn." | — | Blake: OneOff 4D. Alice holds a 2, so the engine opens a counter window and the counter prompt appears. | — | — |
-| 4.2 | move | `counter-option-*` (the 2) → `staging-confirm` inside `counter-prompt` | "Blake played a 4: you'd have to throw away 2 cards. You hold a 2, so you can stop it. Tap your 2, then Confirm." staged: "Tap Confirm to stop his 4." | tap the counter option, then Confirm | Counter with 2H | "Let it resolve": "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (Refused by the gate; the prompt remounts fresh, §5.5.1.) | "Stopped. His 4 does nothing, and his turn is over." |
+| — | Blake | — | "Blake's turn." | — | Blake: OneOff 4D. It resolves at once and flies to the scrap like any one-off. Alice's turn opens on the board owing a discard of 2 (phase 3, no pending), with Counter 2H beside the discard pair. | — | — |
+| 4.2 | move | idle 2H · selected + `counter-link` · staged `staging-confirm` | "Blake's 4 means you throw away 2 cards. You hold a 2: drag it onto his last turn in the middle to undo it." staged: "Tap Confirm to undo his 4." tap route: "Tap your 2, then tap his last turn in the middle, then Confirm." | drag 2H onto `counter-link` (a drop applies at once, #51) | Counter with 2H | Paying the discard (the DiscardPair): "Discarding costs you 2 cards. Drag your 2 onto Blake's last turn instead." (Refused by the gate; the board returns to idle, §5.5.1.) | "Undone. His 4 never happened, and it's your turn." |
 
 *(As built, 2026-10-24, T3.)* The 4.1 main line was "Blake has 19, so close. Some cards have a one-off power. Your Ace wipes every point card off the table. Drop it on the middle spot." At 131 characters it broke the 120-character bubble limit (§5.1), so it was shortened to the line in the table (112 characters).
 
-**Done line:** "A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off." *(As built, 2026-10-24, T14fix: was "Rules in the menu lists every one-off.")*
-**Engine (house rulings, verified):** A one-off resolves at once unless the opponent holds an unfrozen 2 (`apply.go:324-341`, `hasLegalCounter` `:489-497`). Blake holds no 2, so the Ace resolves immediately and wipes both sides (`resolveOneOffWith` case Ace, `apply.go:626-634`). The Ace resolves by where it's dropped: the middle spot is the one-off, the Points row is points, and no chooser opens (PRD R11 clarification, SPEC §6.4). Blake's 4 opens a window because Alice holds 2H. Countering makes the chain odd, so the 4 is cancelled, both cards are scrapped, and the turn passes back to Alice (`MoveCounter` `apply.go:342-365`, `resolvePending` `:591-608`). Rules sheet wording: `ONE_OFF_TIMING` in `lib/cardText.ts`.
+**Done line:** "A one-off happens at once, but a 2 at the start of the next turn undoes it. The Rules page in the menu lists every one-off." *(Amended 2026-10-25, ApisMellow, issue #93: was "A one-off happens at once, and only a 2 can stop it. …")*
+**Engine (engine v0.3.0, issue #93; SPEC §4.3, `docs/counter-rewind-design.md`):** Every one-off resolves at once. The Ace wipes both sides immediately (`resolveOneOffWith` case Ace). The Ace resolves by where it's dropped: the middle spot is the one-off, the Points row is points, and no chooser opens (PRD R11 clarification, SPEC §6.4). Blake's 4 resolves too: it leaves Alice an owed discard of 2 that opens her turn in phase 3 with `pending` null, and since she holds 2H the legal moves are the discard pair plus Counter 2H. A 2 played as the first move of her turn rewinds Blake's turn to the end of her own last turn: the 4 never happened, the 4 and the 2 are in the scrap, and she plays on in a normal turn. Rules sheet wording: `ONE_OFF_TIMING` in `lib/cardText.ts`.
 
-#### 5.5.1 Step 4.2 in full: the counter window (decided call, ApisMellow, 2026-10-24)
+*(Amended 2026-10-25, ApisMellow, issue #93.)* Lesson 4 used to stop Blake's 4 in a counter window: the curtain went to `ack`, the board unmounted, and the learner tapped the `CounterPrompt`'s counter option, with "Let it resolve" as the refused wrong move. Under the counter rewind (design §7, "Tutorial") Alice counters from her board at the start of her turn: she drags the 2 onto the 4 instead of discarding.
 
-`CounterPrompt` is once-only: after any of its buttons fires, it sets `acted = true` and ignores every later tap until it unmounts (`CounterPrompt.svelte:61-81`). "Let it resolve" goes straight to `applyMove` through `GameScreen.resolveAck`. If the gate refuses that Decline and nothing else changes, the prompt stays mounted and locked, which is a dead end. **Ruling (option (a), minimal form):** GameScreen keys the `CounterPrompt` on the source's refusal counter (§6.3), so a move the gate refuses remounts a fresh prompt. There is no logic change inside `CounterPrompt`.
+#### 5.5.1 Step 4.2: countering from the board *(Amended 2026-10-25, ApisMellow, issue #93)*
 
-The curtain stays `{kind:'ack', to:0}` for the whole window. It never drops to `none`, so the board never mounts while the counter window is open (SPEC §4.2: the live view comes only after the ack).
+The curtain is `none` throughout: the board stays up, with the DiscardPicker showing the owed discard. The last-turn marker `counter-link` sits in the middle strip; it lights once the 2 is selected (SPEC §4.3).
 
 | State | How the coach knows | Spotlight | Copy | Learner can |
 |---|---|---|---|---|
-| Fresh prompt | `counter-prompt` present, no `staging-confirm` inside it | the counter option for 2H | the step's main line | tap the 2 (stages it), or Let it resolve |
-| Counter staged | `staging-confirm` inside `counter-prompt` | `staging-confirm` | "Tap Confirm to stop his 4." | Confirm (the expected move: applied, step done) or Cancel (back to Fresh, same instance) |
-| Let it resolve tapped | the gate refuses the Decline: no engine call, nudge set, `refusals` + 1 | — | — | — |
-| Fresh again | GameScreen's `{#key}` remounts the prompt: `acted` and `staged` reset, heading focused, key guard re-armed | the counter option, demo replays once | "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (after two refusals, the §7.4 tap-route line) | everything in the first row again |
-
-The window has only one legal Counter (2H), so a staged counter is always the right move: the staged-wrong check of §7.2 never applies inside this prompt. Its only wrong move is the one-tap Decline, which the remount handles. A test pins every row (S3, S4).
-
-*(Note 2026-10-24: this step is built on the legacy counter prompt. It must be reworked when the #93 client work lands; see `docs/counter-rewind-design.md` §7.)*
+| Fresh | no hand card pressed, no `staging-confirm` | 2H (selected: 2H and `counter-link`) | the step's main line | drag 2H onto `counter-link` (applies at once), or tap 2H, which lights `counter-link` |
+| Staged by tap | `staging-confirm` present, `counter-link` at `data-state="staged"` (the staged Counter) | `staging-confirm` | "Tap Confirm to undo his 4." | Confirm (the expected move: applied, step done) or Cancel (back to Fresh) |
+| Wrong discard refused | a staged discard pair (two hand cards `data-staged`) is staged-wrong; Confirm is refused by the gate: no engine call, nudge set, `refusals` + 1, the board returns to idle | 2H, the demo replays once | "Discarding costs you 2 cards. Drag your 2 onto Blake's last turn instead." (after two wrong tries, the §7.4 tap-route line) | everything in the first row again |
+| Done | the Counter applied: the rewind restores Alice's position from the end of her own last turn | — | "Undone. His 4 never happened, and it's your turn." | the done sheet follows |
 
 ### 5.6 Lesson 5, Royals and glasses
 
@@ -275,7 +271,7 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 | `viewer` | `0`, always. |
 | `history` | `envelope.history`, already redacted for seat 0 by the bridge. |
 | `seq` | `history.length`. |
-| `curtain` | `{kind:'none'}`, or `{kind:'ack', to:0}` while the engine is at `PhaseAwaitingCounter` with Alice active (lesson 4.2), so GameScreen mounts the real `CounterPrompt`. The ack holds for the whole counter window, refusals included: it never drops to `none` mid-window (§5.5.1). Never a handoff, reveal, recap or result: there's one player at the phone. |
+| `curtain` | Always `{kind:'none'}`. *(Amended 2026-10-25, ApisMellow, issue #93.)* No lesson position opens a counter window any more: lesson 4.2 counters from the board (§5.5.1), so the tutorial never shows the `ack` curtain or the `CounterPrompt`. Never a handoff, reveal, recap or result: there's one player at the phone. |
 | `refusals` *(new optional field, §6.3)* | Starts at 0; the gate adds 1 for every move it refuses. |
 | `drawReveal` | `null` (no lesson resolves a 5 for Alice). |
 | `pending` | `true` while Blake is "thinking" (the board is inert and Confirm disabled, as for online play). *(As built: from the learner's match until Blake's last reply lands, on steps Blake answers; plan P3.)* |
@@ -380,7 +376,7 @@ Leaving `staged-wrong` by Cancel returns to `idle` (main line). Confirming anywa
 *(As built, 2026-10-24.)*
 - **The count** is the table's `wrongTries`: refused commits plus entries into `staged-wrong`, added together. At 2 or more the `idle` and `selected` lines become the tap route.
 - **`refused` on the board** shows the bare nudge. It lasts until the learner next selects or stages a card.
-- **At the counter prompt** the `refused` state is the "Fresh again" row (§5.5.1), so it shows the tap route once `wrongTries ≥ 2`.
+- *(Amended 2026-10-25, ApisMellow, issue #93.)* Step 4.2 plays on the board like every other move step (§5.5.1): a staged discard pair is `staged-wrong`, and a staged Counter (`counter-link` at `data-state="staged"`) is `staged-right`.
 - **The full stage set** on `coach-bubble`'s `data-stage` also has `next`, `appear`, `blake` and `error`.
 
 **The staged-setup matcher** (`match.ts`, pure, tested):
@@ -398,7 +394,7 @@ Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on
 - **Every spotlit target is scrolled into view, not just the first.** The board scrolls by the union of the targets' boxes, measured below the sticky score bar. When they can't all fit, the first target alone is brought into view. Targets outside the board (the action bar, the counter prompt) never scroll.
 - **The board's scroll padding** is the score bar's measured height. `Board` keeps `scroll-padding-top` at the bar's height (a `ResizeObserver`, with the `--cu-zone-score` token as fallback), so `scrollIntoView` stops a card below the bar instead of under it.
 
-**The counter prompt** (lesson 4.2) is covered in §5.5.1. There the coach reads `counter-prompt` and `staging-confirm` inside it.
+**Step 4.2** is covered in §5.5.1. *(Amended 2026-10-25, ApisMellow, issue #93.)* The coach reads `counter-link`'s `data-state` and the staged hand cards; there is no counter prompt in any lesson.
 
 ### 7.3 Bubble
 
@@ -418,11 +414,11 @@ Before showing a hole, the overlay calls `scrollIntoView({block: 'nearest'})` on
 - *(As built, 2026-10-24, T14fix.)*
   - The footer count reads "Lesson 1/5"; screen readers hear "Lesson 1 of 5". "2 of 5" was unclear, and "Lesson 2 of 5" pushed Next onto a second row at 393 wide.
   - **Show me** renders only when the step has a demo and the stage plays it (judge M4: it showed with nothing to demonstrate). Otherwise an invisible, unfocusable, `aria-hidden` slot with no testid keeps the footer from jumping.
-- **Placement.** Room is reserved for 4 lines of copy (the staged-wrong case, §7.2). The bubble never covers a spotlight hole, the card being demonstrated, `staging-bar`, `menu-button` or the counter-prompt options. It goes below the lowest hole if it fits above the action bar with 12 px to spare; else above the highest hole; else on the side with more room, allowed to overlap only unspotlit board; else docked under the score bar. Horizontally it centres on the hole and clamps to a 16 px gutter. At the counter prompt it docks under the menu row. An e2e geometry check covers every step at all three viewports (§11).
+- **Placement.** Room is reserved for 4 lines of copy (the staged-wrong case, §7.2). The bubble never covers a spotlight hole, the card being demonstrated, `staging-bar`, `menu-button` or the counter-prompt options. It goes below the lowest hole if it fits above the action bar with 12 px to spare; else above the highest hole; else on the side with more room, allowed to overlap only unspotlit board; else docked under the score bar. Horizontally it centres on the hole and clamps to a 16 px gutter. An e2e geometry check covers every step at all three viewports (§11).
 
 *(As built, 2026-10-24, T12 and T12b.)*
 - **The dock slides past obstacles** (`dockAt` in `placement.ts`). It starts under the score bar and slides down past every hole or avoid box it would touch. It tries the wanted x, then the left gutter, then the right gutter. It stays at the top only when no free spot exists above the action bar.
-- **At the counter prompt** the dock starts `promptDock` (108 px) under the menu row, below the prompt's heading and its "Blake played a 4…" line.
+- *(Amended 2026-10-25, ApisMellow, issue #93.)* The counter-prompt dock (`promptDock`, 108 px under the menu row) is no longer used by any lesson. At 4.2 the bubble keeps clear of `discard-picker`, and of `counter-link` once a 2 lights it.
 - **Final constants** (`PLACEMENT`): clearance 12, gutter 16, hole padding 6, notch 8, dock gap 8, `promptDock` 108. The bubble reserves 150 px of height, plus 34 px with a headline.
 - **The avoid set** is the demonstrated card and its target, `staging-bar`, `menu-button`, the counter options and "Let it resolve", and the staged card and target once Confirm is up. *(T12b)* It also takes:
   - at `selected`, every lit target of the selected card (`data-state="highlighted"` on a `zone-*`, `point-*` or `perm-*` holder), *when there is room*. *(As built, GEOFIX.)* These are soft boxes, added last to the soft list, so they are the first dropped. Holes, `staging-bar`, `menu-button`, the counter options and the staged cards stay hard. With lit targets hard, no spot cleared them at 393×660 in step 3.1, and the fallback dock covered the spotlit holes;
@@ -510,10 +506,10 @@ New tokens in `tokens.css`, each zeroed (or set as noted) under `prefers-reduced
 
 *(As built, 2026-10-24.)*
 - **The "3" sits just above Confirm's top-right corner** (T14fix), so it never covers the label.
-- **The 4.2 tap demo waits for Blake's 4** (T14fix, motion on). Its first play is held about 990 ms after the prompt appears: the one-off's flight into the prompt (740 ms), then the 250 ms entry gap. Show me releases the hold at once. The hold is spent when it is read (`takeDemoHold()`), so a restart can't carry it into another step.
+- **The 4.2 drag demo waits for Blake's 4** (T14fix, motion on; *(Amended 2026-10-25, ApisMellow, issue #93.)*). Blake's 4 crosses the middle spot on its way to the scrap, where 4.2's demo drags the 2, so the demo's first play is held for the one-off's flight (860 ms, `ONEOFF_FLIGHT_MS`) plus the 250 ms entry gap. Show me releases the hold at once. The hold is spent when it is read (`takeDemoHold()`), so a restart can't carry it into another step.
 - **A tap on a labelled button lands near its right end** (T14fix). A tap target more than twice as wide as it is tall, which in practice is 4.2's counter option, is treated as a labelled button. The tap dot, its ripple and the reduced-motion "1" marker land 28 px in from its right end, vertically centred, which clears the "Counter with 2♥: stop their card." label. The deck is still tapped at its centre.
 - **The markers stay visible.** A press does not clear them, because they are not an animation.
-- **Step 4.2, accepted exception (T13 ruling).** At `staged-right` no Confirm "3" shows. Staging the counter option replaces the option button with the staged line, so the demo's only spot is gone and no marker is drawn until Confirm is tapped. The Confirm ring and the bubble still lead the way.
+- **Step 4.2** *(Amended 2026-10-25, ApisMellow, issue #93.)* The T13 exception (no Confirm "3" at `staged-right`) is gone with the counter prompt: 4.2's demo is a drag, so it shows "1" on the 2, "2" on `counter-link` and "3" on Confirm, like any drag step.
 
 ### 8.4 Card flights and flips (tutorial-only in v1)
 
@@ -535,7 +531,7 @@ Flight plans (`motion.ts`, one per move kind; any kind without a plan falls back
 | Draw (Blake) | a back flies from `deck-pile` to `opp-hand` and stays a back. Under glasses (lesson 5) it flips like Alice's, because Alice's view shows that hand. |
 | Blake plays a card | a back leaves `opp-hand`, flips face up at the midpoint (the card is public once played), and lands as above. |
 | Glasses go down (5.1) | after the 8 lands, Blake's hand backs flip to faces in place, 70 ms apart. |
-| Counter (4.2) | the counter prompt unmounts and the board returns; the scrap pile's top card "arrives". |
+| Counter (4.2) | *(Amended 2026-10-25, ApisMellow, issue #93.)* like a one-off: the 2 flies from the hand into the middle spot (where `counter-link` sits), holds, then flies to `scrap-pile` as the rewind happens. |
 | arrive (fallback) | the destination element plays scale 0.92→1 and opacity 0→1 over 200 ms `--cu-ease-out`. |
 
 **Reduced motion:** no clones and no flips. Cards appear where the engine put them, as in the real game today, and each destination gets a static ochre ring for 600 ms so the change is still visible.
@@ -547,7 +543,7 @@ Flight plans (`motion.ts`, one per move kind; any kind without a plan falls back
 
 Plans take a `FlightMove = { kind, card, targetCard }`, never a `Move`. A target is found on the table by card identity, never by index. His clone leaves a fixed slot (his last) as a back and turns face up at the midpoint. Only when glasses already show his hand does it leave the slot that holds that card. Clones are built from plain `{x, y, width, height}` rects, never from `DOMRect` spreads (T10 review: a spread gave NaN keyframes).
 
-*(As built, 2026-10-24, T14fix.)* **A one-off into a counter window flies into the prompt.** When Blake's one-off opens a counter window (lesson 4's 4), the board is unmounted by the time it lands. `intoPrompt` aims it at the counter prompt's thumbnail of the played card instead of the one-off spot and the scrap: it shrinks into the thumbnail and fades.
+*(As built, 2026-10-24, T14fix.)* **A one-off into a counter window flies into the prompt.** When Blake's one-off opened a counter window (lesson 4's 4), the board was unmounted by the time it landed, so `intoPrompt` aimed it at the counter prompt's thumbnail. *(Amended 2026-10-25, ApisMellow, issue #93.)* Blake's 4 now resolves at once on the board and lands like any one-off; `intoPrompt` is removed.
 
 *(As built, 2026-10-24, T14fix.)* **An iris ring flashes on `opp-hand` during the glasses flip** (720 ms) to say "look here" while Blake's hand turns over. Ochre stays the colour that answers the learner's own drop.
 

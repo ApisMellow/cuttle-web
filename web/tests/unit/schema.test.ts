@@ -27,6 +27,8 @@ function envelope(): Envelope {
       },
       sevenRevealed: null,
       pending: null,
+      counterable: false,
+      owedDiscards: { you: 0, opponent: 0 },
     },
     legalMoves: [],
     descriptions: [],
@@ -69,6 +71,31 @@ describe('parseBridgeResult', () => {
     const nilHand = envelope();
     nilHand.state.you.hand = null as never;
     expect(() => parseBridgeResult(JSON.stringify(nilHand))).toThrow(/state.you.hand/);
+  });
+
+  it('SPEC §2.5, §2.7 (#93): accepts phase 5, counterable and owedDiscards', () => {
+    const pendingWin = envelope();
+    pendingWin.state.phase = 5;
+    pendingWin.state.counterable = true;
+    pendingWin.state.owedDiscards = { you: 2, opponent: 0 };
+    expect(parseBridgeResult(JSON.stringify(pendingWin))).toEqual(pendingWin);
+  });
+
+  it('SPEC §2.7 (#93): rejects a missing or malformed counterable or owedDiscards, and phase 6', () => {
+    const cases: Array<[(s: Record<string, unknown>) => void, RegExp]> = [
+      [(s) => delete s.counterable, /state.counterable/],
+      [(s) => (s.counterable = 1), /state.counterable/],
+      [(s) => delete s.owedDiscards, /state.owedDiscards/],
+      [(s) => (s.owedDiscards = { you: 2 }), /state.owedDiscards.opponent/],
+      [(s) => (s.owedDiscards = { you: -1, opponent: 0 }), /state.owedDiscards.you/],
+      [(s) => (s.owedDiscards = { you: 1.5, opponent: 0 }), /state.owedDiscards.you/],
+      [(s) => (s.phase = 6), /state.phase/],
+    ];
+    for (const [mutate, message] of cases) {
+      const bad = envelope() as unknown as { state: Record<string, unknown> };
+      mutate(bad.state);
+      expect(() => parseBridgeResult(JSON.stringify(bad))).toThrow(message);
+    }
   });
 
   it('SPEC §3.2: rejects any full deck field crossing the view boundary', () => {

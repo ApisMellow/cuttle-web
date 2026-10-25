@@ -35,9 +35,25 @@ function stripDrawn(entries: unknown): unknown {
   });
 }
 
-/** A v2 persisted save rewritten exactly as the v1 code wrote it. */
-function toV1(raw: string): string {
+/**
+ * Issue #93: the engine state keys a v3 save may hold and an older one
+ * cannot (internal/game/snapshot.go `v3StateKeys`). An older save never has
+ * them, so a live save is compared without them.
+ */
+const V3_STATE_KEYS = ['Owed', 'TurnEnd', 'LastTurn', 'ThisTurn'];
+
+/** A live v3 save with the v3-only engine state keys removed, still tagged v3. */
+function withoutV3Keys(raw: string): string {
   const outer = JSON.parse(raw);
+  const inner = JSON.parse(outer.engineState);
+  for (const k of V3_STATE_KEYS) delete inner.state[k];
+  outer.engineState = JSON.stringify(inner);
+  return JSON.stringify(outer);
+}
+
+/** A live save rewritten exactly as the v1 code wrote it (no v3 keys, no `drawn`). */
+function toV1(raw: string): string {
+  const outer = JSON.parse(withoutV3Keys(raw));
   const inner = JSON.parse(outer.engineState);
   inner.v = 1;
   inner.history = stripDrawn(inner.history);
@@ -75,7 +91,7 @@ function persisted(storage: Storage): { v: number; inner: number } {
   return { v: outer.v, inner: JSON.parse(outer.engineState).v };
 }
 
-describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
+describe('v1 -> v3 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
   it('a genuine base-commit v1 save restores, reads drawn: null, plays on, and the next write is v2', async () => {
     await createWasmEngine();
     const engineState = readFileSync(FIXTURE, 'utf8');
@@ -104,12 +120,14 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
     for (let i = 0; i < 6 && store.curtain.kind !== 'none'; i++) await store.advanceCurtain();
     expect(store.curtain.kind).toBe('none');
     expect(store.view?.viewer).toBe(1);
-    expect(persisted(storage)).toEqual({ v: 2, inner: 2 });
+    // Issue #93: the next write is the current version, v3 outside and in.
+    expect(persisted(storage)).toEqual({ v: 3, inner: 3 });
   }, 15_000);
 
-  it('a live save at every curtain kind, rewritten as v1, restores exactly like the v2 save and writes v2 next', async () => {
+  it('a live save at every curtain kind new play reaches, rewritten as v1, restores exactly like the v3 save and writes v3 next', async () => {
     await createWasmEngine();
-    const wanted: CurtainState['kind'][] = ['handoff', 'reveal', 'ack', 'none', 'result'];
+    // Issue #93: new play never opens a counter window, so there is no live `ack` to capture.
+    const wanted: CurtainState['kind'][] = ['handoff', 'reveal', 'none', 'result'];
     const captured = new Map<string, string>();
     const key = (c: CurtainState): string => c.kind;
 
@@ -126,6 +144,11 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
           live.dismissDrawReveal();
           continue;
         }
+        if (live.notSoFast !== null) {
+          // Issue #93: "Not So Fast!" holds the store the same way.
+          live.dismissNotSoFast();
+          continue;
+        }
         const c = live.curtain;
         if (c.kind === 'none' || c.kind === 'ack') {
           const moves = live.envelope!.legalMoves;
@@ -137,7 +160,7 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
       }
       if (live.curtain.kind === 'result' && !captured.has('result')) captured.set('result', storage.getItem(SNAPSHOT_KEY)!);
     }
-    expect([...captured.keys()].sort()).toEqual(['ack', 'handoff', 'none', 'result', 'reveal']);
+    expect([...captured.keys()].sort()).toEqual(['handoff', 'none', 'result', 'reveal']);
 
     // The bridge holds one game at a time, so each restore runs to the end
     // of its checks before the next one starts.
@@ -153,17 +176,17 @@ describe('v1 -> v2 snapshot migration (SPEC §5.7, ruling 2026-09-28)', () => {
     }
 
     for (const [kind, raw] of captured) {
-      expect(JSON.parse(raw).v, kind).toBe(2);
+      expect(JSON.parse(raw).v, kind).toBe(3);
       const v1Raw = toV1(raw);
       expect(v1Raw, kind).not.toContain('"drawn"');
-      const a = await observe(raw, kind);
+      const a = await observe(withoutV3Keys(raw), kind);
       const b = await observe(v1Raw, kind);
       expect(b.before.error, kind).toBeNull();
       expect(b.before, kind).toEqual(a.before);
       if (kind === 'result') continue;
       expect(b.after, kind).toEqual(a.after);
       expect(b.after?.error, kind).toBeNull();
-      expect(b.persisted, kind).toEqual({ v: 2, inner: 2 });
+      expect(b.persisted, kind).toEqual({ v: 3, inner: 3 });
     }
   }, 60_000);
 });

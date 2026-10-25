@@ -49,6 +49,8 @@ interface Tally {
   ownMoveDraws: number;
   /** 5s resolved while the opponent held the phone (must reveal later). */
   deferredDraws: number;
+  /** Issue #93: "Not So Fast!" beats dismissed before a pending win's handoff. */
+  notSoFast: number;
 }
 
 function newTally(): Tally {
@@ -66,6 +68,7 @@ function newTally(): Tally {
     noWindowOneOffs: 0,
     ownMoveDraws: 0,
     deferredDraws: 0,
+    notSoFast: 0,
   };
 }
 
@@ -135,6 +138,15 @@ async function playSeed(seed: number, tally: Tally, reloadEvery: number | null):
       if (frozen.includes(store.envelope!.state.you.hand.length - 1) && store.envelope!.state.phase === 0) tally.frozenTailSkipped++;
       expected[p] = null;
       store.dismissDrawReveal();
+      continue;
+    }
+    // Issue #93: "Not So Fast!" holds the mover's board like a reveal before the pass.
+    if (store.notSoFast !== null) {
+      expect(curtain.kind).toBe('none');
+      expect(store.legalMoves.length).toBe(0);
+      tally.notSoFast++;
+      store.dismissNotSoFast();
+      expect(store.curtain.kind).toBe('handoff');
       continue;
     }
     // A draw that was due must have been shown by the drawer's first own view.
@@ -229,10 +241,16 @@ describe('SPEC §4.7 draw reveal against the real engine', () => {
     // The property must actually have been exercised, on each path.
     expect(tally.reveals).toBeGreaterThan(40);
     expect(tally.beforePass).toBeGreaterThan(0);
-    expect(tally.atNextBoard).toBeGreaterThan(0);
-    expect(tally.resolvedByCounter).toBeGreaterThan(0);
-    expect(tally.resolvedByDecline).toBeGreaterThan(0);
-    expect(tally.atAck).toBeGreaterThan(0);
+    // Issue #93 (engine v0.3.0): a 5 resolves on its own move at once and
+    // there is no counter window, so a draw is never deferred to the
+    // drawer's next board, never closed by a Counter or a Decline, and no
+    // `ack` ever comes up in new play.
+    expect(tally.atNextBoard).toBe(0);
+    expect(tally.resolvedByCounter).toBe(0);
+    expect(tally.resolvedByDecline).toBe(0);
+    expect(tally.atAck).toBe(0);
+    expect(tally.acks).toBe(0);
+    expect(tally.deferredDraws).toBe(0);
     // `frozenTailSkipped` is reported, not required: since the 2026-09-29
     // ruling a draw waits for the drawer's next view only after the
     // opponent's Decline, and a 9 landing in between did not occur in 400
@@ -240,10 +258,8 @@ describe('SPEC §4.7 draw reveal against the real engine', () => {
     // game-draw-reveal.test.ts; every reveal here still names the exact
     // drawn cards.
     expect(tally.oneCard).toBeGreaterThan(0);
-    expect(tally.acks).toBeGreaterThan(0);
     expect(tally.noWindowOneOffs).toBeGreaterThan(0);
     expect(tally.ownMoveDraws).toBeGreaterThan(0);
-    expect(tally.deferredDraws).toBeGreaterThan(0);
     // Every draw resolved on the drawer's own move showed before the pass.
     expect(tally.beforePass).toBe(tally.ownMoveDraws);
   }, 60_000);

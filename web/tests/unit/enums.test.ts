@@ -21,6 +21,7 @@ describe('enums — SPEC §2.5, pinned from source', () => {
       SevenChoosing: 2,
       AwaitingDiscard: 3,
       GameOver: 4,
+      PendingWin: 5, // engine v0.3.0, issue #93
     });
   });
 

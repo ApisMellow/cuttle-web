@@ -24,7 +24,6 @@ import {
   flightMoveOf,
   flightPlan,
   flightScript,
-  intoPrompt,
   snapshot,
   type FlightAfter,
   type FlightCapture,
@@ -203,7 +202,8 @@ describe('flightPlan', () => {
     expect(plan(move(K.Scuttle, { Card: ten, Target: { Owner: 1, Zone: 0, Index: 0 } }), 0)).toBe('scuttle');
     expect(plan(move(K.OneOff, { Card: ace }), 0)).toBe('oneOff');
     expect(plan(move(K.Draw), 0)).toBe('drawFlip');
-    expect(plan(move(K.Counter, { Card: card(2, 2) }), 0)).toBe('counter');
+    // Issue #93: a counter lands like a one-off (the middle, then the scrap).
+    expect(plan(move(K.Counter, { Card: card(2, 2) }), 0)).toBe('oneOff');
   });
 
   it('the glasses 8 is its own plan, until glasses are already down', () => {
@@ -225,8 +225,8 @@ describe('flightPlan', () => {
     expect(plan(move(K.Draw), 1, true)).toBe('drawFlip');
   });
 
-  it('a counter is a counter for either seat', () => {
-    expect(plan(move(K.Counter), 1)).toBe('counter');
+  it('a counter is a one-off landing for either seat (Blake\u2019s leaves his hand as blakePlays)', () => {
+    expect(plan(move(K.Counter, { Card: card(2, 2) }), 1)).toBe('blakePlays');
   });
 
   it('every other kind arrives, including a SevenPick with or without a sub-move', () => {
@@ -237,7 +237,7 @@ describe('flightPlan', () => {
   });
 
   it('gives all ten engine kinds, for both seats, a plan that exists', () => {
-    const names = new Set<FlightPlanName>(['toRow', 'jackSteal', 'scuttle', 'oneOff', 'drawFlip', 'drawBack', 'blakePlays', 'glassesFlip', 'counter', 'arrive']);
+    const names = new Set<FlightPlanName>(['toRow', 'jackSteal', 'scuttle', 'oneOff', 'drawFlip', 'drawBack', 'blakePlays', 'glassesFlip', 'arrive']);
     for (const kind of Object.values(K)) {
       for (const side of [0, 1] as const) {
         for (const glasses of [false, true]) expect(names.has(flightPlan(flightMoveOf(move(kind, { Card: nine }), view()), side, glasses))).toBe(true);
@@ -723,45 +723,21 @@ describe('flightScript', () => {
     expect(mover.box.x + mover.box.width / 2 + dx).toBeCloseTo(195, 1);
   });
 
-  it('a one-off with nothing to scrap into (a counter window) settles in the zone and fades; no sweep, no hold', () => {
+  it('a one-off with nothing to scrap into settles in the zone and fades; no sweep, no hold', () => {
     const s = script(move(K.OneOff, { Card: ace }), view(), { scrap: null });
     expect(s.actors.map((a) => a.key)).toEqual(['mover']);
     expect(s.holds).toEqual([]);
     expect(s.actors[0].frames[s.actors[0].frames.length - 1].opacity).toBe(0);
   });
 
-  it('T14: in a counter window, a one-off aimed at the prompt\u2019s thumbnail shrinks into it, then fades', () => {
-    const thumb = { x: 40, y: 120, width: 32, height: 42 };
-    const root = board();
-    const cap = capture(move(K.OneOff, { Card: ace, HandIndex: 0 }), view(), root);
-    document.body.replaceChildren();
-    const aimed = intoPrompt(cap, thumb);
-    expect(aimed.rects.oneoff).toEqual(thumb);
-    expect(cap.rects.oneoff, 'the capture itself is left alone').not.toEqual(thumb);
-    const s = scriptOf(aimed, { scrap: null });
+  it('a counter flies the 2 like a one-off: into the middle (300), a hold (240), then the scrap; nothing swept', () => {
+    const s = script(move(K.Counter, { Card: card(2, 2), HandIndex: 0 }), view());
     expect(s.actors.map((a) => a.key)).toEqual(['mover']);
-    const frames = s.actors[0].frames;
-    checkFrames(frames);
-    const last = frames[frames.length - 1];
-    expect(last.opacity).toBe(0);
-    // It ends at the thumbnail's size and centre (fitInto), not a hand card's.
-    const src = cap.rects.source;
-    const scale = Math.min(thumb.width / ENDS.card.width, thumb.height / ENDS.card.height);
-    expect(num(/scale\(([\d.]+)/, String(last.transform))).toBeCloseTo((ENDS.card.width * scale) / src.width, 2);
-    const dx = num(/translate\((-?[\d.]+)px/, String(last.transform));
-    expect(src.x + src.width / 2 + dx).toBeCloseTo(thumb.x + thumb.width / 2, 1);
-  });
-
-  it('intoPrompt leaves every other kind of flight alone', () => {
-    const root = board();
-    const cap = capture(move(K.PlayPoint, { Card: nine, HandIndex: 0 }), view(), root);
-    document.body.replaceChildren();
-    expect(intoPrompt(cap, { x: 1, y: 2, width: 3, height: 4 })).toBe(cap);
-  });
-
-  it('a counter has no clone: the scrap pile arrives', () => {
-    const s = script(move(K.Counter, { Card: card(2, 2) }), view());
-    expect(s).toMatchObject({ actors: [], holds: [], arrives: ['scrap'], rings: ['scrap'], durationMs: 200 });
+    expect(s.actors[0].durationMs).toBe(300 + 240 + 320);
+    expect(s).toMatchObject({ holds: [{ target: 'scrap', ms: 860 }], arrives: [], rings: ['scrap'], durationMs: 860 });
+    checkFrames(s.actors[0].frames);
+    const dx = num(/translate\((-?[\d.]+)px/, lastTransform(s.actors[0].frames));
+    expect(s.actors[0].box.x + s.actors[0].box.width / 2 + dx).toBeCloseTo(330, 1);
   });
 
   it('the arrive fallback only reaches the scrap for kinds that put cards there', () => {
@@ -1091,18 +1067,13 @@ describe('FlightLayer, motion on', () => {
     expect(layerEl().querySelector('[data-part="glasses"]')).toBeNull();
   });
 
-  it('a counter has no clone; the scrap pile plays the arrive animation (scale 0.92 to 1)', () => {
+  it('a counter flies one clone, the 2 (issue #93: it lands like a one-off)', () => {
     const layer = mountLayer(base());
     const root = board();
-    const cap = capture(move(K.Counter, { Card: card(2, 2) }), view(), root);
+    const cap = capture(move(K.Counter, { Card: card(2, 2), HandIndex: 0 }), view(), root);
     layer.play(cap, root);
-    expect(clones()).toHaveLength(0);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].el.getAttribute('data-testid')).toBe('scrap-pile');
-    expect(calls[0].frames[0]).toMatchObject({ opacity: 0, transform: 'scale(0.92)' });
-    expect(calls[0].frames[1]).toMatchObject({ opacity: 1, transform: 'scale(1)' });
-    expect(calls[0].options).toMatchObject({ duration: 200, fill: 'none' });
-    for (const f of calls[0].frames) for (const key of Object.keys(f)) expect(ALLOWED.has(key)).toBe(true);
+    expect(clones()).toHaveLength(1);
+    for (const a of calls) for (const f of a.frames) for (const key of Object.keys(f)) expect(ALLOWED.has(key)).toBe(true);
   });
 
   it('removes its clones, and cancels every animation, once the flight is over', () => {

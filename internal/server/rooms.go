@@ -89,7 +89,7 @@ type room struct {
 	meta     store.Room
 	sess     *game.Session // nil while waiting for the second player
 	lastUsed time.Time
-	// live is the room's sockets, response holds and rematch requests
+	// live is the room's sockets and rematch requests
 	// (play.go). Memory only.
 	live liveRoom
 }
@@ -316,8 +316,8 @@ func (m *Rooms) dealLocked(ctx context.Context, r *room) error {
 		return err
 	}
 	m.log.Info("game dealt", "code", r.code, "game", r.meta.Game)
-	// Connected seats get the new game at once; holds and rematch
-	// requests belong to the old one.
+	// Connected seats get the new game at once; rematch requests belong
+	// to the old one.
 	r.live.dealtLocked(r)
 	return nil
 }

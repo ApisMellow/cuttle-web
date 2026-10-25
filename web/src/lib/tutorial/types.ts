@@ -43,20 +43,18 @@ export interface MovePredicate {
 }
 
 export type SpotTarget =
-  /** score-bar, opponent-zone, center-zone, player-zone, player-hand, deck-pile, zone-*, staging-confirm… */
+  /** score-bar, opponent-zone, center-zone, player-zone, player-hand, deck-pile, zone-*, counter-link… */
   | { kind: 'testid'; id: string }
   /** → `hand-card-<i>` against view(0) */
   | { kind: 'hand'; card: Card | Card[] }
   /** Step 5.3: the Jack still in hand. */
   | { kind: 'handRank'; rank: Rank }
   /** → `point-<owner>-<i>` */
-  | { kind: 'point'; card: Card | Card[] }
-  /** The one `counter-option-*`. */
-  | { kind: 'counterOption' };
+  | { kind: 'point'; card: Card | Card[] };
 
 export type DemoSpec =
   | { kind: 'drag'; from: SpotTarget; to: SpotTarget; thenConfirm: boolean }
-  /** 2.2: [deck, deck]; 4.2: [counterOption]. */
+  /** 2.2: [deck, deck]. */
   | { kind: 'tap'; at: SpotTarget[]; thenConfirm: boolean }
   | { kind: 'none' };
 

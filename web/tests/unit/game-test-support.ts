@@ -71,6 +71,8 @@ export function playerView(overrides: Partial<PlayerView> = {}): PlayerView {
     },
     sevenRevealed: null,
     pending: null,
+    counterable: false,
+    owedDiscards: { you: 0, opponent: 0 },
     ...overrides,
   };
 }

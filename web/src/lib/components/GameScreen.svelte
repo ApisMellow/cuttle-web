@@ -75,6 +75,7 @@
   import DrawRevealPanel from './DrawRevealPanel.svelte';
   import GameMenu from './GameMenu.svelte';
   import MissedMovesPanel from './MissedMovesPanel.svelte';
+  import NotSoFast from './NotSoFast.svelte';
   import OnlineStuckPanel from './OnlineStuckPanel.svelte';
   import ScrapBrowser from './ScrapBrowser.svelte';
   import SevenRevealPanel from './SevenRevealPanel.svelte';
@@ -143,6 +144,8 @@
       hand: env.state.you.hand,
       revealed: sevenCards(env),
       scrap: env.state.scrap,
+      // Issue #93: names the staged Counter's line ("undo Blake's last turn").
+      opponentName: names[(1 - env.state.viewer) as PlayerId],
     };
   }
 
@@ -490,9 +493,25 @@
       staging.state !== 'staged' &&
       staging.chooser === null &&
       staging.scrapPick === null &&
-      staging.discard === null &&
+      (staging.discard === null || canDragAtDiscard(handIndex)) &&
       !staging.dimmedHand.has(handIndex)
     );
+  }
+
+  /**
+   * Issue #93 (SPEC §4.3), an owed discard: the debtor may counter instead
+   * of paying, by dragging a 2 the engine offers a Counter for onto the
+   * last-turn marker. Only while that 2 would be the lone pick (nothing
+   * picked yet, or it is the one pick): the drag's own select-tap then
+   * lights `counter-link` and never completes a discard pair. Any other
+   * card at a discard position is picked by tapping, as before.
+   */
+  function canDragAtDiscard(handIndex: number): boolean {
+    const discard = staging.discard;
+    if (board === null || discard === null) return false;
+    const picked = discard.picked;
+    if (picked.length > 1 || (picked.length === 1 && picked[0] !== handIndex)) return false;
+    return board.legalMoves.some((m) => m.Kind === MoveKind.Counter && m.HandIndex === handIndex);
   }
 
   function onDragPointerdown(event: PointerEvent): void {
@@ -966,6 +985,28 @@
         />
       {:else if staging.discard !== null}
         <DiscardPicker need={staging.discard.need} picked={staging.discard.picked.length} />
+      {:else if staging.letItHappen}
+        <!-- Issue #93 (SPEC §4.3), the decider at a pending win: one added
+             button beside the usual idle content. One tap applies the
+             Decline; a 2 is countered the usual way, on the marker. -->
+        <div class="game-screen__decide">
+          {#if hint !== null}
+            <p class="game-screen__hint game-screen__decide-hint" data-card-hint>
+              <span class="game-screen__hint-name" data-card-label="name">{hint.name}</span>
+              <span class="game-screen__hint-effect" data-card-label="effect">{hint.effect}</span>
+            </p>
+          {/if}
+          <button type="button" class="game-screen__pass game-screen__let-it-happen" data-testid="let-it-happen"
+            disabled={boardInert}
+            onclick={fresh(() => {
+              if (boardInert) return;
+              notice = null;
+              staging.tap('let-it-happen')?.catch(report);
+            })}
+          >
+            Let it happen
+          </button>
+        </div>
       {:else if hint !== null}
         <!-- Card labels: the selected card's name and what it does, in the
              bar's reserved space (nothing else uses it while selecting). -->
@@ -1015,6 +1056,14 @@
 
     {#if enlarged !== null}
       <CardEnlarged card={enlarged} {theme} />
+    {/if}
+
+    {#if source.notSoFast}
+      <!-- Issue #93 (SPEC §4.3): the winner's beat, over their own board
+           (never behind a curtain). Pass-and-play: dismissing raises the
+           saved handoff to the decider. Online: it just clears, and the
+           action bar's "NAME is deciding…" line shows. -->
+      <NotSoFast reducedMotion={settings.reducedMotion} ondismiss={() => source.dismissNotSoFast?.()} />
     {/if}
   {:else if online !== null}
     <!-- W12/W13b: an online source with no state yet (connecting, or the
@@ -1402,6 +1451,28 @@
     font-size: var(--cu-text-sm, 14px);
     font-weight: var(--cu-weight-bold, 700);
     cursor: pointer;
+  }
+
+  /* Issue #93: the selected card's hint (if any) and "Let it happen" in one
+     row, inside the bar's reserved height. */
+  .game-screen__decide {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cu-space-3, 12px);
+    min-width: 0;
+    padding: 0 var(--cu-space-3, 12px);
+  }
+
+  .game-screen__decide-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .game-screen__let-it-happen {
+    flex: none;
+    min-width: 140px;
   }
 
   .game-screen__pass:disabled {

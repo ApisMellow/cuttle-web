@@ -81,16 +81,16 @@ func TestWS_HelloFailures(t *testing.T) {
 		raw   string
 		code  string // "" = bare close, no frame
 	}{
-		{name: "wrong version", frame: hello{"t": "hello", "v": 2, "code": c0.Code, "token": c0.Token, "lastSeq": 0}, code: "UPGRADE_REQUIRED"},
-		{name: "unknown room", frame: hello{"t": "hello", "v": 1, "code": "ZZZZ", "token": c0.Token, "lastSeq": 0}, code: "ROOM_GONE"},
-		{name: "malformed code", frame: hello{"t": "hello", "v": 1, "code": "!!", "token": c0.Token, "lastSeq": 0}, code: "ROOM_GONE"},
-		{name: "bad token", frame: hello{"t": "hello", "v": 1, "code": c0.Code, "token": "nope", "lastSeq": 0}, code: "UNAUTHORIZED"},
-		{name: "empty token", frame: hello{"t": "hello", "v": 1, "code": c0.Code, "token": "", "lastSeq": 0}, code: "UNAUTHORIZED"},
+		{name: "v1 client", frame: hello{"t": "hello", "v": 1, "code": c0.Code, "token": c0.Token, "lastSeq": 0}, code: "UPGRADE_REQUIRED"},
+		{name: "unknown room", frame: hello{"t": "hello", "v": 2, "code": "ZZZZ", "token": c0.Token, "lastSeq": 0}, code: "ROOM_GONE"},
+		{name: "malformed code", frame: hello{"t": "hello", "v": 2, "code": "!!", "token": c0.Token, "lastSeq": 0}, code: "ROOM_GONE"},
+		{name: "bad token", frame: hello{"t": "hello", "v": 2, "code": c0.Code, "token": "nope", "lastSeq": 0}, code: "UNAUTHORIZED"},
+		{name: "empty token", frame: hello{"t": "hello", "v": 2, "code": c0.Code, "token": "", "lastSeq": 0}, code: "UNAUTHORIZED"},
 		{name: "not hello first", frame: hello{"t": "ping"}, code: "BAD_REQUEST"},
 		{name: "move first", frame: hello{"t": "move", "game": 1, "seq": 0, "index": 0}, code: "BAD_REQUEST"},
 		{name: "no version", frame: hello{"t": "hello", "code": c0.Code, "token": c0.Token}, code: "BAD_REQUEST"},
 		{name: "garbage", raw: "{not json", code: "BAD_REQUEST"},
-		{name: "seat in frame is not honored", frame: hello{"t": "hello", "v": 1, "code": c0.Code, "token": "nope", "seat": 0}, code: "UNAUTHORIZED"},
+		{name: "seat in frame is not honored", frame: hello{"t": "hello", "v": 2, "code": c0.Code, "token": "nope", "seat": 0}, code: "UNAUTHORIZED"},
 	}
 	for _, tc := range cases {
 		w, _, err := e.dial(t, testOrigin)
@@ -139,7 +139,7 @@ func TestWS_FailedHelloLimitCountsOnlyGuesses(t *testing.T) {
 		expectError(t, w, want)
 		w.closed(3 * time.Second)
 	}
-	good := map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": c0.Token, "lastSeq": 0}
+	good := map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": c0.Token, "lastSeq": 0}
 	// Not counted: accepted hellos, UPGRADE_REQUIRED, BAD_REQUEST.
 	for range 5 {
 		try(good, "welcome")
@@ -147,33 +147,36 @@ func TestWS_FailedHelloLimitCountsOnlyGuesses(t *testing.T) {
 		try(map[string]any{"t": "nope"}, "BAD_REQUEST")
 	}
 	// Counted: UNAUTHORIZED and ROOM_GONE.
-	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess1"}, "UNAUTHORIZED")
-	try(map[string]any{"t": "hello", "v": 1, "code": "ZZZZ", "token": "guess2"}, "ROOM_GONE")
-	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess3"}, "UNAUTHORIZED")
+	try(map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": "guess1"}, "UNAUTHORIZED")
+	try(map[string]any{"t": "hello", "v": 2, "code": "ZZZZ", "token": "guess2"}, "ROOM_GONE")
+	try(map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": "guess3"}, "UNAUTHORIZED")
 	// Over the limit: guesses get no verdict, but a right token still works.
-	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": c1.Token}, "welcome")
-	try(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": "guess4"}, "RATE_LIMITED")
-	try(map[string]any{"t": "hello", "v": 1, "code": "ZZZZ", "token": "guess5"}, "RATE_LIMITED")
+	try(map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": c1.Token}, "welcome")
+	try(map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": "guess4"}, "RATE_LIMITED")
+	try(map[string]any{"t": "hello", "v": 2, "code": "ZZZZ", "token": "guess5"}, "RATE_LIMITED")
 	// A wrong version is still answered as such: it isn't a guess.
 	try(map[string]any{"t": "hello", "v": 9, "code": c0.Code, "token": "x"}, "UPGRADE_REQUIRED")
 }
 
 // ---- the two-seat flow and privacy ----
 
+// twoSeatSeeds are fixed games (deal and driver both seeded) that together
+// reach every coverage kind on engine v0.3.0, picked from a walk of seeds
+// 1-700: 249 a pending win and Let it happen, 372 a countered 5, 504 a
+// dead-end 7, 692 a counter-back and a pending win (the rest are spread
+// across all four). Odd seeds play at random, even seeds prefer a
+// counterable move.
+var twoSeatSeeds = []uint64{249, 372, 504, 692}
+
 func TestWS_TwoSeatGamesEachSeatSeesOnlyItsOwnView(t *testing.T) {
 	var cov coverage
-	for seed := uint64(1); seed <= 6; seed++ {
-		e := newPlayEnv(t, playOpts{rand: seededRand(seed), cfg: func(c *Config) { c.RespondMin = 5 * time.Millisecond }})
+	for _, seed := range twoSeatSeeds {
+		e := newPlayEnv(t, playOpts{rand: seededRand(seed)})
 		d := newDuo(t, e, seed)
 		d.preferOneOff = seed%2 == 0
 		d.playToEnd()
 		d.settle()
-		c := d.cov
-		cov.glasses += c.glasses
-		cov.sevenReveal += c.sevenReveal
-		cov.counterWindow += c.counterWindow
-		cov.noWindowOneOff += c.noWindowOneOff
-		cov.gameOver += c.gameOver
+		cov.add(d.cov)
 		// The final state carries the tally the store holds.
 		row, err := e.st.Get(context.Background(), d.code)
 		if err != nil {
@@ -190,8 +193,8 @@ func TestWS_TwoSeatGamesEachSeatSeesOnlyItsOwnView(t *testing.T) {
 		e.stop()
 	}
 	t.Logf("coverage over the seeded games: %+v", cov)
-	if cov.gameOver == 0 || cov.counterWindow == 0 || cov.noWindowOneOff == 0 || cov.sevenReveal == 0 {
-		t.Fatalf("the seeded games never exercised a property: %+v", cov)
+	if m := cov.missing(); len(m) > 0 {
+		t.Fatalf("the seeded games never exercised %v: %+v", m, cov)
 	}
 }
 
@@ -253,7 +256,7 @@ func (e *playEnv) sessionSeq(t *testing.T, code string) int {
 }
 
 func TestWS_GameOverMoveResyncs(t *testing.T) {
-	e := newPlayEnv(t, playOpts{rand: seededRand(12), cfg: func(c *Config) { c.RespondMin = 5 * time.Millisecond }})
+	e := newPlayEnv(t, playOpts{rand: seededRand(12)})
 	d := newDuo(t, e, 12)
 	d.playToEnd()
 	d.settle()
@@ -286,199 +289,8 @@ func TestWS_SaveFailureSendsInternalAndReloadedState(t *testing.T) {
 	// The room still plays.
 	actor.send(map[string]any{"t": "move", "game": d.gameNo, "seq": seq, "index": 0})
 	f := actor.next(3 * time.Second)
-	if f.T != "state" && f.T != "responding" {
-		t.Fatalf("after recovery got %s", f.raw)
-	}
-}
-
-// ---- the response hold (W7) ----
-
-// holdScenarioSeeds are tried in order. Seed 100 yields both a windowed and a
-// windowless one-off on the pinned engine; the rest are fallbacks, and
-// holdScenario fails if none yields the requested case.
-var holdScenarioSeeds = []uint64{100, 101, 102, 103, 104}
-
-// holdScenario drives seeded games until the actor can play a one-off and
-// the engine opens (window=true) or doesn't open a counter window; it plays
-// that one-off and returns the duo just after the move was sent.
-func holdScenario(t *testing.T, hold time.Duration, window bool) (*playEnv, *duo, game.Seat) {
-	t.Helper()
-	for _, seed := range holdScenarioSeeds {
-		e := newPlayEnv(t, playOpts{rand: seededRand(seed), cfg: func(c *Config) { c.RespondMin = hold }})
-		d := newDuo(t, e, seed)
-		for guard := 0; guard < 400 && !d.st().Over; guard++ {
-			seat, env, ok := d.ready()
-			if !ok {
-				if !d.pump(3 * time.Second) {
-					t.Fatal("stalled")
-				}
-				continue
-			}
-			for i, m := range env.LegalMoves {
-				if m.Kind != engine.MoveOneOff {
-					continue
-				}
-				probe, _ := game.RestoreSession(mustPersist(t, d.truth))
-				if _, err := probe.Apply(seat, d.truth.Seq(), i); err != nil {
-					t.Fatal(err)
-				}
-				opened := mustStatus(t, probe).Phase == engine.PhaseAwaitingCounter
-				if opened == window {
-					// Drain anything in flight so the scenario starts clean.
-					d.settle()
-					d.move(seat, i)
-					return e, d, seat
-				}
-			}
-			d.move(seat, d.pick(env))
-		}
-		e.stop()
-	}
-	t.Fatalf("no seed produced a one-off with window=%v", window)
-	return nil, nil, 0
-}
-
-func mustPersist(t *testing.T, s *game.Session) []byte {
-	t.Helper()
-	snap, err := s.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return snap.PersistBytes()
-}
-
-func TestWS_HoldWithoutWindow(t *testing.T) {
-	const hold = 300 * time.Millisecond
-	_, d, mover := holdScenario(t, hold, false)
-	start := d.heldFrom[mover]
-	m, o := d.p[mover], d.p[mover.Other()]
-	r := decodeFrame[respondingIn](t, m.expect("responding"))
-	if *r.By != int(mover.Other()) {
-		t.Fatalf("by %d", *r.By)
-	}
-	d.expectR[mover], d.held[mover] = false, true
-	// The other seat has its state at once.
-	f := o.next(hold / 2)
-	d.absorb(mover.Other(), f)
-	if f.T != "state" || f.at.Sub(start) >= hold {
-		t.Fatalf("responder's state late or missing: %s after %v", f.T, f.at.Sub(start))
-	}
-	m.quiet(hold - time.Since(start) - 30*time.Millisecond)
-	f = m.next(2 * time.Second)
-	if f.T != "state" || f.at.Sub(start) < hold {
-		t.Fatalf("mover got %s after %v, hold %v", f.T, f.at.Sub(start), hold)
-	}
-	d.absorb(mover, f)
-}
-
-func TestWS_HoldDeclineAfterHoldReleasesOnDecline(t *testing.T) {
-	const hold = 200 * time.Millisecond
-	_, d, mover := holdScenario(t, hold, true)
-	start := d.heldFrom[mover]
-	m, o := d.p[mover], d.p[mover.Other()]
-	d.absorb(mover, m.expect("responding"))
-	_, env := expectState(t, o) // the counter prompt, at once
-	if env.State.Phase != engine.PhaseAwaitingCounter {
-		t.Fatalf("responder phase %v", env.State.Phase)
-	}
-	d.env[mover.Other()] = &env
-	// The responder thinks past the hold: the mover still waits.
-	m.quiet(hold + 200*time.Millisecond)
-	decline := -1
-	for i, mv := range env.LegalMoves {
-		if mv.Kind == engine.MoveDecline {
-			decline = i
-		}
-	}
-	answered := time.Now()
-	d.move(mover.Other(), decline)
-	f := m.next(2 * time.Second)
-	if f.T != "state" || f.at.Before(answered) || f.at.Sub(start) < hold {
-		t.Fatalf("mover got %s at %v (answer at %v)", f.raw, f.at.Sub(start), answered.Sub(start))
-	}
-	d.absorb(mover, f)
-}
-
-func TestWS_HoldQuickDeclineStillWaitsForHold(t *testing.T) {
-	const hold = 300 * time.Millisecond
-	_, d, mover := holdScenario(t, hold, true)
-	start := d.heldFrom[mover]
-	m, o := d.p[mover], d.p[mover.Other()]
-	d.absorb(mover, m.expect("responding"))
-	_, env := expectState(t, o)
-	d.env[mover.Other()] = &env
-	for i, mv := range env.LegalMoves {
-		if mv.Kind == engine.MoveDecline {
-			d.move(mover.Other(), i)
-		}
-	}
-	// A move by the mover during the hold is answered with responding, not state.
-	m.send(map[string]any{"t": "move", "game": d.gameNo, "seq": 0, "index": 0})
-	expectError(t, m, "STALE")
-	if f := m.expect("responding"); f.at.Sub(start) >= hold {
-		t.Fatal("test too slow to observe the hold")
-	}
-	f := m.next(2 * time.Second)
-	if f.T != "state" || f.at.Sub(start) < hold {
-		t.Fatalf("mover got %s after %v, hold %v", f.T, f.at.Sub(start), hold)
-	}
-	d.absorb(mover, f)
-}
-
-func TestWS_HoldCounterReleasesMoverAndHoldsCounterer(t *testing.T) {
-	const hold = 150 * time.Millisecond
-	_, d, mover := holdScenario(t, hold, true)
-	m, o := d.p[mover], d.p[mover.Other()]
-	d.absorb(mover, m.expect("responding"))
-	_, env := expectState(t, o)
-	d.env[mover.Other()] = &env
-	counter := -1
-	for i, mv := range env.LegalMoves {
-		if mv.Kind == engine.MoveCounter {
-			counter = i
-		}
-	}
-	if counter < 0 {
-		t.Fatal("window without a counter move")
-	}
-	d.move(mover.Other(), counter)
-	// The counterer is now the mover under a hold.
-	r := decodeFrame[respondingIn](t, o.expect("responding"))
-	if *r.By != int(mover) {
-		t.Fatalf("counterer's responding by %d", *r.By)
-	}
-	d.expectR[mover.Other()], d.held[mover.Other()] = false, true
-	// The original mover is released (answer in) once its own hold is over.
-	f := m.next(2 * time.Second)
-	d.absorb(mover, f)
 	if f.T != "state" {
-		t.Fatalf("original mover got %s", f.raw)
-	}
-	d.settle()
-}
-
-func TestWS_HoldReconnectGetsResponding(t *testing.T) {
-	const hold = 600 * time.Millisecond
-	e, d, mover := holdScenario(t, hold, false)
-	start := d.heldFrom[mover]
-	m := d.p[mover]
-	m.expect("responding")
-	m.c.CloseNow()
-	<-m.done
-	w, _, err := e.dial(t, testOrigin)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.seat, w.token = mover, m.token
-	w.hello(d.code, m.token)
-	w.expect("welcome")
-	f := w.expect("responding")
-	if f.at.Sub(start) >= hold {
-		t.Fatal("test too slow to observe the hold")
-	}
-	f = w.next(2 * time.Second)
-	if f.T != "state" || f.at.Sub(start) < hold {
-		t.Fatalf("reconnected mover got %s after %v", f.T, f.at.Sub(start))
+		t.Fatalf("after recovery got %s", f.raw)
 	}
 }
 
@@ -524,7 +336,7 @@ func TestWS_Presence(t *testing.T) {
 // ---- rematch ----
 
 func TestWS_RematchAlternatesDealerAndKeepsTally(t *testing.T) {
-	e := newPlayEnv(t, playOpts{rand: seededRand(31), cfg: func(c *Config) { c.RespondMin = 5 * time.Millisecond }})
+	e := newPlayEnv(t, playOpts{rand: seededRand(31)})
 	d := newDuo(t, e, 31)
 	a, b := d.p[0], d.p[1]
 
@@ -699,7 +511,7 @@ func TestWS_SlowConsumerDisconnectedWithoutBlockingTheRoom(t *testing.T) {
 	expectState(t, a)
 	// B says hello and then never reads again.
 	raw := e.dialRaw(t)
-	hello, _ := json.Marshal(map[string]any{"t": "hello", "v": 1, "code": c0.Code, "token": c1.Token, "lastSeq": 0})
+	hello, _ := json.Marshal(map[string]any{"t": "hello", "v": 2, "code": c0.Code, "token": c1.Token, "lastSeq": 0})
 	if err := raw.Write(context.Background(), websocket.MessageText, hello); err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +601,6 @@ func TestWS_RestartMidGameRestoresAndContinues(t *testing.T) {
 			d.p[0].expect("presence")
 		}
 	}
-	d.held, d.expectR = [2]bool{}, [2]bool{}
 	d.playMoves(3)
 	d.settle()
 	if got := e2.sessionSeq(t, d.code); got != seq+3 && !d.st().Over {
@@ -824,25 +635,9 @@ func TestWS_IdleMemSweepKeepsConnectedRooms(t *testing.T) {
 func TestWS_ShutdownClosesSocketsAndLeaksNothing(t *testing.T) {
 	base := runtime.NumGoroutine()
 	func() {
-		e := newPlayEnv(t, playOpts{rand: seededRand(81), cfg: func(c *Config) { c.RespondMin = 10 * time.Second }})
+		e := newPlayEnv(t, playOpts{rand: seededRand(81)})
 		d := newDuo(t, e, 81)
-		// Leave a hold timer pending across the shutdown.
-		for guard := 0; guard < 300; guard++ {
-			if seat, env, ok := d.ready(); ok {
-				idx := -1
-				for i, m := range env.LegalMoves {
-					if isCounterableView(m) {
-						idx = i
-					}
-				}
-				if idx >= 0 {
-					d.move(seat, idx)
-					d.p[seat].expect("responding")
-					break
-				}
-			}
-			d.step()
-		}
+		d.playMoves(4)
 		e.stop()
 		for _, w := range d.p {
 			select {
@@ -851,32 +646,8 @@ func TestWS_ShutdownClosesSocketsAndLeaksNothing(t *testing.T) {
 				t.Fatal("socket open after shutdown")
 			}
 		}
-		if n := e.pendingTimers(); n != 0 {
-			t.Fatalf("%d hold timers left after shutdown", n)
-		}
 	}()
 	waitGoroutines(t, base)
-}
-
-// pendingTimers counts live hold timers across cached rooms.
-func (e *playEnv) pendingTimers() int {
-	e.rooms.mu.Lock()
-	rs := make([]*room, 0, len(e.rooms.rooms))
-	for _, r := range e.rooms.rooms {
-		rs = append(rs, r)
-	}
-	e.rooms.mu.Unlock()
-	n := 0
-	for _, r := range rs {
-		r.mu.Lock()
-		for _, h := range r.live.holds {
-			if h.timer != nil {
-				n++
-			}
-		}
-		r.mu.Unlock()
-	}
-	return n
 }
 
 // ---- privacy of the send path and the logs ----

@@ -1,20 +1,21 @@
 // @vitest-environment jsdom
 // R25.3 S3b at the matcher (docs/tutorial-plan.md T6, design §7.2, §5.5.1):
 // every staging at every lesson move step, through the REAL GameScreen on the
-// REAL wasm bridge (engine v0.2.1).
+// REAL wasm bridge (engine v0.3.0).
 //
 // For each move step (and each predicate alternative's own positions: 3.2
 // after either 3.1 target, 5.4 after either Jack), the engine is walked
 // there directly (no TutorialTable), `view(0)` goes into a FakeTableSource,
 // and ONE GameScreen is mounted. Then, for each legal move: tap its hand card
-// (or the deck, or its counter option), tap its `boardTargetKey`'s testid,
-// pick it in the ambiguity chooser if one opens, read the page with
-// `readStagedPage`, classify with `classifyStaged`, and Cancel.
+// (or the deck), tap its `boardTargetKey`'s testid (a Counter's is
+// `counter-link`, issue #93), pick it in the ambiguity chooser if one opens,
+// read the page with `readStagedPage`, classify with `classifyStaged`, and
+// Cancel. A discard pair (4.2's owed discard) is staged by tapping its two
+// hand cards.
 //
 // The oracle comes from the page, not from the classifier's own grouping:
 // the candidates for a setup are the chooser's options when the chooser
-// opened (or every counter option in the counter prompt), else the move
-// alone. Verdict is right exactly when every candidate `moveMatches` the
+// opened, else the move alone. Verdict is right exactly when every candidate `moveMatches` the
 // step, wrong exactly when none does (with the step's nudge), and unknown
 // only for a mixed chooser group.
 //
@@ -23,8 +24,8 @@
 // (engine/apply.go:70-87) and a 9 cannot scuttle a 10 (card/card.go:49-56),
 // so 1.5's 9-on-10 is a single-move slot; a 2 one-off targets only
 // permanents and Jacks (apply.go:44-69), so no lesson 2 shares a point card
-// with a scuttle; the counter window offers Decline plus one Counter per 2
-// (apply.go:576-586).
+// with a scuttle; Blake's 4 leaves Alice an owed discard of 2 that opens
+// her turn, with the one DiscardPair and Counter 2H (v0.3.0).
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -155,7 +156,7 @@ async function click(id: string): Promise<void> {
   await settle();
 }
 
-/** Engine indices named by a testid family on the page, e.g. `counter-option-` → [1]. */
+/** Engine indices named by a testid family on the page, e.g. `ambiguity-chooser-option-` → [1]. */
 function indicesOf(prefix: string): number[] {
   return [...(host?.querySelectorAll<HTMLElement>(`[data-testid^="${prefix}"]`) ?? [])]
     .map((el) => /(\d+)$/.exec(el.dataset.testid ?? '')?.[1])
@@ -163,8 +164,7 @@ function indicesOf(prefix: string): number[] {
     .map(Number);
 }
 
-const IDLE_BOARD: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, counter: null };
-const FRESH_COUNTER: StagedPage = { ...IDLE_BOARD, counter: 'fresh' };
+const IDLE_BOARD: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, pair: null };
 
 type Verdict = 'right' | 'wrong' | 'unknown';
 type Tally = Record<Verdict | 'unstaged', number>;
@@ -191,20 +191,26 @@ function expectedNudge(group: Move[], step: MoveStep, env: Envelope): string {
 /** Stages legal move `i` on the mounted page; returns the candidate group the page showed for that setup. */
 async function stage(env: Envelope, i: number, label: string): Promise<Move[]> {
   const m = env.legalMoves[i];
-  if (m.Kind === MoveKind.Counter) {
-    const options = indicesOf('counter-option-');
-    expect(options, `${label}: the counter option is on the page`).toContain(i);
-    await click(`counter-option-${i}`);
-    return options.map((k) => env.legalMoves[k]);
+  if (m.Kind === MoveKind.DiscardPair) {
+    await click(`hand-card-${m.DiscardA}`);
+    await click(`hand-card-${m.DiscardB}`);
+    return [m];
   }
   if (m.Kind === MoveKind.Draw) {
     await click('deck-pile');
     return [m];
   }
   await click(`hand-card-${m.HandIndex}`);
-  // Selected is not staged: the coach never nudges a selection.
+  // Selected is not staged: the coach never nudges a selection. At an owed
+  // discard the lone pick is also marked as a pick (data-staged), but
+  // nothing is staged until Confirm shows.
   const selected = readStagedPage(host!);
-  expect(selected, `${label}: selected`).toEqual({ ...IDLE_BOARD, selectedHand: m.HandIndex });
+  if (m.Kind === MoveKind.Counter) {
+    expect(selected, `${label}: selected`).toMatchObject({ selectedHand: m.HandIndex, target: null, confirm: false, pair: null });
+    expect(q('counter-link')?.dataset.state, `${label}: the 2 lights the last-turn marker`).toBe('highlighted');
+  } else {
+    expect(selected, `${label}: selected`).toEqual({ ...IDLE_BOARD, selectedHand: m.HandIndex });
+  }
   const key = boardTargetKey(m);
   if (key === null) throw new Error(`${label}: a hand move with no board key`);
   await click(testIdForKey(key));
@@ -219,19 +225,17 @@ async function stage(env: Envelope, i: number, label: string): Promise<Move[]> {
 }
 
 function expectedPage(m: Move): Partial<StagedPage> {
-  if (m.Kind === MoveKind.Counter) return { source: null, target: null, confirm: true, counter: 'staged' };
-  if (m.Kind === MoveKind.Draw) return { source: 'deck', target: 'deck', confirm: true, counter: null };
-  return { source: { hand: m.HandIndex }, target: boardTargetKey(m), confirm: true, counter: null };
+  if (m.Kind === MoveKind.DiscardPair) return { source: null, target: null, confirm: true, pair: [m.DiscardA, m.DiscardB] };
+  if (m.Kind === MoveKind.Draw) return { source: 'deck', target: 'deck', confirm: true, pair: null };
+  return { source: { hand: m.HandIndex }, target: boardTargetKey(m), confirm: true, pair: null };
 }
 
 async function walkStep(lessonId: LessonId, step: MoveStep, env: Envelope, line: string): Promise<void> {
-  const counterWindow = env.state.phase === 1;
   const source = new FakeTableSource();
   source.push(env);
-  if (counterWindow) source.curtain = { kind: 'ack', to: 0 };
   render(source);
   await settle();
-  const idle = counterWindow ? FRESH_COUNTER : IDLE_BOARD;
+  const idle = IDLE_BOARD;
   expect(readStagedPage(host!), `${step.id}: idle on arrival`).toEqual(idle);
   expect(classifyStaged(idle, env, step), `${step.id}: idle is unknown`).toEqual({ verdict: 'unknown' });
 
@@ -241,15 +245,14 @@ async function walkStep(lessonId: LessonId, step: MoveStep, env: Envelope, line:
     const m = env.legalMoves[i];
     const label = `${step.id} (${line}) move ${i} "${env.descriptions[i]}"`;
     if (m.Kind === MoveKind.Decline || m.Kind === MoveKind.Pass) {
-      // Decline is one-tap ("Let it resolve") and never staged, so the page
-      // has no setup to judge. Pass does stage (tap('pass') → #stage, with
-      // Confirm present) but reads as no source, which classifies unknown
-      // too; no lesson offers it. The gate handles both at commit.
+      // Neither is offered by any lesson. Decline is one-tap and never
+      // staged; Pass stages but reads as no source, which classifies
+      // unknown. The gate handles both at commit.
       expect(classifyStaged(readStagedPage(host!), env, step), label).toEqual({ verdict: 'unknown' });
       tally.unstaged++;
       continue;
     }
-    if (m.Kind === MoveKind.SevenPick || m.Kind === MoveKind.DiscardPair) throw new Error(`${label}: no lesson stages this kind`);
+    if (m.Kind === MoveKind.SevenPick) throw new Error(`${label}: no lesson stages this kind`);
 
     const group = await stage(env, i, label);
     const page = readStagedPage(host!);
@@ -304,8 +307,8 @@ afterEach(() => {
  * Verdict counts per lesson, derived by hand from the legal-move lists the
  * T3 golden tables record (tutorial-lessons-wasm.test.ts WRONG_NUDGES): one
  * right setup per expected move (two at 3.1 and 5.2), every other legal move
- * wrong, no mixed chooser group in any lesson, and step 4.2's Decline the
- * one setup that never stages. WRONG_NUDGES is keyed by description, so it
+ * wrong (4.2's one discard pair included), and no mixed chooser group in
+ * any lesson. WRONG_NUDGES is keyed by description, so it
  * collapses lesson 5's duplicate Jack-steal rows (each Jack on 7D and on
  * 3H); lesson 5's 15 wrong is cross-checked against the engine's legal-move
  * generation instead (engine/apply.go:40-135 @ v0.2.1).
@@ -314,7 +317,7 @@ const COUNTS: Record<LessonId, Tally> = {
   1: { right: 1, wrong: 5, unknown: 0, unstaged: 0 },
   2: { right: 2, wrong: 5, unknown: 0, unstaged: 0 },
   3: { right: 4, wrong: 18, unknown: 0, unstaged: 0 },
-  4: { right: 2, wrong: 5, unknown: 0, unstaged: 1 },
+  4: { right: 2, wrong: 6, unknown: 0, unstaged: 0 },
   5: { right: 5, wrong: 15, unknown: 0, unstaged: 0 },
 };
 

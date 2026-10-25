@@ -146,6 +146,20 @@ function tapSequences(env: StagingEnv, index: number): Array<{ label: string; ru
     }
     case MoveKind.DiscardPair: {
       if (m.DiscardB === -1) {
+        // Issue #93: a lone 2 that can counter isn't pre-staged; the scrap takes the discard.
+        if (env.legalMoves.some((c) => c.Kind === MoveKind.Counter && c.HandIndex === 0)) {
+          return [
+            {
+              label: 'one-card discard of a 2: hand:0 then scrap',
+              run: () => {
+                const s = fresh();
+                s.tap('hand:0');
+                s.tap('scrap');
+                return s.stagedIndex;
+              },
+            },
+          ];
+        }
         return [{ label: 'one-card discard (pre-staged)', run: () => fresh().stagedIndex }];
       }
       const order = (a: number, b: number) => ({
@@ -159,8 +173,40 @@ function tapSequences(env: StagingEnv, index: number): Array<{ label: string; ru
       });
       return [order(m.DiscardA, m.DiscardB), order(m.DiscardB, m.DiscardA)];
     }
+    case MoveKind.Counter:
+      // Issue #93 (SPEC §4.3): a 2, then the last-turn marker.
+      return [
+        {
+          label: `hand:${m.HandIndex} → counter-link`,
+          run: () => {
+            const s = fresh();
+            s.tap(`hand:${m.HandIndex}`);
+            s.tap('counter-link');
+            return s.stagedIndex;
+          },
+        },
+      ];
+    case MoveKind.Decline:
+      // Issue #93: "Let it happen" is one tap, straight to apply; the index applied is what counts.
+      return [
+        {
+          label: 'let-it-happen',
+          run: () => {
+            let applied: number | null = null;
+            const s = new StagingStore(
+              () => env,
+              async (i) => {
+                applied = i;
+              },
+            );
+            s.reset();
+            void s.tap('let-it-happen');
+            return applied;
+          },
+        },
+      ];
     default:
-      return []; // Counter, Decline: CounterPrompt's controls, not this store
+      return [];
   }
 }
 

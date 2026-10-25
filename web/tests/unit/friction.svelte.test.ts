@@ -146,14 +146,16 @@ describe('Rules cheat-sheet (SPEC §5.5, amended 2026-09-28)', () => {
     expect(text).not.toMatch(/[♣♦♥♠]/);
   });
 
-  it('ruling 2026-09-29: the One-offs section says a one-off happens at once and a 2 is the only answer', () => {
+  it('issue #93: the One-offs section says a one-off happens at once and a 2 can undo the turn at the start of the next', () => {
     const el = render(RulesButton, {});
     el.querySelector<HTMLButtonElement>('[data-testid="home-rules"]')!.click();
     flushSync();
     const sheet = el.querySelector('[data-testid="rules-sheet"]')!;
     const oneOffs = [...sheet.querySelectorAll('section')].find((s) => s.querySelector('h3')?.textContent === 'One-offs')!;
     const paragraphs = [...oneOffs.querySelectorAll('p')].map((p) => p.textContent ?? '');
-    expect(paragraphs).toContain('A one-off happens right away and ends your turn. Your opponent can answer with a 2 if they have one.');
+    expect(paragraphs).toContain(
+      'A one-off happens right away and ends your turn. Your opponent can start their turn with a 2 to undo your whole turn.',
+    );
   });
 
   it('review B2/N3: the 9 line is true for a stolen card; the Jack and 7 lines cover the 9 and the dead end', () => {

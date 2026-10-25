@@ -306,22 +306,84 @@ func decodeStrict(raw string, v any) error {
 // range and every card a real card, so a hand-edited snapshot cannot drive
 // the engine or view code into an index panic. It checks shape, never game
 // rules.
+//
+// Engine v0.3.0 (issue #93) adds phase 5 (PhasePendingWin), the new-style
+// phase 3 with no Pending (an owed discard at turn start), Owed, TurnEnd,
+// LastTurn and ThisTurn (engine/state.go:61-137). TurnEnd snapshots are
+// validated as states themselves, at depth one: a snapshot's own TurnEnd
+// is nil (engine/state.go:125-129).
 func validateState(s engine.GameState) error {
+	if err := validateStateShape(s); err != nil {
+		return err
+	}
+	for p, snap := range s.TurnEnd {
+		if snap == nil {
+			continue
+		}
+		label := fmt.Sprintf("TurnEnd[%d]", p)
+		if snap.TurnEnd[0] != nil || snap.TurnEnd[1] != nil {
+			return fmt.Errorf("%s has its own TurnEnd (depth is one)", label)
+		}
+		if err := validateStateShape(*snap); err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+	}
+	return nil
+}
+
+// maxCountered is the most cards a TurnRecord holds: the counter 2 and the
+// one-off played from hand (engine/state.go:102-109).
+const maxCountered = 2
+
+// validateStateShape checks one state, not its TurnEnd snapshots.
+func validateStateShape(s engine.GameState) error {
 	if s.Active > engine.P2 {
 		return fmt.Errorf("Active %d out of range", s.Active)
 	}
-	if s.Phase > engine.PhaseGameOver {
+	if s.Phase > engine.PhasePendingWin {
 		return fmt.Errorf("Phase %d out of range", s.Phase)
 	}
 	if s.Winner != nil && *s.Winner > engine.P2 {
 		return fmt.Errorf("Winner %d out of range", *s.Winner)
 	}
-	needsPending := s.Phase == engine.PhaseAwaitingCounter || s.Phase == engine.PhaseSevenChoosing || s.Phase == engine.PhaseAwaitingDiscard
-	if needsPending != (s.Pending != nil) {
-		return fmt.Errorf("Pending must be present exactly in phases 1-3 (phase %d, pending present %v)", s.Phase, s.Pending != nil)
+	// Phases 1 and 2 always hold a Pending. Phase 3 holds one in the legacy
+	// v0.2.x shape (a discard inside the 4-player's turn) and none in the
+	// v0.3.0 owed-discard step (engine/state.go:67-71). Phases 0, 4 and 5
+	// never hold one.
+	switch s.Phase {
+	case engine.PhaseAwaitingCounter, engine.PhaseSevenChoosing:
+		if s.Pending == nil {
+			return fmt.Errorf("Pending must be present in phase %d", s.Phase)
+		}
+	case engine.PhaseAwaitingDiscard:
+		// The owed-discard step exists only while the active player owes
+		// (engine/apply.go:1050-1054, 470-477).
+		if s.Pending == nil && s.Owed[s.Active] <= 0 {
+			return fmt.Errorf("phase 3 with no Pending needs a debt: Owed[%d] = %d", s.Active, s.Owed[s.Active])
+		}
+	default:
+		if s.Pending != nil {
+			return fmt.Errorf("Pending must be absent in phase %d", s.Phase)
+		}
 	}
 	if s.PassesInARow < 0 {
 		return fmt.Errorf("PassesInARow %d negative", s.PassesInARow)
+	}
+	for p, owed := range s.Owed {
+		if owed < 0 {
+			return fmt.Errorf("Owed[%d] %d negative", p, owed)
+		}
+	}
+	for _, rec := range []struct {
+		label string
+		cards []card.Card
+	}{{"LastTurn.Countered", s.LastTurn.Countered}, {"ThisTurn.Countered", s.ThisTurn.Countered}} {
+		if len(rec.cards) > maxCountered {
+			return fmt.Errorf("%s holds %d cards, at most %d", rec.label, len(rec.cards), maxCountered)
+		}
+		if err := validCards(rec.label, rec.cards); err != nil {
+			return err
+		}
 	}
 	if err := validCards("Deck", s.Deck); err != nil {
 		return err

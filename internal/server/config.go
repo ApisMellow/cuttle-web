@@ -24,14 +24,14 @@ const (
 	DefaultOrigin = "https://apismellow.github.io"
 	// ReservedPort belongs to an unrelated local project and is never used.
 	ReservedPort = "8765"
-	// DefaultRespondMin is the counter hold's minimum (SPEC §2.12.5,
-	// CUTTLE_RESPOND_MIN_MS).
+	// DefaultRespondMin is CUTTLE_RESPOND_MIN_MS's default. A no-op since
+	// issue #93 (no counter hold); to be removed in a later release.
 	DefaultRespondMin = 1500 * time.Millisecond
 	// DefaultMaxSockets and DefaultMaxSocketsPerClient cap open play
 	// sockets server-wide and per client key.
 	DefaultMaxSockets          = 500
 	DefaultMaxSocketsPerClient = 8
-	// maxRespondMin bounds the configurable hold.
+	// maxRespondMin bounds the (no-op) respond-min-ms value.
 	maxRespondMin = time.Minute
 )
 
@@ -53,8 +53,9 @@ type Config struct {
 	BackupDir  string
 	BackupKeep int // backups to keep; 0 in a literal = default
 
-	// RespondMin is the least time the mover of a counterable move waits
-	// for its next state (SPEC §2.12.5). 0 in a literal = default.
+	// RespondMin still parses and validates but is a no-op since issue #93
+	// (SPEC §2.12.5, no counter hold); to be removed in a later release.
+	// 0 in a literal = default.
 	RespondMin time.Duration
 	// MaxSockets caps open play sockets server-wide, MaxSocketsPerClient
 	// per client key (identify). 0 in a literal = default.
@@ -131,7 +132,7 @@ func ParseConfig(args []string, getenv func(string) string) (Config, error) {
 	}
 	maxSockets := fs.Int("max-sockets", socksDef, "most open play sockets")
 	maxSocketsPerClient := fs.Int("max-sockets-per-client", perClientDef, "most open play sockets per client address")
-	respondMS := fs.Int("respond-min-ms", respondDef, "least milliseconds a counterable move's mover waits for its next state")
+	respondMS := fs.Int("respond-min-ms", respondDef, "no-op since issue #93 (no counter hold); accepted for one release")
 	createRate := fs.Int("create-per-hour", createDef, "room creates per client per hour")
 	joinRate := fs.Int("join-per-hour", joinDef, "room joins per client per hour")
 	maxRooms := fs.Int("max-rooms", maxDef, "most live rooms")

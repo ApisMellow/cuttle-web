@@ -106,12 +106,16 @@ export interface StagedPage {
   selectedHand: number | null;
   /** The one hand card with `data-staged="true"`, or the deck at `data-state="staged"`. */
   source: { hand: number } | 'deck' | null;
-  /** The staged zone, point or permanent (via `targetKeyFromTestId`); the deck for a staged draw. */
+  /**
+   * The staged zone, point or permanent (via `targetKeyFromTestId`), the
+   * last-turn marker (`counter-link`, a staged Counter); the deck for a
+   * staged draw.
+   */
   target: TargetKey | null;
   /** `staging-confirm` is present. */
   confirm: boolean;
-  /** `counter-prompt` is present: `staged` when `staging-confirm` is inside it. */
-  counter: 'fresh' | 'staged' | null;
+  /** Two hand cards with `data-staged="true"`: a staged discard pair, by hand index. */
+  pair: [number, number] | null;
 }
 
 export type StagedVerdict = { verdict: 'right' } | { verdict: 'wrong'; nudge: string } | { verdict: 'unknown' };
@@ -125,9 +129,9 @@ function testIdOf(el: Element): string {
 /**
  * Reads the staging state the board already renders (design §7.2): only
  * `aria-pressed` and `data-staged` on `hand-card-<i>`; `data-state="staged"`
- * on `deck-pile`, on a `zone-*` hit button, and on the theme face inside a
- * `point-<o>-<i>` or `perm-<o>-<i>` button; and whether `staging-confirm`
- * and `counter-prompt` are present. Never writes the DOM.
+ * on `deck-pile`, on a `zone-*` hit button, on `counter-link` (issue #93), and
+ * on the theme face inside a `point-<o>-<i>` or `perm-<o>-<i>` button; and
+ * whether `staging-confirm` is present. Never writes the DOM.
  */
 export function readStagedPage(root: ParentNode): StagedPage {
   let selectedHand: number | null = null;
@@ -151,6 +155,9 @@ export function readStagedPage(root: ParentNode): StagedPage {
       break;
     }
   }
+  if (target === null && root.querySelector('[data-testid="counter-link"]')?.getAttribute('data-state') === 'staged') {
+    target = 'counter-link';
+  }
   if (target === null) {
     for (const el of root.querySelectorAll('[data-testid^="point-"], [data-testid^="perm-"]')) {
       const key = targetKeyFromTestId(testIdOf(el));
@@ -162,20 +169,17 @@ export function readStagedPage(root: ParentNode): StagedPage {
     }
   }
 
-  // One staged hand card is a source; two (a discard pair) is not a slot.
+  // One staged hand card is a source; two are a discard pair, not a slot.
   const source: StagedPage['source'] = stagedHands.length === 1 ? { hand: stagedHands[0] } : deckStaged ? 'deck' : null;
   if (target === null && source === 'deck') target = 'deck';
-
-  const prompt = root.querySelector('[data-testid="counter-prompt"]');
-  const counter: StagedPage['counter'] =
-    prompt === null ? null : prompt.querySelector('[data-testid="staging-confirm"]') !== null ? 'staged' : 'fresh';
+  const pair: StagedPage['pair'] = stagedHands.length === 2 ? [stagedHands[0], stagedHands[1]] : null;
 
   return {
     selectedHand,
     source,
     target,
     confirm: root.querySelector('[data-testid="staging-confirm"]') !== null,
-    counter,
+    pair,
   };
 }
 
@@ -185,20 +189,27 @@ const HAND_STAGED_KINDS: ReadonlySet<Move['Kind']> = new Set<Move['Kind']>([
   MoveKind.PlayPermanent,
   MoveKind.Scuttle,
   MoveKind.OneOff,
+  MoveKind.Counter,
 ]);
 
 /**
  * Plan P4: the legal moves the staged setup could stand for, in engine order.
- * A staged counter takes every Counter (the page doesn't say which 2 is
- * staged); the deck takes the Draw; a hand card takes its board moves whose
- * `boardTargetKey` is the staged target. That is the board location, not
- * `slotKey`: a scuttle and a 9 aimed at one card are one tap and one group.
- * Decline, Pass and DiscardPair have no slot, and a SevenPick is rooted at a
- * revealed card, never at a hand index.
+ * The deck takes the Draw; a hand card takes its board moves whose
+ * `boardTargetKey` is the staged target (a 2 on `counter-link` is its
+ * Counter, issue #93). That is the board location, not `slotKey`: a scuttle
+ * and a 9 aimed at one card are one tap and one group. Two staged hand cards
+ * take the DiscardPair of those two. Decline and Pass have no slot, and a
+ * SevenPick is rooted at a revealed card, never at a hand index.
  */
 function stagedCandidates(page: StagedPage, env: Envelope): Move[] {
-  if (page.counter === 'staged') return env.legalMoves.filter((m) => m.Kind === MoveKind.Counter);
-  if (!page.confirm || page.source === null) return [];
+  if (!page.confirm) return [];
+  if (page.pair !== null) {
+    const [a, b] = page.pair;
+    return env.legalMoves.filter(
+      (m) => m.Kind === MoveKind.DiscardPair && ((m.DiscardA === a && m.DiscardB === b) || (m.DiscardA === b && m.DiscardB === a)),
+    );
+  }
+  if (page.source === null) return [];
   if (page.source === 'deck') return env.legalMoves.filter((m) => m.Kind === MoveKind.Draw);
   const { hand } = page.source;
   const target = page.target;

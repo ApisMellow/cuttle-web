@@ -110,8 +110,14 @@ interface Ctx {
   /** A Jack steal that took back the actor's own card (from history), with
    * the wording for this viewer; null for an ordinary steal. */
   stealBack: ((target: string, jack: string) => string) | null;
-  /** A Counter's clause naming what it stops ("to stop your 5♥"), or ''. */
+  /** A Counter's clause naming what it stops ("to stop your 5♥"), or ''. Legacy counter window only. */
   stops: string;
+  /**
+   * Issue #93 (SPEC §4.3): a Counter's rewind clause, " and undid your last
+   * turn" / " and undid Blake's last turn"; null for a legacy counter
+   * window's Counter, which reads `stops` instead.
+   */
+  undid: string | null;
 }
 
 /**
@@ -211,6 +217,7 @@ function predicateFor(kind: number, text: string, subKind: number | null, entry:
     case KIND.Counter: {
       const m = text.match(new RegExp(`^counter with (${CARD})$`));
       if (!m) fail(entry, 'Counter description did not match the engine format');
+      if (ctx.undid !== null) return `countered with ${m[1]}${ctx.undid}`;
       return `countered with ${m[1]}${ctx.stops}`;
     }
     case KIND.DiscardPair: {
@@ -304,6 +311,13 @@ export function isRecapVisible(entry: AppliedMove): boolean {
 export interface RecapContext {
   prev?: AppliedMove | null;
   history?: readonly AppliedMove[];
+  /**
+   * Issue #93: read a Counter as a legacy counter window's ("countered with
+   * 2♣ to stop your 5♥"). Only the CounterPrompt of a v0.2.x save asks for
+   * this (through `formatRecapLines` with no `history`); everything else
+   * reads a Counter as the rewind it is in new play (SPEC §4.3).
+   */
+  legacyCounter?: boolean;
 }
 
 /** The first card token a counterable entry's description names: the played one-off or 2. */
@@ -368,7 +382,12 @@ function buildCtx(entry: AppliedMove, viewer: PlayerId | null, names: readonly [
     }
   }
   let stops = '';
-  if (entry.kind === KIND.Counter) {
+  let undid: string | null = null;
+  if (entry.kind === KIND.Counter && context.legacyCounter !== true) {
+    // SPEC §4.3: "Blake countered with 2♠ and undid your last turn." The
+    // turn undone is the counterer's opponent's.
+    undid = oppIsViewer ? ' and undid your last turn' : ` and undid ${names[opp]}'s last turn`;
+  } else if (entry.kind === KIND.Counter) {
     const prev = context.prev ?? (context.history !== undefined ? previousEntry(context.history, entry) : null);
     const token = prev !== null && prev.seq < entry.seq && isCounterable(prev) ? playedToken(prev) : null;
     if (prev !== null && token !== null) stops = ` to stop ${possessive(prev.by, viewer, names)} ${token}`;
@@ -379,6 +398,7 @@ function buildCtx(entry: AppliedMove, viewer: PlayerId | null, names: readonly [
     opponentHas: oppIsViewer ? 'you have' : 'they have',
     stealBack,
     stops,
+    undid,
   };
 }
 
@@ -414,8 +434,15 @@ export function formatRecapLines(
   names: readonly [string, string],
   history?: readonly AppliedMove[],
 ): string[] {
+  // Issue #93: with no `history` this is the legacy CounterPrompt's run (its
+  // one-off, then each 2 on it), so a Counter keeps its "to stop" wording.
   return entries.map((entry, k) =>
-    formatRecapLine(entry, viewer, names, history !== undefined ? { history } : { prev: k > 0 ? entries[k - 1] : null }),
+    formatRecapLine(
+      entry,
+      viewer,
+      names,
+      history !== undefined ? { history } : { prev: k > 0 ? entries[k - 1] : null, legacyCounter: true },
+    ),
   );
 }
 
@@ -490,22 +517,12 @@ export function lastMoveLine(history: readonly AppliedMove[], viewer: PlayerId, 
   // entry here only when the hand it aimed at was empty).
   const four = line.match(/^(.* as a one-off): .* discard 2 cards \(or all .*\)\.$/);
   if (four !== null) line = `${four[1]}.`;
-  // Playtest 2026-09-29: a chain that ended on a Counter says whether the
-  // one-off it answered was stopped. An odd number of 2s cancels it
-  // (engine/apply.go v0.2.0 resolvePending). Only Counters and the origin
-  // are read, and a Decline after them changes nothing.
-  if (last.kind === KIND.Counter) {
-    const origin = chainOriginIndex(history, i);
-    const token = origin < 0 ? null : playedToken(history[origin]);
-    if (origin >= 0 && token !== null && (i - origin) % 2 === 1) {
-      const whose = possessive(history[origin].by, viewer, names);
-      if (origin === i - 1) {
-        // One 2: its own line already names the card; say the outcome in place.
-        return line.replace(/ to stop .*\.$/, `: ${whose} ${token} was stopped.`);
-      }
-      return `${line} ${sentenceCase(whose)} ${token} was stopped.`;
-    }
-  }
+  // Issue #93 (SPEC §4.3): a Counter is a rewind and its own line says so
+  // ("Blake countered with 2♠ and undid your last turn."). In new play it
+  // resolves no 5 (a 5 records its draw count on its own entry at once), so
+  // nothing follows it. The legacy chain's "was stopped" outcome is gone
+  // with the counter window; a v0.2.x save's closing Counter reads the same
+  // rewind line, and still says who drew for a 5 it resolved (below).
   let resolver = -1;
   for (let j = history.length - 1; j >= i; j--) {
     if (history[j].drawn !== null) {
@@ -535,7 +552,9 @@ export function lastMoveLine(history: readonly AppliedMove[], viewer: PlayerId, 
  */
 export function discardPromptLine(history: readonly AppliedMove[], names: readonly [string, string], need: 1 | 2): string {
   let i = history.length - 1;
-  while (i >= 0 && !isRecapVisible(history[i])) i--;
+  // Issue #93: an owed discard of 4 is paid two at a time, so the debtor's
+  // own first pair may already follow the 4.
+  while (i >= 0 && (!isRecapVisible(history[i]) || history[i].kind === KIND.DiscardPair)) i--;
   if (i < 0) return '';
   const origin = history[i].kind === KIND.Counter ? chainOriginIndex(history, i) : isOneOffEntry(history[i]) ? i : -1;
   if (origin < 0) return '';
@@ -824,6 +843,7 @@ export function plainMoveText(text: string, context: NineReturn | OptionContext 
   }
   m = t.match(new RegExp(`^counter with (${CARD})$`));
   if (m) return `Counter with ${m[1]}: stop their card.`;
+  if (t === 'Let it happen') return 'Let it happen.';
   m = t.match(new RegExp(`^no legal play — scrap (${CARD})$`));
   if (m) return `Scrap ${m[1]}: no revealed card can be played.`;
   m = t.match(/^discard hand\[\d+\] and hand\[(\d+|-1)\]$/);
@@ -907,6 +927,15 @@ export function counterPromptEntries(history: readonly AppliedMove[]): AppliedMo
   const counterable =
     origin.kind === KIND.OneOff || (origin.kind === KIND.SevenPick && origin.subKind === KIND.OneOff);
   return counterable ? history.slice(i) : [];
+}
+
+/**
+ * Issue #93, SPEC §4.3 — the StagingBar line for a staged Counter: "Counter
+ * with 2♣: undo Blake's last turn." `opponent` is the opponent's name. The
+ * 2 is the viewer's own card; `plainMoveText` passes this line through.
+ */
+export function counterStagingText(two: Card, opponent: string): string {
+  return `Counter with ${cardGlyph(two)}: undo ${opponent}'s last turn.`;
 }
 
 /**

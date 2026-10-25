@@ -54,10 +54,9 @@ function envOf(legalMoves: Move[], descriptions?: string[]): () => StagingEnv {
 
 describe('StagingStore — idle/selected/staged pipeline (SPEC §6.1)', () => {
   it('a hand card with no in-scope candidate opens the inspect popover instead of selecting (SPEC §6.1, R9.3)', () => {
-    // Only a Counter move exists for hand index 0 — round-4, so index 0 has
-    // no candidate this round's pipeline can act on.
-    const legalMoves = [move({ Kind: 5, HandIndex: 0 })];
-    const store = new StagingStore(envOf(legalMoves), neverApply);
+    // Only Draw is offered, so hand index 0 has no candidate the pipeline can act on.
+    const legalMoves = [move({ Kind: 0 })];
+    const store = new StagingStore(() => ({ legalMoves, descriptions: ['draw a card'], handSize: 1 }), neverApply);
 
     store.tap('hand:0');
 
@@ -182,11 +181,8 @@ describe('StagingStore — idle/selected/staged pipeline (SPEC §6.1)', () => {
   });
 
   it('a subsequent tap dismisses a prior inspect popover (SPEC §6.1)', () => {
-    const legalMoves = [
-      move({ Kind: 5, HandIndex: 0 }), // Counter — no in-scope candidate
-      move({ Kind: 1, HandIndex: 1, Card: CLUBS_3 }),
-    ];
-    const store = new StagingStore(envOf(legalMoves), neverApply);
+    const legalMoves = [move({ Kind: 1, HandIndex: 1, Card: CLUBS_3 })]; // nothing for hand 0
+    const store = new StagingStore(() => ({ legalMoves, descriptions: ['move 0'], handSize: 2 }), neverApply);
     store.tap('hand:0');
     expect(store.inspect).toBe(0);
     store.tap('hand:1');
@@ -399,18 +395,19 @@ describe('StagingStore — round-4 kinds never stage a wrong index (P2 W11 brief
     expect(store.staged).toEqual(new Set());
   });
 
-  it('a hand card playable only via Counter (round 4) dims instead of selecting, and does not corrupt an unrelated in-scope card', () => {
+  it('issue #93: a hand 2 playable only via Counter is not dimmed; it selects and lights only counter-link', () => {
     const legalMoves = [
-      move({ Kind: 5, HandIndex: 0 }), // Counter
+      move({ Kind: 5, HandIndex: 0, Card: { Rank: 2, Suit: 0 } }), // Counter
       move({ Kind: 1, HandIndex: 1, Card: CLUBS_3 }), // in-scope
     ];
     const store = new StagingStore(envOf(legalMoves), neverApply);
 
-    expect(store.dimmedHand).toEqual(new Set([0]));
+    expect(store.dimmedHand).toEqual(new Set());
 
     store.tap('hand:0');
-    expect(store.state).toBe('idle');
-    expect(store.inspect).toBe(0);
+    expect(store.state).toBe('selected');
+    expect(store.selectedHand).toBe(0);
+    expect(store.highlighted).toEqual(new Set(['counter-link']));
 
     store.tap('hand:1');
     expect(store.state).toBe('selected');

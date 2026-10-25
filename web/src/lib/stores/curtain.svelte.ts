@@ -2,11 +2,13 @@
 //
 // Pure functions only. The machine implements no game rule: it reads
 // post.active and post.phase (the engine is canon) and applies §4.1's
-// predicate. A one-off the engine resolved at once (the responder held no
-// legal 2) is followed exactly like any other resolved move: there is no
-// acknowledgment step (§4.3, ruling 2026-09-29). The only `ack` is the real
-// counter window. AppliedMove.index is never read: it is absent for
-// non-movers (§2.7).
+// predicate. A one-off happens at once and is followed exactly like any
+// other move: one `turn` handoff (or `discard` when the opponent opens an
+// owed discard) to the opponent, whatever they hold (§4.3, issue #93). A
+// Counter and an owed discard's pair keep the mover active, so they raise no
+// curtain; a pending win hands to the decider with `turn`. The only `ack` is
+// a legacy counter window (phase 1, a v0.2.x save). AppliedMove.index is
+// never read: it is absent for non-movers (§2.7).
 
 import type { AppliedMove, MoveKind, Phase, PlayerId, PlayerView } from '../bridge/schema';
 import { MoveKind as MK, Phase as Ph } from '../enums';
@@ -17,6 +19,7 @@ const PhaseAwaitingCounter = Ph.AwaitingCounter;
 const PhaseSevenChoosing = Ph.SevenChoosing;
 const PhaseAwaitingDiscard = Ph.AwaitingDiscard;
 const PhaseGameOver = Ph.GameOver;
+const PhasePendingWin = Ph.PendingWin;
 
 const MoveDraw = MK.Draw;
 const MovePlayPoint = MK.PlayPoint;
@@ -41,7 +44,7 @@ export type CurtainState =
   | { kind: 'none' }
   | { kind: 'handoff'; to: PlayerId; reason: HandoffReason }
   | { kind: 'reveal'; to: PlayerId }
-  /** The real counter window (§4.3): `to` holds a legal 2. */
+  /** A legacy counter window (§4.3, v0.2.x saves only): `to` holds a legal 2. */
   | { kind: 'ack'; to: PlayerId }
   | { kind: 'result' };
 
@@ -75,13 +78,18 @@ export class CurtainError extends Error {
   }
 }
 
-// §4.4: the (pre.phase, mv.kind) pairs the engine can produce.
+// §4.4 (amended 2026-10-24, issue #93): the (pre.phase, mv.kind) pairs the
+// engine can produce. A Counter is the first play of a turn after a
+// counterable one, in phase 0, in an owed discard (phase 3) or at a pending
+// win (phase 5). Phase 1 is a legacy counter window only. Phase 5's Decline
+// is "Let it happen".
 const REACHABLE: Record<Phase, readonly MoveKind[]> = {
-  [PhaseNormal]: [MoveDraw, MovePlayPoint, MovePlayPermanent, MoveScuttle, MoveOneOff, MovePass],
+  [PhaseNormal]: [MoveDraw, MovePlayPoint, MovePlayPermanent, MoveScuttle, MoveOneOff, MovePass, MoveCounter],
   [PhaseAwaitingCounter]: [MoveCounter, MoveDecline],
   [PhaseSevenChoosing]: [MoveSevenPick],
-  [PhaseAwaitingDiscard]: [MoveDiscardPair],
+  [PhaseAwaitingDiscard]: [MoveDiscardPair, MoveCounter],
   [PhaseGameOver]: [],
+  [PhasePendingWin]: [MoveCounter, MoveDecline],
 };
 
 /** §4.1: curtainRequired ⟺ post.active !== pre.active ∧ post.phase !== PhaseGameOver. */
@@ -113,7 +121,12 @@ export function handoffLabel(reason: HandoffReason, tableMode = false): string {
   }
 }
 
-/** The handoff reason for `post.active` receiving control in `post.phase`. */
+/**
+ * The handoff reason for `post.active` receiving control in `post.phase`.
+ * Issue #93: phase 3 is now an owed discard opening the opponent's turn
+ * (`discard`); a pending win (phase 5) is `turn`. `counter` comes only from
+ * a legacy counter window.
+ */
 export function reasonFor(phase: Phase): HandoffReason {
   switch (phase) {
     case PhaseAwaitingCounter:
