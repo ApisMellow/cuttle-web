@@ -231,6 +231,13 @@ async function drag(el: HTMLElement, handIndex: number, onto: Element | null): P
   return card;
 }
 
+/** An apply that returns the same position, so the screen stays on the board. */
+function mockApplyStays(): void {
+  bridge.apply.mockImplementation(
+    (): BridgeResult => envelope({ state: p0View(), legalMoves: P0_MOVES, descriptions: P0_DESCRIPTIONS }),
+  );
+}
+
 function draggingCards(el: HTMLElement): Element[] {
   return [...el.querySelectorAll('[data-dragging="true"]')];
 }
@@ -240,17 +247,22 @@ function draggingCards(el: HTMLElement): Element[] {
 // ---------------------------------------------------------------------------
 
 describe('drag and drop (issue #26)', () => {
-  it('dropping a card on the lit points zone stages the move; only Confirm applies, once', async () => {
+  it('dropping a card on the lit points zone applies the one play at once (#51): no staging bar, no Confirm', async () => {
     const el = await start();
-    bridge.apply.mockImplementation(
-      (): BridgeResult =>
-        envelope({ state: p0View(), legalMoves: P0_MOVES, descriptions: P0_DESCRIPTIONS }),
-    );
+    mockApplyStays();
     await drag(el, 0, q(el, 'zone-points'));
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as point card');
-    expect(q(el, 'hand-card-0')?.dataset.staged).toBe('true');
-    expect(bridge.apply).not.toHaveBeenCalled();
+    expect(bridge.apply).toHaveBeenCalledTimes(1);
+    expect(bridge.apply).toHaveBeenCalledWith(1);
+    expect(q(el, 'staging-bar')).toBeNull();
+  });
 
+  it('a tap on the card then the zone still stages; only Confirm applies, once', async () => {
+    const el = await start();
+    mockApplyStays();
+    await click(el, 'hand-card-0');
+    await click(el, 'zone-points');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as point card');
+    expect(bridge.apply).not.toHaveBeenCalled();
     await click(el, 'staging-confirm');
     expect(bridge.apply).toHaveBeenCalledTimes(1);
     expect(bridge.apply).toHaveBeenCalledWith(1);
@@ -274,22 +286,79 @@ describe('drag and drop (issue #26)', () => {
     expect(draggingCards(el)).toHaveLength(1);
   });
 
-  it('dropping on a card target that has two plays opens the same chooser a tap opens', async () => {
+  it('dropping on a card target that has two plays opens the chooser; picking applies at once (#51)', async () => {
     const el = await start();
+    mockApplyStays();
     await drag(el, 1, q(el, 'point-1-0'));
     expect(q(el, 'ambiguity-chooser')).not.toBeNull();
     expect(q(el, 'ambiguity-chooser-option-4')).not.toBeNull();
     expect(q(el, 'ambiguity-chooser-option-5')).not.toBeNull();
     expect(q(el, 'staging-bar')).toBeNull();
+    expect(bridge.apply).not.toHaveBeenCalled();
+    await click(el, 'ambiguity-chooser-option-5');
+    expect(bridge.apply).toHaveBeenCalledTimes(1);
+    expect(bridge.apply).toHaveBeenCalledWith(5);
+    expect(q(el, 'staging-bar')).toBeNull();
+  });
+
+  it('a drop-opened chooser backs out with Cancel: nothing applied, and a later tap-opened pick still stages', async () => {
+    const el = await start();
+    mockApplyStays();
+    await drag(el, 1, q(el, 'point-1-0'));
+    await click(el, 'ambiguity-chooser-cancel');
+    expect(q(el, 'ambiguity-chooser')).toBeNull();
+    expect(bridge.apply).not.toHaveBeenCalled();
+
+    await click(el, 'hand-card-1');
+    await click(el, 'point-1-0');
     await click(el, 'ambiguity-chooser-option-5');
     expect(q(el, 'staging-bar')?.textContent).toContain('Play nine as one-off on seven');
     expect(bridge.apply).not.toHaveBeenCalled();
   });
 
-  it('dropping on a card already in your own lit points row plays for points, as a tap there does', async () => {
+  it('a tap-opened chooser pick still stages and waits for Confirm', async () => {
     const el = await start();
+    await click(el, 'hand-card-1');
+    await click(el, 'point-1-0');
+    await click(el, 'ambiguity-chooser-option-5');
+    expect(q(el, 'staging-bar')?.textContent).toContain('Play nine as one-off on seven');
+    expect(bridge.apply).not.toHaveBeenCalled();
+  });
+
+  it('dropping a 3 where the scrap pick opens: the pick applies at once (#51)', async () => {
+    const THREE_C = { Rank: 3, Suit: 0 } as const;
+    const env = envelope({
+      state: playerView({
+        viewer: 0,
+        active: 0,
+        you: { hand: [KING, THREE_C], frozenHandIndices: [], points: [], permanents: [], watched: false },
+        scrap: [ACE, NINE, KING],
+      }),
+      legalMoves: [
+        mv({ Kind: Kind.Draw }),
+        mv({ Kind: Kind.PlayPoint, HandIndex: 1, Card: THREE_C }),
+        mv({ Kind: Kind.OneOff, HandIndex: 1, Card: THREE_C, ScrapIndex: 0 }),
+        mv({ Kind: Kind.OneOff, HandIndex: 1, Card: THREE_C, ScrapIndex: 2 }),
+      ],
+      descriptions: ['draw a card', 'play 3 as point card', 'play 3 as one-off', 'play 3 as one-off'],
+    });
+    const el = await start(env);
+    bridge.apply.mockImplementation((): BridgeResult => env);
+    await drag(el, 1, q(el, 'zone-oneoff'));
+    expect(q(el, 'scrap-browser')?.dataset.mode).toBe('pick');
+    expect(bridge.apply).not.toHaveBeenCalled();
+    await click(el, 'scrap-pick-2');
+    expect(bridge.apply).toHaveBeenCalledTimes(1);
+    expect(bridge.apply).toHaveBeenCalledWith(3);
+    expect(q(el, 'staging-bar')).toBeNull();
+  });
+
+  it('dropping on a card already in your own lit points row plays for points at once', async () => {
+    const el = await start();
+    mockApplyStays();
     await drag(el, 0, q(el, 'point-0-0'));
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as point card');
+    expect(bridge.apply).toHaveBeenCalledWith(1);
+    expect(q(el, 'staging-bar')).toBeNull();
   });
 
   it('a drop on an unlit zone snaps back and leaves the card unselected', async () => {
@@ -331,8 +400,9 @@ describe('drag and drop (issue #26)', () => {
     const card = beginDrag(el, 0);
     await settle();
     expect(card.getAttribute('aria-pressed')).toBe('true');
+    mockApplyStays();
     await dropOn(card, q(el, 'zone-oneoff'));
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play ace as one-off');
+    expect(bridge.apply).toHaveBeenCalledWith(2);
   });
 
   it('dragging a different card from the selected one re-selects, as a tap would', async () => {
@@ -374,18 +444,6 @@ describe('drag and drop (issue #26)', () => {
     card.click(); // would re-select the card if it counted as a tap
     await settle();
     expect(card.getAttribute('aria-pressed')).toBe('false');
-  });
-
-  it('a Confirm tapped right after a drop is never swallowed', async () => {
-    const el = await start();
-    const now = vi.spyOn(performance, 'now');
-    now.mockReturnValue(1000);
-    await drag(el, 0, q(el, 'zone-points'));
-    bridge.apply.mockImplementation(
-      (): BridgeResult => envelope({ state: p0View(), legalMoves: P0_MOVES, descriptions: P0_DESCRIPTIONS }),
-    );
-    await click(el, 'staging-confirm'); // same instant as the drop
-    expect(bridge.apply).toHaveBeenCalledTimes(1);
   });
 
   it('only the one click right after a drag is swallowed; later taps work', async () => {
@@ -482,7 +540,6 @@ describe('drag and the curtain (privacy)', () => {
     const el = await start();
     applyToHandoff();
     await drag(el, 0, q(el, 'zone-points'));
-    await click(el, 'staging-confirm');
 
     expect(game.curtain.kind).toBe('handoff');
     expect(q(el, 'board')).toBeNull();

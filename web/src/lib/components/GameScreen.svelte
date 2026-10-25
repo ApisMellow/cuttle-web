@@ -193,6 +193,7 @@
       endDrag();
       endHold();
       staging.reset();
+      applyNextPick = false;
       browsingScrap = false;
       notice = null;
     });
@@ -329,6 +330,7 @@
     // must not count as one) is covered by `freshKey()` in onBoardTap: an
     // auto-repeated key never activates any board target, the deck included.
     if (event.key !== 'Escape' || board === null) return;
+    applyNextPick = false;
     if (staging.state === 'staged' || staging.chooser !== null || staging.scrapPick !== null) staging.cancel();
     else staging.clearSelection();
   }
@@ -359,7 +361,27 @@
     };
   }
 
+  // Issue #51: set only by a drop that opened the chooser or the 3's pick;
+  // the pick then applies at once. Cleared by every other tap, Cancel/close,
+  // Escape, the pick itself, and the staging reset (apply, viewer, curtain).
+  let applyNextPick = false;
+
+  function confirmNow(): void {
+    applyNextPick = false;
+    if (boardInert) return;
+    staging.confirm().catch(report);
+  }
+
+  /** A chooser or scrap pick: stages through `pick`, and applies at once if a drop opened it. */
+  function pickThen(pick: () => void): void {
+    const applyNow = applyNextPick;
+    applyNextPick = false;
+    pick();
+    if (applyNow && staging.state === 'staged') confirmNow();
+  }
+
   function onBoardTap(key: TargetKey): void {
+    applyNextPick = false;
     const viewer = board?.state.viewer;
     if (viewer === undefined || board === null) return;
     // W10: the 7's reveal tray and a drag reach here without Board's inert
@@ -529,6 +551,10 @@
     const target = dropTarget(key, staging.highlighted, viewer);
     if (target !== null) {
       onBoardTap(target);
+      // Issue #51: a drop already said "do it". One play: the same confirm()
+      // a Confirm tap makes. A chooser or the 3's pick: the next pick applies.
+      if (staging.state === 'staged') confirmNow();
+      else if (staging.chooser !== null || staging.scrapPick !== null) applyNextPick = true;
       return;
     }
     // Snap back, unselected: what a tap on an unlit target or empty space does.
@@ -904,8 +930,11 @@
       {#if staging.chooser !== null}
         <AmbiguityChooser
           candidates={staging.chooser.candidates}
-          onchoose={fresh((index: number) => staging.choose(index))}
-          oncancel={fresh(() => staging.cancel())}
+          onchoose={fresh((index: number) => pickThen(() => staging.choose(index)))}
+          oncancel={fresh(() => {
+            applyNextPick = false;
+            staging.cancel();
+          })}
           describe={(candidate) => optionText(candidate.index, candidate.description)}
         />
       {/if}
@@ -969,8 +998,11 @@
         mode="pick"
         cards={board.state.scrap}
         picks={staging.scrapPick.candidates}
-        onpick={fresh((index: number) => staging.pickScrap(index))}
-        onclose={fresh(() => staging.cancel())}
+        onpick={fresh((index: number) => pickThen(() => staging.pickScrap(index)))}
+        onclose={fresh(() => {
+          applyNextPick = false;
+          staging.cancel();
+        })}
         {theme}
       />
     {:else if browsingScrap}
