@@ -204,6 +204,11 @@ describe('Home -> Resume after a one-off Alice cannot answer, and at result (rea
         store.dismissDrawReveal();
         continue;
       }
+      // Issue #53 (SPEC §4.8): an Ace's or 6's show before the pass, likewise.
+      if (store.wipeEffect?.beforePass) {
+        store.dismissWipeEffect();
+        continue;
+      }
       if (store.curtain.kind !== 'none' && store.curtain.kind !== 'ack') {
         await store.advanceCurtain();
         continue;

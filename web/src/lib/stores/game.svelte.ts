@@ -40,6 +40,15 @@
 // phone is about to change hands; at the drawer's next view it shows the
 // whole hand with the drawn cards marked. While it is up, nothing else
 // moves the store.
+//
+// Global effects (SPEC §4.8, issue #53): an Ace's or a 6's wipe. The wiped
+// cards are read from the public rows before and after the apply
+// (lib/globalEffect.ts), kept in memory only, keyed to the wipe's seq. The
+// mover's own `show` holds before the pass exactly as the draw reveal does
+// (the save already holds the handoff; `dismissWipeEffect()` raises it).
+// The next player's board, the first time it mounts at `none` after the
+// reveal, gets one `replay` unless `settings.replayEffects` is off. A
+// per-player mark keeps either from showing twice; a reload skips both.
 
 import type { NewGameOpts } from '../bridge/engine';
 import type { AppliedMove, BridgeResult, Envelope, EngineError, PlayerId } from '../bridge/schema';
@@ -52,6 +61,7 @@ import {
 } from '../bridge/engine';
 import { type DrawReveal, drawnHandIndices, unseenDrawFor } from '../drawReveal';
 import { Phase } from '../enums';
+import { type GlobalWipe, type WipeEffect, globalWipe } from '../globalEffect';
 import { fiveDrawer } from '../recap';
 import {
   type CurtainContext,
@@ -62,6 +72,7 @@ import {
   opening as openingCurtain,
 } from './curtain.svelte';
 import { session as defaultSession, type SessionStore } from './session.svelte';
+import { settings as defaultSettings } from './settings.svelte';
 import { SNAPSHOT_KEY, SNAPSHOT_VERSION, type Snapshot, decodeSnapshot, encodeSnapshot } from './snapshot';
 import type { NotSoFast, TableSource } from './tableSource';
 
@@ -103,6 +114,8 @@ export interface GameStoreDeps {
   engine?: GameEngine;
   storage?: StorageLike;
   session?: SessionStore;
+  /** Issue #53: reads `settings.replayEffects` at the moment a replay could start. */
+  replayEffects?: () => boolean;
 }
 
 /** A decimal uint64 string from `crypto.getRandomValues` (SPEC §2.6's `seed` shape). */
@@ -131,6 +144,7 @@ export class GameStore implements TableSource {
   readonly #engine: GameEngine;
   readonly #storage: StorageLike | undefined;
   readonly #session: SessionStore;
+  readonly #replayEffects: () => boolean;
 
   /** Set once a game exists (newGame or a successful restore); needed to fill the Snapshot's seed/dealer without ever reading engineState (carry-over 8). */
   #seed: string | null = null;
@@ -178,6 +192,18 @@ export class GameStore implements TableSource {
   notSoFast = $state<NotSoFast | null>(null);
   /** The saved handoff the beat gives way to; null when no beat is up. */
   #afterNotSoFast: WithheldCurtain | null = null;
+  /**
+   * Issue #53 (SPEC §4.8): the wipe playing on the viewer's board, or null.
+   * Memory only, never saved. While a `beforePass` show is up, nothing else
+   * moves the store.
+   */
+  wipeEffect = $state<WipeEffect | null>(null);
+  /** What the before-the-pass show gives way to: the saved handoff, or the "Not So Fast!" beat before it. */
+  #afterWipe: { curtain: WithheldCurtain; notSoFast: boolean } | null = null;
+  /** The latest global wipe this run, cards included. Memory only; a reload starts with none. */
+  #lastWipe: GlobalWipe | null = null;
+  /** Per player, the seq of the last wipe shown to them (or not to be shown). */
+  #wipeSeen: Record<PlayerId, number> = { 0: 0, 1: 0 };
 
   /** W10 (TableSource): a local apply finishes in the calling task, so no move is ever in flight. */
   readonly pending = false;
@@ -190,6 +216,7 @@ export class GameStore implements TableSource {
     this.#engine = deps.engine ?? defaultEngine;
     this.#storage = deps.storage ?? defaultStorage();
     this.#session = deps.session ?? defaultSession;
+    this.#replayEffects = deps.replayEffects ?? (() => defaultSettings.replayEffects);
   }
 
   /**
@@ -271,6 +298,8 @@ export class GameStore implements TableSource {
   async apply(moveIndex: number): Promise<void> {
     this.#refuseDuringDrawReveal('apply');
     const current = this.envelope;
+    // A replay never outlives the viewer's own move.
+    if (this.wipeEffect !== null) this.wipeEffect = null;
     const curtain = this.curtain;
     const curtainAllowsMove = curtain.kind === 'none' || curtain.kind === 'ack';
     if (!current || !curtainAllowsMove || current.state.viewer !== current.state.active) {
@@ -299,6 +328,10 @@ export class GameStore implements TableSource {
       beforePass === null && curtainState.kind === 'handoff' && result.state.phase === Phase.PendingWin && result.state.viewer === mv.by
         ? curtainState
         : null;
+    // Issue #53 (SPEC §4.8): an Ace's or a 6's wipe, read from the public
+    // rows before and after. A draw reveal and a wipe can't both apply.
+    const wipe = globalWipe(mv, current.state, result.state);
+    const wipeHold = wipe !== null && beforePass === null && curtainState.kind === 'handoff' && result.state.viewer === mv.by ? curtainState : null;
 
     // 'result' needs no viewer switch either — post.active is meaningless at
     // game over (§4.1), so the current holder simply keeps their own
@@ -324,6 +357,23 @@ export class GameStore implements TableSource {
     this.lastSeenSeq = nextLastSeenSeq;
     this.#pendingCtx = nextPendingCtx;
     this.seq = result.seq;
+    if (wipe !== null) {
+      this.#lastWipe = wipe;
+      this.#wipeSeen = { ...this.#wipeSeen, [mv.by]: wipe.seq };
+    }
+    if (wipe !== null && wipeHold !== null) {
+      // SPEC §4.8: as the draw reveal below. The save holds the handoff; the
+      // mover's board stays up (no legal moves) while the wiped cards sweep
+      // to the scrap, and dismissWipeEffect() raises the handoff (or the
+      // "Not So Fast!" beat that comes before it).
+      this.#afterWipe = { curtain: wipeHold, notSoFast: notSoFast !== null };
+      this.history = result.history;
+      this.envelope = result;
+      this.viewer = result.state.viewer;
+      this.curtain = { kind: 'none' };
+      this.wipeEffect = { ...wipe, to: mv.by, mode: 'show', beforePass: true };
+      return;
+    }
     if (beforePass !== null) {
       // SPEC §4.7: the mover is still holding the phone and the save already
       // holds the handoff. The mover's own board stays up (no legal moves:
@@ -374,6 +424,46 @@ export class GameStore implements TableSource {
     this.viewer = null;
     this.history = this.history.map(withoutIndex);
     this.curtain = after;
+  }
+
+  /**
+   * Issue #53 (SPEC §4.8): ends the wipe effect (its timer, or a tap during
+   * the hold). Before the pass it raises what the save already holds: the
+   * handoff, dropping the mover's envelope, viewer and mover-only `index`
+   * keys, or first the "Not So Fast!" beat when the wipe made a pending win.
+   * A replay just ends. Writes nothing; a no-op when none is up.
+   */
+  dismissWipeEffect(): void {
+    if (this.wipeEffect === null) return;
+    const after = this.#afterWipe;
+    this.#afterWipe = null;
+    this.wipeEffect = null;
+    if (after === null) return;
+    if (after.notSoFast && this.viewer !== null) {
+      this.#afterNotSoFast = after.curtain;
+      this.notSoFast = { to: this.viewer };
+      return;
+    }
+    this.envelope = null;
+    this.viewer = null;
+    this.history = this.history.map(withoutIndex);
+    this.curtain = after.curtain;
+  }
+
+  /**
+   * SPEC §4.8: `env` is the board just exposed at `none` after the reveal.
+   * If the opponent's last turn held a global wipe this viewer hasn't been
+   * shown, replay it once (unless the setting is off). Marked either way, so
+   * turning the setting on later never replays an old wipe.
+   */
+  #replayUnseenWipe(env: Envelope): void {
+    const wipe = this.#lastWipe;
+    const p = env.state.viewer;
+    if (wipe === null || wipe.by === p || wipe.seq <= this.#wipeSeen[p]) return;
+    this.#wipeSeen = { ...this.#wipeSeen, [p]: wipe.seq };
+    if (!opponentsLastTurnHolds(env.history, p, wipe.seq)) return;
+    if (!this.#replayEffects()) return;
+    this.wipeEffect = { ...wipe, to: p, mode: 'replay', beforePass: false };
   }
 
   /**
@@ -444,6 +534,9 @@ export class GameStore implements TableSource {
     if (this.notSoFast !== null) {
       throw new Error(`GameStore.${call}() is not allowed while "Not So Fast!" is up; dismiss it first (SPEC §4.3)`);
     }
+    if (this.wipeEffect?.beforePass) {
+      throw new Error(`GameStore.${call}() is not allowed while the wipe is showing before the pass; dismiss it first (SPEC §4.8)`);
+    }
   }
 
   #clearDrawReveal(seen: Record<PlayerId, number>): void {
@@ -452,6 +545,10 @@ export class GameStore implements TableSource {
     this.#drawSeen = seen;
     this.notSoFast = null;
     this.#afterNotSoFast = null;
+    this.wipeEffect = null;
+    this.#afterWipe = null;
+    this.#lastWipe = null;
+    this.#wipeSeen = { 0: 0, 1: 0 };
   }
 
   /**
@@ -499,7 +596,10 @@ export class GameStore implements TableSource {
         const ok = await this.#applyViewerChange(ctx.post.active, { stamp: true, curtain: newState });
         if (ok) {
           this.#pendingCtx = null;
-          if (this.envelope !== null) this.#revealUnseenDraw(this.envelope);
+          if (this.envelope !== null) {
+            this.#revealUnseenDraw(this.envelope);
+            this.#replayUnseenWipe(this.envelope);
+          }
         }
         return;
       }
@@ -665,6 +765,7 @@ export class GameStore implements TableSource {
     });
     this.envelope = null;
     this.viewer = null;
+    this.wipeEffect = null;
     this.history = history;
     this.curtain = curtain;
   }
@@ -759,6 +860,16 @@ type ResumeTarget = Extract<CurtainState, { kind: 'none' | 'ack' }>;
 
 function isResumeTarget(curtain: CurtainState): curtain is ResumeTarget {
   return curtain.kind === 'none' || curtain.kind === 'ack';
+}
+
+/** True when `seq` is among the entries after `viewer`'s own last move (the opponent's last turn). */
+function opponentsLastTurnHolds(history: readonly AppliedMove[], viewer: PlayerId, seq: number): boolean {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
+    if (entry.seq === seq) return entry.by !== viewer;
+    if (entry.by === viewer) return false;
+  }
+  return false;
 }
 
 /** The persisted `viewer` for a curtain: its addressee when it has one (N2), else whoever holds the exposed view. */

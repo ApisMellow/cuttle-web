@@ -15,6 +15,7 @@
 
 import type { AppliedMove, Envelope, PlayerId } from '../../src/lib/bridge/schema';
 import type { DrawReveal } from '../../src/lib/drawReveal';
+import type { WipeEffect } from '../../src/lib/globalEffect';
 import type { CurtainState } from '../../src/lib/stores/curtain.svelte';
 import type { NotSoFast, OnlineTableInfo, TableSource } from '../../src/lib/stores/tableSource';
 
@@ -28,6 +29,9 @@ export class FakeTableSource implements TableSource {
   /** Issue #93: the winner's beat; `dismissNotSoFast()` clears it and counts the call. */
   notSoFast = $state<NotSoFast | null>(null);
   notSoFastDismissals = 0;
+  /** Issue #53: the wipe effect; `dismissWipeEffect()` clears it and counts the call. */
+  wipeEffect = $state<WipeEffect | null>(null);
+  wipeDismissals = 0;
   pending = $state(false);
   online = $state<OnlineTableInfo | null>(null);
   names = $state<[string, string] | undefined>(undefined);
@@ -90,6 +94,11 @@ export class FakeTableSource implements TableSource {
   dismissNotSoFast(): void {
     this.notSoFastDismissals++;
     this.notSoFast = null;
+  }
+
+  dismissWipeEffect(): void {
+    this.wipeDismissals++;
+    this.wipeEffect = null;
   }
 
   async advanceCurtain(): Promise<void> {}

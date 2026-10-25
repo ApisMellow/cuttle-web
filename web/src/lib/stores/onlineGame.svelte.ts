@@ -32,6 +32,13 @@
 //     cards marked): the phone never changes hands (plan §7). A draw in the
 //     first state of a game this store sees (a resume, a reload) is not
 //     replayed, matching the local store's reload rule.
+//   - Global effects (SPEC §4.8, issue #53): there is no pass online, so a
+//     wipe never holds. When a state arrives whose new history holds an
+//     Ace's or a 6's wipe, the cards that left are read from the previous
+//     state's public rows and this one's, and `wipeEffect` plays on this
+//     seat's board: a `show` for this seat's own wipe, a `replay` for the
+//     other seat's (unless `settings.replayEffects` is off). Not for a first
+//     state (a resume, a reload).
 //   - `newGame()` asks for a rematch, and only at game over, once, and
 //     never while a move is pending. Leaving is `goHome()` (the seat is
 //     kept, so Resume on Home comes back to the game).
@@ -72,6 +79,7 @@
 import type { AppliedMove, Card, Envelope, PlayerId } from '../bridge/schema';
 import { type DrawReveal, drawnHandIndices, unseenDrawFor } from '../drawReveal';
 import { Phase } from '../enums';
+import { type WipeEffect, globalWipe, isGlobalWipeMove } from '../globalEffect';
 import { counterPromptEntries, isRecapVisible } from '../recap';
 import type { RoomEvent } from '../online/actions';
 import { createConnection, type ConnectionOptions, type ConnectionStatus, type OnlineConnection } from '../online/connection';
@@ -79,6 +87,7 @@ import type { RoomStatus, SeatNames, ServerFrame } from '../online/protocol';
 import { clearSeat, saveSeat, type SeatRecord } from '../online/seat';
 import type { CurtainState } from './curtain.svelte';
 import { online } from './online.svelte';
+import { settings as defaultSettings } from './settings.svelte';
 import { MoveNotSent, type NotSoFast, type OnlineStuck, type OnlineTableInfo, type TableSource } from './tableSource';
 
 type SeatStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -90,6 +99,8 @@ export interface OnlineGameDeps {
   seatStorage?: SeatStorage;
   /** Leave the online game for Home, with a notice to show there (or null). */
   onLeave?: (notice: string | null) => void;
+  /** Issue #53: reads `settings.replayEffects` when the other seat's wipe arrives. */
+  replayEffects?: () => boolean;
 }
 
 const NOTICE_NOT_SENT = 'You’re offline, so your move wasn’t sent. It stays staged: Confirm it again once you’re back.';
@@ -126,6 +137,7 @@ export class OnlineGameStore implements TableSource {
   readonly #connect: (options: ConnectionOptions) => OnlineConnection;
   readonly #storage: SeatStorage | undefined;
   readonly #onLeave: (notice: string | null) => void;
+  readonly #replayEffects: () => boolean;
 
   #connection: OnlineConnection | null = null;
   #unsubscribe: Array<() => void> = [];
@@ -172,6 +184,8 @@ export class OnlineGameStore implements TableSource {
    * up with "NAME is deciding…".
    */
   notSoFast = $state<NotSoFast | null>(null);
+  /** Issue #53 (SPEC §4.8): a wipe playing on this seat's board, or null. Never holds online. */
+  wipeEffect = $state<WipeEffect | null>(null);
 
   // ---- Room and connection state --------------------------------------------
   /** True from attach() until detach() (or a terminal error). */
@@ -216,6 +230,7 @@ export class OnlineGameStore implements TableSource {
     this.#connect = deps.connect ?? createConnection;
     this.#storage = deps.seatStorage ?? defaultSeatStorage();
     this.#onLeave = deps.onLeave ?? (() => {});
+    this.#replayEffects = deps.replayEffects ?? (() => defaultSettings.replayEffects);
   }
 
   // ---- Lifecycle --------------------------------------------------------------
@@ -269,6 +284,7 @@ export class OnlineGameStore implements TableSource {
     this.curtain = { kind: 'none' };
     this.drawReveal = null;
     this.notSoFast = null;
+    this.wipeEffect = null;
     this.attached = false;
     this.seat = null;
     this.roomNames = [null, null];
@@ -369,6 +385,11 @@ export class OnlineGameStore implements TableSource {
     this.notSoFast = null;
   }
 
+  /** Issue #53: ends the wipe effect. A no-op when none is up. */
+  dismissWipeEffect(): void {
+    this.wipeEffect = null;
+  }
+
   /** No curtain online. */
   async advanceCurtain(): Promise<void> {}
 
@@ -464,6 +485,7 @@ export class OnlineGameStore implements TableSource {
     if (seat === null || env.state.viewer !== seat) return; // the connection already refuses these
     const newGame = game !== this.#lastGame;
     const prevSeq = this.seq;
+    const prevView = this.envelope?.state ?? null;
     // A kept (unsent) move is still good only at the same position (review F2).
     const movedOn = this.#unsent && (newGame || env.seq !== this.seq);
     if (movedOn) this.#unsent = false;
@@ -504,6 +526,8 @@ export class OnlineGameStore implements TableSource {
     if (view.viewer === view.active && view.phase !== Phase.GameOver && env.legalMoves.length === 0) {
       this.stuck = { code: 'NO_LEGAL_MOVES', game, seq: env.seq };
     }
+    if (!newGame) this.#revealUnsweptWipe(env, seat, prevSeq, prevView);
+    else this.wipeEffect = null;
     if (!newGame) this.#revealUnseenDraw(env, seat);
     const rematchFor = this.#rematchOnResume;
     if (rematchFor !== null) {
@@ -551,6 +575,29 @@ export class OnlineGameStore implements TableSource {
     if (forget) clearSeat(this.#storage);
     this.detach();
     this.#onLeave(notice);
+  }
+
+  /**
+   * SPEC §4.8 online: the latest wipe among this state's new entries (after
+   * `prevSeq`), its cards read from the previous state's rows and this
+   * one's. This seat's own wipe is always shown; the other seat's is
+   * replayed unless the setting is off. A resent state adds nothing.
+   */
+  #revealUnsweptWipe(env: Envelope, seat: PlayerId, prevSeq: number, prevView: Envelope['state'] | null): void {
+    if (prevView === null || env.seq <= prevSeq) return;
+    let entry: AppliedMove | undefined;
+    for (let i = env.history.length - 1; i >= 0 && env.history[i].seq > prevSeq; i--) {
+      if (isGlobalWipeMove(env.history[i])) {
+        entry = env.history[i];
+        break;
+      }
+    }
+    if (entry === undefined) return;
+    const wipe = globalWipe(entry, prevView, env.state);
+    if (wipe === null) return;
+    const own = wipe.by === seat;
+    if (!own && !this.#replayEffects()) return;
+    this.wipeEffect = { ...wipe, to: seat, mode: own ? 'show' : 'replay', beforePass: false };
   }
 
   /** SPEC §4.7 online: the drawer sees their draw as soon as the state that resolved it arrives. */

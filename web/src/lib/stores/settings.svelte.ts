@@ -23,6 +23,8 @@ interface StoredSettings {
   lastNames: [string, string] | null;
   /** Issue #37, SPEC §5.10: the phone lies flat between the players; player 2's screens are turned 180°. */
   tableMode: boolean;
+  /** Issue #53, SPEC §4.8: replay an opponent's global effect (an Ace's or a 6's wipe) on the next board. */
+  replayEffects: boolean;
 }
 
 // SPEC §5.6 rule 4: 'vector' is always available and is the fallback theme.
@@ -35,6 +37,8 @@ const DEFAULTS: StoredSettings = {
   lastNames: null,
   // Normal pass-and-play stays the default (issue #37).
   tableMode: false,
+  // Issue #53: the replay is on unless a player turns it off.
+  replayEffects: true,
 };
 
 function isRevealPreference(value: unknown): value is RevealPreference {
@@ -75,6 +79,7 @@ function readStoredSettings(): Partial<StoredSettings> {
   if (typeof obj.reducedMotion === 'boolean') result.reducedMotion = obj.reducedMotion;
   if (isRevealPreference(obj.revealPreference)) result.revealPreference = obj.revealPreference;
   if (typeof obj.tableMode === 'boolean') result.tableMode = obj.tableMode;
+  if (typeof obj.replayEffects === 'boolean') result.replayEffects = obj.replayEffects;
   if (isNamePair(obj.lastNames)) result.lastNames = [cleanName(obj.lastNames[0]), cleanName(obj.lastNames[1])];
   return result;
 }
@@ -100,6 +105,7 @@ export class SettingsStore {
   revealPreference = $state<RevealPreference>(this.#initial.revealPreference ?? DEFAULTS.revealPreference);
   lastNames = $state<[string, string] | null>(this.#initial.lastNames ?? DEFAULTS.lastNames);
   tableMode = $state<boolean>(this.#initial.tableMode ?? DEFAULTS.tableMode);
+  replayEffects = $state<boolean>(this.#initial.replayEffects ?? DEFAULTS.replayEffects);
 
   #persist(): void {
     writeStoredSettings({
@@ -108,6 +114,7 @@ export class SettingsStore {
       revealPreference: this.revealPreference,
       lastNames: this.lastNames,
       tableMode: this.tableMode,
+      replayEffects: this.replayEffects,
     });
   }
 
@@ -135,6 +142,16 @@ export class SettingsStore {
    */
   setTableMode(value: boolean): void {
     this.tableMode = value;
+    this.#persist();
+  }
+
+  /**
+   * Issue #53, SPEC §4.8: the in-game menu's "Replay effects" switch. Off,
+   * the next player sees no replay of an opponent's wipe; the mover's own
+   * show still plays. Touches nothing in the game state.
+   */
+  setReplayEffects(value: boolean): void {
+    this.replayEffects = value;
     this.#persist();
   }
 
