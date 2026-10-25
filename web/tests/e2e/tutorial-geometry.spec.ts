@@ -5,11 +5,8 @@ import {
   bubble,
   cancel,
   closePopover,
-  dragCardTo,
   geometryProblems,
   handRank,
-  locateSpot,
-  newFinger,
   openLesson,
   openLessons,
   playExpected,
@@ -170,40 +167,9 @@ async function afterConfirm(page: Page, lessonId: number, index: number, note: (
   });
 }
 
-// ---------------------------------------------------------------------------
-// T14 judge, M1: after a real DRAG the staged card eases back into the hand
-// (HandCard's `translate` transition) after the coach first measured it in
-// flight. The bubble must re-place once the card settles, so at `staged-right`
-// it covers neither the staged card nor anything else (the same L2 rules).
-// ---------------------------------------------------------------------------
-
-test.describe('393x852 by touch: the bubble re-places once a dragged card settles', () => {
-  const viewport = { width: 393, height: 852 };
-  test.use({ viewport, hasTouch: true, isMobile: true });
-
-  const DRAG_STEPS: [number, string][] = [
-    [3, '3.1'],
-  ];
-
-  for (const [lessonId, id] of DRAG_STEPS) {
-    test(`${id}: staged-right after a drag`, async ({ page }) => {
-      test.setTimeout(120_000);
-      const finger = await newFinger(page);
-      await openLesson(page, lessonId);
-      await playThrough(page, lessonId, id);
-      await waitStep(page, id, BEAT_MS);
-      await waitStage(page, 'idle', BEAT_MS);
-      const step = stepsOf(lessonId).find((s): s is MoveStep => s.id === id && s.kind === 'move');
-      if (!step) throw new Error(`${id} is not a move step`);
-      await dragCardTo(page, finger, locateSpot(page, step.source), locateSpot(page, step.target));
-      await waitStage(page, 'staged-right');
-      const reading = await settled(page);
-      expect(reading.avoid.some((a) => a.id.startsWith('staged hand-card-')), 'the staged card is checked').toBe(true);
-      const problems = geometryProblems(reading, viewport);
-      expect(problems, problems.join('\n')).toEqual([]);
-    });
-  }
-});
+// The "bubble re-places once a dragged card settles at staged-right" case is
+// cut (issue #51): a drop applies at once, so a drag no longer reaches
+// staged-right and the settling card has no staged state to measure.
 
 // ---------------------------------------------------------------------------
 // T14 judge, M2: the success beat must not hide the hit. In 3.1 and 3.2 the

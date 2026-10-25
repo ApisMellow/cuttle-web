@@ -398,9 +398,10 @@ describe('table mode (issue #37): drag and drop in the turned view', () => {
     expect(card.style.getPropertyValue('--drag-y')).toBe('-90px');
   });
 
-  it('a drop in the turned view stages the zone under the finger; only Confirm applies', async () => {
+  it('a drop in the turned view applies the move for the zone under the finger (#51)', async () => {
     settings.tableMode = true;
     const el = await boardFor(p1Env());
+    wireP1ToP0();
     const card = q(el, 'hand-card-1')!;
     pointer('pointerdown', card, START.x, START.y);
     pointer('pointermove', card, START.x, START.y + 20);
@@ -408,7 +409,8 @@ describe('table mode (issue #37): drag and drop in the turned view', () => {
     pointer('pointermove', card, START.x + 30, START.y + 300);
     pointer('pointerup', card, START.x + 30, START.y + 300);
     await settle();
-    expect(q(el, 'staging-bar')?.textContent).toContain('Play two as point card');
-    expect(bridge.apply).not.toHaveBeenCalled();
+    expect(q(el, 'staging-bar')).toBeNull();
+    expect(bridge.apply).toHaveBeenCalledTimes(1);
+    expect(bridge.apply).toHaveBeenCalledWith(1);
   });
 });
