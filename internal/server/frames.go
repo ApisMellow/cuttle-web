@@ -1,6 +1,6 @@
 package server
 
-// Frames of the two-phone wire protocol, v1 (SPEC §2.12.2). Every server
+// Frames of the two-phone wire protocol, v2 (SPEC §2.12.2). Every server
 // frame is one of the types below; the send path (conn.enqueue) takes only
 // the sealed frame interface. The one field that carries game data is
 // stateFrame.Envelope, typed game.ClientSafe, which only a per-seat
@@ -12,7 +12,7 @@ import (
 )
 
 // protocolVersion is the only hello.v this server speaks (SPEC §2.12.7).
-const protocolVersion = 1
+const protocolVersion = 2
 
 // Socket error codes beyond the HTTP ones in api.go (SPEC §2.12.3).
 const (
@@ -64,11 +64,6 @@ type stateFrame struct {
 	Tally          [2]int          `json:"tally"`
 }
 
-type respondingFrame struct {
-	T  string `json:"t"`
-	By int    `json:"by"`
-}
-
 type presenceFrame struct {
 	T              string `json:"t"`
 	OpponentOnline bool   `json:"opponentOnline"`
@@ -90,17 +85,16 @@ type pongFrame struct {
 	T string `json:"t"`
 }
 
-func (welcomeFrame) isFrame()    {}
-func (stateFrame) isFrame()      {}
-func (respondingFrame) isFrame() {}
-func (presenceFrame) isFrame()   {}
-func (rematchFrame) isFrame()    {}
-func (errorFrame) isFrame()      {}
-func (pongFrame) isFrame()       {}
+func (welcomeFrame) isFrame()  {}
+func (stateFrame) isFrame()    {}
+func (presenceFrame) isFrame() {}
+func (rematchFrame) isFrame()  {}
+func (errorFrame) isFrame()    {}
+func (pongFrame) isFrame()     {}
 
 // allFrameTypes lists one zero value of every frame type (tests).
 func allFrameTypes() []frame {
-	return []frame{welcomeFrame{}, stateFrame{}, respondingFrame{}, presenceFrame{}, rematchFrame{}, errorFrame{}, pongFrame{}}
+	return []frame{welcomeFrame{}, stateFrame{}, presenceFrame{}, rematchFrame{}, errorFrame{}, pongFrame{}}
 }
 
 // Room status as welcome reports it.
@@ -123,15 +117,11 @@ func newWelcomeFrame(r *room, seat game.Seat) welcomeFrame {
 }
 
 // roomStatusLocked is welcome's status for seat: waiting before the join,
-// over while a finished game waits for a rematch, else playing. A seat
-// that is the mover under a hold is told playing: over would reveal the
-// withheld outcome (SPEC §2.12.5).
-func roomStatusLocked(r *room, seat game.Seat) string {
+// over while a finished game waits for a rematch, else playing.
+func roomStatusLocked(r *room, _ game.Seat) string {
 	switch {
 	case !r.meta.Joined:
 		return statusWaiting
-	case r.live.holds[seat].active:
-		return statusPlaying
 	case r.sess != nil:
 		if st, err := r.sess.Status(); err == nil && st.Over {
 			return statusOver
@@ -145,10 +135,6 @@ func roomStatusLocked(r *room, seat game.Seat) string {
 func newStateFrame(r *room, seat game.Seat, env game.ClientSafe) stateFrame {
 	return stateFrame{T: "state", Game: r.meta.Game, Envelope: env,
 		OpponentOnline: r.live.conns[seat.Other()] != nil, Tally: r.meta.Tally}
-}
-
-func newRespondingFrame(by game.Seat) respondingFrame {
-	return respondingFrame{T: "responding", By: int(by)}
 }
 
 func newPresenceFrame(online bool) presenceFrame {

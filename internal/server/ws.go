@@ -7,8 +7,7 @@ package server
 // loop (hello, then frames) and one writer goroutine drains the
 // connection's buffered queue. Room code never writes to a socket: it
 // enqueues under the room lock (never blocking; a full queue drops the
-// connection) and the writer writes outside every lock. Hold timers are
-// time.AfterFunc callbacks that take the room lock and enqueue.
+// connection) and the writer writes outside every lock.
 
 import (
 	"context"

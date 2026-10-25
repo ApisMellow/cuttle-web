@@ -26,8 +26,7 @@ func Handler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, 
 	return h
 }
 
-// newHandler is Handler, also returning the play side (tests reach its
-// holds through it).
+// newHandler is Handler, also returning the play side (for tests).
 func newHandler(ctx context.Context, cfg Config, info BuildInfo, log *slog.Logger, rooms *Rooms) (http.Handler, *play) {
 	createRate, joinRate := cfg.CreatePerHour, cfg.JoinPerHour
 	if createRate <= 0 {

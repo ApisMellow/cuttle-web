@@ -33,9 +33,6 @@ import (
 
 const testOrigin = "https://play.example"
 
-// testHold is the response hold used unless a test sets its own.
-const testHold = 60 * time.Millisecond
-
 type playEnv struct {
 	t      *testing.T
 	clk    *fakeClock
@@ -77,7 +74,7 @@ func newPlayEnv(t *testing.T, o playOpts) *playEnv {
 	log := slog.New(slog.NewJSONHandler(logs, nil))
 	fs := &flakyStore{Store: st}
 	rooms := NewRooms(fs, RoomsOptions{Now: clk.Now, Rand: o.rand, Log: log})
-	cfg := Config{Addr: DefaultAddr, AllowedOrigins: []string{testOrigin}, RespondMin: testHold}
+	cfg := Config{Addr: DefaultAddr, AllowedOrigins: []string{testOrigin}}
 	// The driver plays at machine speed; TestWS_FrameRateLimit pins the
 	// SPEC rate itself.
 	cfg.tune.frameRate, cfg.tune.frameBurst = 1000, 1000
@@ -259,7 +256,7 @@ func (w *wsc) sendRaw(b []byte) {
 
 func (w *wsc) hello(code, token string) {
 	w.t.Helper()
-	w.send(map[string]any{"t": "hello", "v": 1, "code": code, "token": token, "lastSeq": 0})
+	w.send(map[string]any{"t": "hello", "v": protocolVersion, "code": code, "token": token, "lastSeq": 0})
 }
 
 // next returns the next frame, failing on timeout or close.
@@ -358,11 +355,6 @@ type stateIn struct {
 	Tally          [2]int          `json:"tally"`
 }
 
-type respondingIn struct {
-	T  string `json:"t"`
-	By *int   `json:"by"`
-}
-
 type presenceIn struct {
 	T              string `json:"t"`
 	OpponentOnline *bool  `json:"opponentOnline"`
@@ -442,7 +434,8 @@ func seededRand(seed uint64) io.Reader {
 
 // ---- the two-seat driver ----
 
-// isCounterable mirrors SPEC §2.12.5's definition from the client side.
+// isCounterableView reports a move that makes its turn counterable (a
+// one-off, a 7 whose pick is a one-off, or a counter): the driver's bias.
 func isCounterableView(m game.MoveView) bool {
 	switch m.Kind {
 	case engine.MoveOneOff, engine.MoveCounter:
@@ -488,9 +481,57 @@ func (tr truthAt) hidden(seat game.Seat) map[cardKey]bool {
 }
 
 type coverage struct {
-	glasses, sevenReveal, counterWindow, noWindowOneOff, gameOver int
+	glasses, sevenReveal, gameOver int
 	// Engine transitions, counted from the truth before and after each move.
-	threeFromScrap, nineToHand, fiveDraw, jackControl, counterChain2, fourDiscard, deadSeven, glassesGone int
+	threeFromScrap, nineToHand, fiveDraw, jackControl, fourDiscard, deadSeven, glassesGone int
+	// The counter rewind (engine v0.3.0, issue #93): counter is any Counter;
+	// counterChain2 a counter-back (a Counter of a turn that itself began
+	// with a counter); counteredSeven / counteredFive a Counter of a turn
+	// that played a 7 / a 5 from hand; owedDiscard a turn-start payment
+	// (phase 3 with no pending); pendingWin a move into phase 5;
+	// letItHappen the Decline there.
+	counter, counterChain2, counteredSeven, counteredFive, owedDiscard, pendingWin, letItHappen int
+}
+
+func (c *coverage) add(o coverage) {
+	c.glasses += o.glasses
+	c.sevenReveal += o.sevenReveal
+	c.gameOver += o.gameOver
+	c.threeFromScrap += o.threeFromScrap
+	c.nineToHand += o.nineToHand
+	c.fiveDraw += o.fiveDraw
+	c.jackControl += o.jackControl
+	c.fourDiscard += o.fourDiscard
+	c.deadSeven += o.deadSeven
+	c.glassesGone += o.glassesGone
+	c.counter += o.counter
+	c.counterChain2 += o.counterChain2
+	c.counteredSeven += o.counteredSeven
+	c.counteredFive += o.counteredFive
+	c.owedDiscard += o.owedDiscard
+	c.pendingWin += o.pendingWin
+	c.letItHappen += o.letItHappen
+}
+
+// missing names the counters still at zero, in field order.
+func (c coverage) missing() []string {
+	var out []string
+	for _, f := range []struct {
+		name string
+		n    int
+	}{
+		{"glasses", c.glasses}, {"sevenReveal", c.sevenReveal}, {"gameOver", c.gameOver},
+		{"threeFromScrap", c.threeFromScrap}, {"nineToHand", c.nineToHand}, {"fiveDraw", c.fiveDraw},
+		{"jackControl", c.jackControl}, {"fourDiscard", c.fourDiscard}, {"deadSeven", c.deadSeven},
+		{"glassesGone", c.glassesGone}, {"counter", c.counter}, {"counterChain2", c.counterChain2},
+		{"counteredSeven", c.counteredSeven}, {"counteredFive", c.counteredFive},
+		{"owedDiscard", c.owedDiscard}, {"pendingWin", c.pendingWin}, {"letItHappen", c.letItHappen},
+	} {
+		if f.n == 0 {
+			out = append(out, f.name)
+		}
+	}
+	return out
 }
 
 // transition counts the edge cases one applied move produced, read from
@@ -550,14 +591,35 @@ func (c *coverage) transition(mv game.MoveView, before, after engine.GameState, 
 	if drawn != nil && *drawn > 0 {
 		c.fiveDraw++
 	}
-	if after.Pending != nil && len(after.Pending.CounterChain) >= 2 {
-		c.counterChain2++
+	if mv.Kind == engine.MoveCounter {
+		// The rewind (engine/apply.go:577 applyRewind) undoes
+		// before.LastTurn: Countered holds the counter 2 that opened it,
+		// if any, then the one-off played from hand (engine/state.go:102).
+		c.counter++
+		for i, k := range before.LastTurn.Countered {
+			switch {
+			case i == 0 && k.Rank == card.Two:
+				c.counterChain2++
+			case k.Rank == card.Seven:
+				c.counteredSeven++
+			case k.Rank == card.Five:
+				c.counteredFive++
+			}
+		}
+	}
+	if after.Phase == engine.PhasePendingWin && before.Phase != engine.PhasePendingWin {
+		c.pendingWin++
 	}
 	switch {
 	case mv.Kind == engine.MoveDiscardPair:
 		c.fourDiscard++
+		if before.Phase == engine.PhaseAwaitingDiscard && before.Pending == nil {
+			c.owedDiscard++
+		}
 	case mv.Kind == engine.MoveSevenPick && mv.SubMove == nil:
 		c.deadSeven++
+	case mv.Kind == engine.MoveDecline && before.Phase == engine.PhasePendingWin:
+		c.letItHappen++
 	}
 }
 
@@ -567,20 +629,16 @@ type duo struct {
 	code string
 	p    [2]*wsc
 	rng  *rand.Rand
-	hold time.Duration
 
 	// truth replays every sent move; truths[n] is the game at seq n.
 	gameNo int
 	truth  *game.Session
 	truths []truthAt
 
-	env      [2]*game.Envelope
-	tally    [2]int
-	online   [2]bool
-	held     [2]bool      // a responding arrived and its state hasn't
-	heldFrom [2]time.Time // when the counterable move was sent
-	expectR  [2]bool      // the next frame must be responding
-	rematch  [2]*int      // last rematch frame seen per seat
+	env     [2]*game.Envelope
+	tally   [2]int
+	online  [2]bool
+	rematch [2]*int // last rematch frame seen per seat
 
 	cov coverage
 	// preferOneOff makes the driver play a counterable move when it can.
@@ -600,7 +658,7 @@ func newDuo(t *testing.T, e *playEnv, seed uint64) *duo {
 // first one, the opening welcomes and states included.
 func newObservedDuo(t *testing.T, e *playEnv, seed uint64, observe func(*duo, game.Seat, frameIn)) *duo {
 	t.Helper()
-	d := &duo{t: t, e: e, rng: rand.New(rand.NewPCG(seed, 7)), hold: e.cfg.RespondMin}
+	d := &duo{t: t, e: e, rng: rand.New(rand.NewPCG(seed, 7))}
 	if observe != nil {
 		d.onFrame = func(seat game.Seat, f frameIn) { observe(d, seat, f) }
 	}
@@ -645,6 +703,65 @@ func newObservedDuo(t *testing.T, e *playEnv, seed uint64, observe func(*duo, ga
 	if !d.online[0] || !d.online[1] {
 		t.Fatalf("presence after both connected: %v", d.online)
 	}
+	return d
+}
+
+// craftedSnapshot is a v3 persisted snapshot of st at seq 0 (the shape of
+// game.ServerSnapshot.PersistBytes, internal/game/snapshot.go:128).
+func craftedSnapshot(t *testing.T, st engine.GameState) []byte {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"ok": true, "v": 3, "state": st, "history": []any{}, "seed": "0", "dealer": 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// newCraftedDuo is newObservedDuo over a room whose game 1 is replaced, in
+// memory and before any socket connects, by the position st. Both seats
+// connect after the swap: A gets welcome then state, B the same, then A
+// hears B's presence.
+func newCraftedDuo(t *testing.T, e *playEnv, st engine.GameState, observe func(*duo, game.Seat, frameIn)) *duo {
+	t.Helper()
+	blob := craftedSnapshot(t, st)
+	c0 := e.create(t, "Alice")
+	c1 := e.join(t, c0.Code, "Blake")
+	err := e.rooms.withRoom(context.Background(), c0.Code, func(r *room) error {
+		sess, err := game.RestoreSession(blob)
+		if err != nil {
+			return err
+		}
+		r.sess = sess
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	truth, err := game.RestoreSession(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &duo{t: t, e: e, code: c0.Code, rng: rand.New(rand.NewPCG(1, 7)), gameNo: 1, truth: truth}
+	d.truths = []truthAt{d.snapshotTruth(t)}
+	if observe != nil {
+		d.onFrame = func(seat game.Seat, f frameIn) { observe(d, seat, f) }
+	}
+	for s, c := range []claimBody{c0, c1} {
+		w, _, err := e.dial(t, testOrigin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.token, w.seat = c.Token, game.Seat(c.Seat)
+		w.hello(c.Code, c.Token)
+		f := w.expect("welcome")
+		d.after(w.seat, f)
+		if wl := decodeFrame[welcomeIn](t, f); wl.Seat != s || wl.Status != "playing" {
+			t.Fatalf("crafted welcome %+v", wl)
+		}
+		d.p[s] = w
+		d.absorb(game.Seat(s), w.expect("state"))
+	}
+	d.absorb(0, d.p[0].expect("presence"))
 	return d
 }
 
@@ -773,21 +890,6 @@ func walkCards(v any, fn func(cardKey)) {
 func (d *duo) absorb(seat game.Seat, f frameIn) {
 	t := d.t
 	t.Helper()
-	// A presence change (the other seat dropping or rejoining) may reach the
-	// mover before its responding; every other frame may not.
-	if d.expectR[seat] && f.T != "presence" {
-		if f.T != "responding" {
-			t.Fatalf("seat %d: after a counterable move got %s, want responding first", seat, f.raw)
-		}
-		r := decodeFrame[respondingIn](t, f)
-		if r.By == nil || *r.By != int(seat.Other()) {
-			t.Fatalf("responding %s", f.raw)
-		}
-		d.expectR[seat], d.held[seat] = false, true
-		d.checkPrivacy(seat, f, -1)
-		d.after(seat, f)
-		return
-	}
 	switch f.T {
 	case "state":
 		s, env := decodeState(t, f)
@@ -802,18 +904,6 @@ func (d *duo) absorb(seat game.Seat, f frameIn) {
 		}
 		if prev := d.env[seat]; prev != nil && prev.Seq > env.Seq && s.Game == d.gameNo {
 			t.Fatalf("seat %d: state went back from seq %d to %d", seat, prev.Seq, env.Seq)
-		}
-		if d.held[seat] {
-			// heldFrom is stamped client-side after the send while the server's
-			// timer starts on receipt; a loaded runner can skew them by tens of
-			// ms, so the check allows 100ms of slack.
-			if el := f.at.Sub(d.heldFrom[seat]); el+100*time.Millisecond < d.hold {
-				t.Fatalf("seat %d: held state arrived after %v, hold is %v", seat, el, d.hold)
-			}
-			if st := d.truths[env.Seq].st; st.Phase == engine.PhaseAwaitingCounter && st.Active != engine.PlayerID(seat) {
-				t.Fatalf("seat %d released at seq %d while the other seat still decides", seat, env.Seq)
-			}
-			d.held[seat] = false
 		}
 		d.checkPrivacy(seat, f, env.Seq)
 		d.tally = s.Tally
@@ -838,7 +928,8 @@ func (d *duo) absorb(seat game.Seat, f frameIn) {
 		d.rematch[seat] = r.RequestedBy
 		d.checkPrivacy(seat, f, -1)
 	case "responding":
-		t.Fatalf("seat %d: unexpected responding %s", seat, f.raw)
+		// No counter hold since issue #93 (SPEC §2.12.5).
+		t.Fatalf("seat %d: a responding frame was sent: %s", seat, f.raw)
 	default:
 		t.Fatalf("seat %d: unexpected frame %s", seat, f.raw)
 	}
@@ -871,7 +962,7 @@ func (d *duo) ready() (game.Seat, *game.Envelope, bool) {
 		return 0, nil, false
 	}
 	env := d.env[st.Actor]
-	if env == nil || env.Seq != d.truth.Seq() || d.held[st.Actor] || d.expectR[st.Actor] {
+	if env == nil || env.Seq != d.truth.Seq() {
 		return 0, nil, false
 	}
 	return st.Actor, env, true
@@ -900,11 +991,9 @@ func (d *duo) move(seat game.Seat, index int) {
 	env := d.env[seat]
 	mv := env.LegalMoves[index]
 	seq := d.truth.Seq()
-	before := d.st()
 	if _, err := d.truth.Apply(seat, seq, index); err != nil {
 		t.Fatalf("truth rejected the move: %v", err)
 	}
-	after := d.st()
 	d.truths = append(d.truths, d.snapshotTruth(t))
 	n := len(d.truths)
 	var drawn *int
@@ -915,23 +1004,12 @@ func (d *duo) move(seat game.Seat, index int) {
 		}
 	}
 	d.cov.transition(mv, d.truths[n-2].st, d.truths[n-1].st, drawn)
-	if isCounterableView(mv) {
-		d.expectR[seat], d.heldFrom[seat] = true, time.Now()
-		if mv.Kind == engine.MoveOneOff || mv.Kind == engine.MoveSevenPick {
-			if after.Phase == engine.PhaseAwaitingCounter {
-				d.cov.counterWindow++
-			} else {
-				d.cov.noWindowOneOff++
-			}
-		}
-	}
-	_ = before
 	d.p[seat].send(map[string]any{"t": "move", "game": d.gameNo, "seq": seq, "index": index})
 }
 
 // settle pumps frames until nothing arrives for a while.
 func (d *duo) settle() {
-	for d.pump(d.hold + 150*time.Millisecond) {
+	for d.pump(150 * time.Millisecond) {
 	}
 }
 
@@ -947,7 +1025,7 @@ func (d *duo) step() {
 		return
 	}
 	if !d.pump(3 * time.Second) {
-		t.Fatalf("stalled at seq %d (actor %d, held %v)", d.truth.Seq(), d.st().Actor, d.held)
+		t.Fatalf("stalled at seq %d (actor %d)", d.truth.Seq(), d.st().Actor)
 	}
 }
 
@@ -990,7 +1068,7 @@ func mustStatus(t *testing.T, s *game.Session) game.Status {
 
 func (d *duo) bothSee(seq int) bool {
 	for s := range 2 {
-		if d.env[s] == nil || d.env[s].Seq != seq || d.held[s] || d.expectR[s] {
+		if d.env[s] == nil || d.env[s].Seq != seq {
 			return false
 		}
 	}

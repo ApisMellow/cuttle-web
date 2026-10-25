@@ -1,8 +1,9 @@
 package server
 
 // Room-level play (two-phone W6 + W7, SPEC §2.12.4–§2.12.5): the sockets
-// bound to a room's seats, the fan-out after a move, the counter hold,
-// presence and rematch. Everything here runs under the room's mutex; a
+// bound to a room's seats, the fan-out after a move, presence and
+// rematch. There is no counter hold (SPEC §2.12.5, issue #93): every saved
+// move goes to both seats at once. Everything here runs under the room's mutex; a
 // frame is only ever enqueued there (conn.enqueue never blocks) and
 // written by the connection's own writer goroutine, outside every lock.
 
@@ -11,10 +12,8 @@ import (
 	"errors"
 	"log/slog"
 	"sync/atomic"
-	"time"
 
 	"github.com/ApisMellow/cuttle-web/internal/game"
-	"github.com/ApisMellow/cuttle/engine"
 )
 
 // errDetached: the socket is no longer the one bound to its seat (it was
@@ -28,47 +27,17 @@ var errShuttingDown = errors.New("server shutting down")
 // room's mutex. The zero value is a room with nobody connected.
 type liveRoom struct {
 	conns [2]*conn
-	holds [2]hold
 	// rematch[s]: seat s asked for a rematch of game rematchGame. Memory
 	// only (SPEC §2.12.8 question 2).
 	rematch     [2]bool
 	rematchGame int
 }
 
-// hold is one seat's counter hold (SPEC §2.12.5): after a counterable move
-// its mover gets no state until the other seat's answer is in and the
-// minimum has passed since the move.
-type hold struct {
-	active bool
-	t0     time.Time
-	timer  *time.Timer
-	// gen invalidates a timer that fires after its hold was replaced or
-	// cleared.
-	gen uint64
-}
-
-func (h *hold) clear() {
-	if h.timer != nil {
-		h.timer.Stop()
-		h.timer = nil
-	}
-	h.active = false
-	h.gen++
-}
-
 func (lv *liveRoom) connected() bool { return lv.conns[0] != nil || lv.conns[1] != nil }
 
-// clearHolds stops every hold and its timer.
-func (lv *liveRoom) clearHolds() {
-	for s := range lv.holds {
-		lv.holds[s].clear()
-	}
-}
-
-// closeLocked stops the holds and closes every socket: with frame f first
-// (a terminal error) or, for nil, bare (retryable). r.mu must be held.
+// closeLocked closes every socket: with frame f first (a terminal error)
+// or, for nil, bare (retryable). r.mu must be held.
 func (lv *liveRoom) closeLocked(f frame) {
-	lv.clearHolds()
 	for s, c := range lv.conns {
 		if c == nil {
 			continue
@@ -92,10 +61,9 @@ func (lv *liveRoom) welcomeAllLocked(r *room) {
 	}
 }
 
-// dealtLocked announces a freshly dealt game: holds and rematch requests
-// end, and every connected seat gets its state.
+// dealtLocked announces a freshly dealt game: rematch requests end, and
+// every connected seat gets its state.
 func (lv *liveRoom) dealtLocked(r *room) {
-	lv.clearHolds()
 	lv.rematch, lv.rematchGame = [2]bool{}, 0
 	for _, c := range lv.conns {
 		if c != nil {
@@ -131,36 +99,11 @@ func sendStateLocked(r *room, c *conn) {
 	c.enqueue(newStateFrame(r, c.seat, env))
 }
 
-// heldLocked reports whether c's seat is the mover under a hold.
-func heldLocked(r *room, c *conn) bool { return r.live.holds[c.seat].active }
+// resyncLocked is the "fresh state" after a resync error (SPEC §2.12.3).
+func resyncLocked(r *room, c *conn) { sendStateLocked(r, c) }
 
-// refuseHeldLocked answers any move or rematch from a held mover with a
-// fixed STALE (no seq echo) and responding. Nothing is applied and no
-// request is recorded, so the answer is the same whether or not the
-// other seat has answered or the game has ended: frames can't probe the
-// hold (SPEC §2.12.5). It reports whether c was held.
-func refuseHeldLocked(r *room, c *conn) bool {
-	if !heldLocked(r, c) {
-		return false
-	}
-	c.enqueue(newErrorFrame(CodeStale, nil))
-	c.enqueue(newRespondingFrame(c.seat.Other()))
-	return true
-}
-
-// resyncLocked is the "fresh state" after a resync error (SPEC §2.12.3):
-// the current state, or responding while c's seat is the mover under a
-// hold, so a stray frame can't open the hold early.
-func resyncLocked(r *room, c *conn) {
-	if r.live.holds[c.seat].active {
-		c.enqueue(newRespondingFrame(c.seat.Other()))
-		return
-	}
-	sendStateLocked(r, c)
-}
-
-// play is the WebSocket side of the server: the handler, the hold timing
-// and the per-client failed-hello limiter.
+// play is the WebSocket side of the server: the handler and the
+// per-client failed-hello limiter.
 type play struct {
 	rooms   *Rooms
 	log     *slog.Logger
@@ -168,8 +111,6 @@ type play struct {
 	trusted trustedSet
 	failed  *limiter
 	tune    playTuning
-	// holdMin is the counter hold's minimum (Config.RespondMin).
-	holdMin time.Duration
 	// Socket caps (Config.MaxSockets, Config.MaxSocketsPerClient).
 	maxSockets, maxSocketsPerClient int
 	closed                          atomic.Bool
@@ -177,10 +118,6 @@ type play struct {
 
 func newPlay(cfg Config, log *slog.Logger, rooms *Rooms) *play {
 	tune := cfg.tune.withDefaults()
-	hold := cfg.RespondMin
-	if hold <= 0 {
-		hold = DefaultRespondMin
-	}
 	maxSocks, perClient := cfg.MaxSockets, cfg.MaxSocketsPerClient
 	if maxSocks <= 0 {
 		maxSocks = DefaultMaxSockets
@@ -190,12 +127,12 @@ func newPlay(cfg Config, log *slog.Logger, rooms *Rooms) *play {
 	}
 	return &play{rooms: rooms, log: log, origins: NewOriginPolicy(cfg.AllowedOrigins, cfg.Dev),
 		trusted: newTrustedSet(cfg.TrustedProxies), failed: newLimiter(tune.failedHelloPerHour, rooms.now),
-		tune: tune, holdMin: hold, maxSockets: maxSocks, maxSocketsPerClient: perClient}
+		tune: tune, maxSockets: maxSocks, maxSocketsPerClient: perClient}
 }
 
 // registerLocked binds c to its seat in r and answers the hello: welcome,
-// then state, responding (the mover under a hold) or nothing (waiting),
-// then a pending rematch. An older socket on the seat is replaced.
+// then state (or nothing while waiting), then a pending rematch. An older
+// socket on the seat is replaced.
 func (p *play) registerLocked(r *room, c *conn) error {
 	if p.closed.Load() {
 		return errShuttingDown
@@ -211,9 +148,7 @@ func (p *play) registerLocked(r *room, c *conn) error {
 	if r.sess != nil {
 		resyncLocked(r, c)
 	}
-	// A held mover hears a pending rematch only when its hold ends (a
-	// request implies the game is over).
-	if by, ok := lv.pendingRematch(r); ok && !heldLocked(r, c) {
+	if by, ok := lv.pendingRematch(r); ok {
 		c.enqueue(newRematchFrame(by))
 	}
 	if oc := lv.conns[c.seat.Other()]; oc != nil && old == nil {
@@ -253,7 +188,7 @@ func (m *Rooms) cached(code string) *room {
 }
 
 // closeAll closes every socket (bare, so phones reconnect to the next
-// server) and stops every hold timer. New hellos are refused from here on.
+// server). New hellos are refused from here on.
 func (p *play) closeAll() {
 	p.closed.Store(true)
 	p.rooms.mu.Lock()
@@ -306,9 +241,6 @@ func (p *play) inRoom(c *conn, fn func(ctx context.Context, r *room)) {
 // Save → send, all under the room lock.
 func (p *play) move(c *conn, gameNo, seq, index int) {
 	p.inRoom(c, func(ctx context.Context, r *room) {
-		if refuseHeldLocked(r, c) {
-			return
-		}
 		if r.sess == nil {
 			c.enqueue(newErrorFrame(CodeBadRequest, &seq))
 			return
@@ -324,7 +256,7 @@ func (p *play) move(c *conn, gameNo, seq, index int) {
 			return
 		}
 		p.log.Info("move", "code", r.code, "seat", int(c.seat), "seq", up.Seq)
-		p.afterMoveLocked(r, c.seat, up)
+		p.afterMoveLocked(r, up)
 	})
 }
 
@@ -368,102 +300,12 @@ func (p *play) moveFailedLocked(r *room, c *conn, seq int, err error) {
 	}
 }
 
-// isCounterable reports SPEC §2.12.5's counterable moves: a one-off, a 7
-// whose pick is a one-off, or a counter.
-func isCounterable(m *game.AppliedMove) bool {
-	if m == nil {
-		return false
-	}
-	switch m.Kind {
-	case engine.MoveOneOff, engine.MoveCounter:
-		return true
-	case engine.MoveSevenPick:
-		return m.SubKind != nil && *m.SubKind == engine.MoveOneOff
-	}
-	return false
-}
-
 // afterMoveLocked fans a saved move out: each connected seat gets its own
-// up.For(seat), except a seat under a hold. The mover of a counterable
-// move gets responding instead and starts a hold.
-func (p *play) afterMoveLocked(r *room, mover game.Seat, up game.Update) {
-	now := time.Now()
-	moverEnv := up.For(mover)
-	counterable := isCounterable(moverEnv.LastMove)
-	if counterable {
-		p.startHoldLocked(r, mover, now)
-	}
+// up.For(seat) at once (SPEC §2.12.5, no counter hold).
+func (p *play) afterMoveLocked(r *room, up game.Update) {
 	for s, c := range r.live.conns {
-		seat := game.Seat(s)
-		if c == nil {
-			continue
-		}
-		if r.live.holds[seat].active {
-			if seat == mover && counterable {
-				c.enqueue(newRespondingFrame(mover.Other()))
-			}
-			continue
-		}
-		c.enqueue(newStateFrame(r, seat, up.For(seat)))
-	}
-	p.checkHoldsLocked(r, now)
-}
-
-// startHoldLocked (re)starts seat's hold at now, with a timer for the
-// minimum.
-func (p *play) startHoldLocked(r *room, seat game.Seat, now time.Time) {
-	h := &r.live.holds[seat]
-	h.clear()
-	h.active, h.t0 = true, now
-	gen := h.gen
-	h.timer = time.AfterFunc(p.holdMin, func() { p.holdExpired(r, seat, gen) })
-}
-
-// holdExpired runs when a hold's minimum has passed.
-func (p *play) holdExpired(r *room, seat game.Seat, gen uint64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	h := &r.live.holds[seat]
-	if r.gone || !h.active || h.gen != gen {
-		return
-	}
-	h.timer = nil
-	p.checkHoldsLocked(r, time.Now())
-}
-
-// answerIn reports whether the engine no longer waits on the other seat's
-// counter decision for mover (SPEC §2.12.5 condition a). A Status failure
-// counts as "in": the hold then only delays, and the resync that follows
-// surfaces the fault.
-func answerIn(r *room, mover game.Seat) bool {
-	if r.sess == nil {
-		return true
-	}
-	st, err := r.sess.Status()
-	if err != nil {
-		return true
-	}
-	return !(st.Phase == engine.PhaseAwaitingCounter && st.Actor == mover.Other())
-}
-
-// checkHoldsLocked releases every hold whose answer is in and whose
-// minimum has passed: its seat gets the current state, which may include
-// later moves. A hold whose answer isn't in stays until a later move
-// brings it in.
-func (p *play) checkHoldsLocked(r *room, now time.Time) {
-	for s := range r.live.holds {
-		seat := game.Seat(s)
-		h := &r.live.holds[seat]
-		if !h.active || !answerIn(r, seat) || now.Sub(h.t0) < p.holdMin {
-			continue
-		}
-		h.clear()
-		if c := r.live.conns[seat]; c != nil {
-			sendStateLocked(r, c)
-			// A request made while this seat was held reaches it now.
-			if by, ok := r.live.pendingRematch(r); ok {
-				c.enqueue(newRematchFrame(by))
-			}
+		if c != nil {
+			c.enqueue(newStateFrame(r, game.Seat(s), up.For(game.Seat(s))))
 		}
 	}
 }
@@ -473,9 +315,6 @@ func (p *play) checkHoldsLocked(r *room, now time.Time) {
 // second seat's request deals the next game with the other dealer.
 func (p *play) rematch(c *conn, gameNo int) {
 	p.inRoom(c, func(ctx context.Context, r *room) {
-		if refuseHeldLocked(r, c) {
-			return
-		}
 		if r.sess == nil {
 			c.enqueue(newErrorFrame(CodeBadRequest, nil))
 			return
@@ -507,9 +346,8 @@ func (p *play) rematch(c *conn, gameNo int) {
 			p.log.Info("rematch dealt", "code", r.code, "game", r.meta.Game)
 		default:
 			lv.rematch[c.seat] = true
-			// A held seat hears it when its hold ends (checkHoldsLocked).
-			for s, oc := range lv.conns {
-				if oc != nil && !lv.holds[s].active {
+			for _, oc := range lv.conns {
+				if oc != nil {
 					oc.enqueue(newRematchFrame(c.seat))
 				}
 			}

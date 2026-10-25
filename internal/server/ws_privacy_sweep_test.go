@@ -3,7 +3,9 @@ package server
 // Wire privacy sweep (two-phone W9, plan §12, R24.4). Two real WebSocket
 // clients play seeded games through the real HTTP API, room manager, store
 // and socket stack, and every frame either seat receives is checked
-// against the engine's full state at that moment.
+// against the engine's full state at that moment. The crafted scripts of
+// ws_counter_test.go run through the same checks, so the rare counter-
+// rewind shapes (a pending win, a dead-end 7) are covered by construction.
 //
 // The check is built from what SPEC §3.2 says a seat may see, not from a
 // list of hidden zones: specVisible collects the cards a seat may see at a
@@ -33,10 +35,16 @@ package server
 //     counts, opponent.hand null without glasses, you.watched,
 //     sevenRevealed only for the actor, the pending one-off, history index
 //     only on the seat's own entries, and every Target in range.
-//   - While a seat is the mover under a hold it gets no state before the
-//     hold's minimum and the answer (the duo's own check), no rematch, and a
-//     welcome saying playing; its own probes get fixed bytes before and
-//     after the other seat answers.
+//   - There is no counter hold (engine v0.3.0, issue #93, SPEC §2.12.5):
+//     no responding frame is ever sent, every move reaches both seats as
+//     state, and a reconnecting seat gets welcome then state.
+//   - The counter rewind's view rules hold against the engine truth:
+//     counterable is engine.CounterAvailable and owedDiscards is Owed, for
+//     both seats; no legacy counter window (phase 1) opens; a Counter is
+//     offered only when counterable and only at the end of the list; phase
+//     3 with no pending offers only DiscardPair and Counter; phase 5 offers
+//     the Counters then exactly one Decline ("Let it happen"), and Decline
+//     appears nowhere else.
 //   - Canaries: on real frames the sweep plants a hidden card (outside
 //     history, in a history description, in a non-state frame) and hand
 //     position text (in the other seat's latest entry), and requires the
@@ -67,20 +75,11 @@ import (
 // sweepSeedCount is the plan's range, seeds 1–240. -short walks every 7th.
 const sweepSeedCount = 240
 
-// sweepHold is the response hold of the seeds that probe the hold, long
-// enough that the probes (a few round trips) finish inside it under load;
-// the others use sweepFastHold so a game runs at machine speed.
-const (
-	sweepHold     = 1500 * time.Millisecond
-	sweepFastHold = 5 * time.Millisecond
-)
-
 // seedPlan says what a seed does besides playing its game to the end.
 type seedPlan struct {
 	preferOneOff bool
 	reconnectAt  int // ply at which a random seat drops and rejoins (-1: never)
 	errorsAt     int // ply at which the seats send refused frames (-1: never)
-	holdProbes   int // holds to probe (sweepHold seeds only)
 	rematch      bool
 }
 
@@ -92,18 +91,15 @@ func planFor(seed uint64) seedPlan {
 	if seed%4 == 2 {
 		p.errorsAt = 2 + int(seed%13)
 	}
-	if seed%12 == 5 {
-		p.holdProbes, p.preferOneOff = 3, true
-	}
 	p.rematch = seed%8 == 3
 	return p
 }
 
 type sweepCov struct {
 	coverage
-	games, frames, states                                                             int
-	canaries, historyEntries, ownDescriptions, targetCards                            int
-	reconnects, heldReconnects, heldProbes, answeredProbes, errorFrames, rematchGames int
+	games, frames, states                                  int
+	canaries, historyEntries, ownDescriptions, targetCards int
+	reconnects, errorFrames, rematchGames                  int
 	// otherDiscards counts the other seat's DiscardPair entries checked for
 	// position text (issue #69).
 	otherDiscards int
@@ -112,20 +108,15 @@ type sweepCov struct {
 // add sums every int field, the embedded coverage's included.
 func (c *sweepCov) add(o sweepCov) {
 	for _, p := range [][2]*int{
-		{&c.glasses, &o.glasses}, {&c.sevenReveal, &o.sevenReveal}, {&c.counterWindow, &o.counterWindow},
-		{&c.noWindowOneOff, &o.noWindowOneOff}, {&c.gameOver, &o.gameOver},
-		{&c.threeFromScrap, &o.threeFromScrap}, {&c.nineToHand, &o.nineToHand}, {&c.fiveDraw, &o.fiveDraw},
-		{&c.jackControl, &o.jackControl}, {&c.counterChain2, &o.counterChain2}, {&c.fourDiscard, &o.fourDiscard},
-		{&c.deadSeven, &o.deadSeven}, {&c.glassesGone, &o.glassesGone},
 		{&c.games, &o.games}, {&c.frames, &o.frames}, {&c.states, &o.states},
 		{&c.canaries, &o.canaries}, {&c.historyEntries, &o.historyEntries},
 		{&c.ownDescriptions, &o.ownDescriptions}, {&c.targetCards, &o.targetCards},
-		{&c.reconnects, &o.reconnects}, {&c.heldReconnects, &o.heldReconnects}, {&c.heldProbes, &o.heldProbes},
-		{&c.answeredProbes, &o.answeredProbes}, {&c.errorFrames, &o.errorFrames}, {&c.rematchGames, &o.rematchGames},
+		{&c.reconnects, &o.reconnects}, {&c.errorFrames, &o.errorFrames}, {&c.rematchGames, &o.rematchGames},
 		{&c.otherDiscards, &o.otherDiscards},
 	} {
 		*p[0] += *p[1]
 	}
+	c.coverage.add(o.coverage)
 }
 
 // TestW9_SweepCovAddsEveryField keeps add in step with the counters.
@@ -181,28 +172,40 @@ func TestW9_WirePrivacySweep(t *testing.T) {
 				mu.Unlock()
 			})
 		}
+		// The crafted scripts (ws_counter_test.go) reach the rare counter-
+		// rewind shapes by construction: a pending win and Let it happen, an
+		// owed discard, a dead-end 7, a countered 7 and 5, a counter-back.
+		for _, sc := range craftedScripts {
+			t.Run("crafted/"+sc.name, func(t *testing.T) {
+				t.Parallel()
+				c := sweepCrafted(t, sc)
+				mu.Lock()
+				total.add(c)
+				mu.Unlock()
+			})
+		}
 	})
 	if t.Failed() {
 		return
 	}
-	t.Logf("%d seeds in %v: %+v", ran, time.Since(start).Round(time.Millisecond), total)
+	t.Logf("%d seeds and %d crafted games in %v: %+v", ran, len(craftedScripts), time.Since(start).Round(time.Millisecond), total)
 	if ran != sweepSeedCount {
 		return // a -run filter picked some seeds; coverage is judged on the whole range
 	}
 	must := map[string]int{
-		"glasses": total.glasses, "a 7 reveal": total.sevenReveal, "a counter window": total.counterWindow,
-		"a one-off with no window": total.noWindowOneOff, "a game over": total.gameOver,
-		"a reconnect": total.reconnects, "a held probe": total.heldProbes,
-		"an error frame": total.errorFrames, "a rematch game": total.rematchGames,
+		"glasses": total.glasses, "a 7 reveal": total.sevenReveal, "a game over": total.gameOver,
+		"a reconnect": total.reconnects, "an error frame": total.errorFrames, "a rematch game": total.rematchGames,
 		"a caught canary": total.canaries, "a history entry": total.historyEntries,
 		"a checked own description": total.ownDescriptions, "a history targetCard": total.targetCards,
 	}
 	// Edge cases that depend on the deal: judged on the full 1–240 range.
 	for name, n := range map[string]int{
-		"a reconnect under a hold": total.heldReconnects, "a held probe after the answer": total.answeredProbes,
+		"a counter": total.counter, "a counter-back": total.counterChain2,
+		"a countered 7": total.counteredSeven, "a countered 5": total.counteredFive,
+		"an owed discard paid at turn start": total.owedDiscard, "a pending win (phase 5)": total.pendingWin,
+		"Let it happen": total.letItHappen, "a 4 discard": total.fourDiscard,
 		"a 3 taking a scrap card": total.threeFromScrap, "a 9 returning a card to a hand": total.nineToHand,
 		"a 5 drawing": total.fiveDraw, "a Jack changing control": total.jackControl,
-		"a counter chain of 2 or more": total.counterChain2, "a 4 discard": total.fourDiscard,
 		"a dead-end 7": total.deadSeven, "glasses leaving play": total.glassesGone,
 		"the other seat's DiscardPair entry": total.otherDiscards,
 	} {
@@ -231,11 +234,7 @@ type sweeper struct {
 }
 
 func sweepOneSeed(t *testing.T, seed uint64, plan seedPlan) sweepCov {
-	hold := sweepFastHold
-	if plan.holdProbes > 0 {
-		hold = sweepHold
-	}
-	e := newPlayEnv(t, playOpts{rand: seededRand(seed), cfg: func(c *Config) { c.RespondMin = hold }})
+	e := newPlayEnv(t, playOpts{rand: seededRand(seed)})
 	defer e.stop()
 	s := &sweeper{t: t, plan: plan}
 	s.d = newObservedDuo(t, e, seed, func(d *duo, seat game.Seat, f frameIn) {
@@ -253,8 +252,30 @@ func sweepOneSeed(t *testing.T, seed uint64, plan seedPlan) sweepCov {
 	return s.cov
 }
 
+// sweepCrafted plays one crafted script with every frame through the
+// sweeper's checks.
+func sweepCrafted(t *testing.T, sc craftedScript) sweepCov {
+	e := newPlayEnv(t, playOpts{})
+	defer e.stop()
+	s := &sweeper{t: t}
+	s.d = newCraftedDuo(t, e, sc.start(), func(d *duo, seat game.Seat, f frameIn) {
+		s.d = d // set before newCraftedDuo returns, for the opening frames
+		s.see(seat, f)
+	})
+	for _, st := range sc.steps {
+		s.d.playDesc(st.by, st.desc)
+	}
+	s.sync()
+	if s.d.st().Over {
+		s.d.cov.gameOver++
+		s.cov.games++
+	}
+	s.cov.coverage = s.d.cov
+	return s.cov
+}
+
 // playGame plays the current game to the end, with the plan's reconnect,
-// refused frames and hold probes on the way.
+// and refused frames on the way.
 func (s *sweeper) playGame() {
 	d, t := s.d, s.t
 	t.Helper()
@@ -281,41 +302,18 @@ func (s *sweeper) playGame() {
 				t.Fatalf("seat %d on turn with no legal move at seq %d", seat, env.Seq)
 			}
 			d.move(seat, d.pick(env))
-			if d.expectR[seat] && s.plan.holdProbes > 0 {
-				s.probeHold(seat)
-			}
 			continue
 		}
 		if !d.pump(5 * time.Second) {
-			t.Fatalf("stalled at seq %d (actor %d, held %v)", d.truth.Seq(), d.st().Actor, d.held)
+			t.Fatalf("stalled at seq %d (actor %d)", d.truth.Seq(), d.st().Actor)
 		}
 	}
 	t.Fatal("game did not end")
 }
 
 // quiet reports whether every sent move has reached both seats: each has
-// the current envelope and isn't waiting on a responding, and a held seat
-// is held only because the other seat still has to answer.
-func (s *sweeper) quiet() bool {
-	d := s.d
-	st := d.st()
-	for i := range 2 {
-		seat := game.Seat(i)
-		if d.env[seat] == nil || d.expectR[seat] {
-			return false
-		}
-		if d.held[seat] {
-			if !(st.Phase == engine.PhaseAwaitingCounter && st.Actor == seat.Other()) {
-				return false
-			}
-			continue
-		}
-		if d.env[seat].Seq != d.truth.Seq() {
-			return false
-		}
-	}
-	return true
-}
+// the current envelope.
+func (s *sweeper) quiet() bool { return s.d.bothSee(s.d.truth.Seq()) }
 
 // sync pumps until quiet: an event, not a quiet time window, so a loaded
 // machine can't cut it short.
@@ -323,7 +321,7 @@ func (s *sweeper) sync() {
 	s.t.Helper()
 	for !s.quiet() {
 		if !s.d.pump(5 * time.Second) {
-			s.t.Fatalf("no frame while waiting for the seats to catch up (seq %d, held %v)", s.d.truth.Seq(), s.d.held)
+			s.t.Fatalf("no frame while waiting for the seats to catch up (seq %d)", s.d.truth.Seq())
 		}
 	}
 }
@@ -347,6 +345,15 @@ func (s *sweeper) rejoin(seat game.Seat) {
 	d, t := s.d, s.t
 	t.Helper()
 	old := d.p[seat]
+	// A move this seat just sent must reach the server before the drop, or
+	// the close can beat it and the move is lost (the truth has already
+	// applied it). Frames to the seat may still be in flight.
+	for deadline := time.Now().Add(5 * time.Second); d.e.roomSeq(t, d.code) != d.truth.Seq(); {
+		if time.Now().After(deadline) {
+			t.Fatalf("the server never applied seq %d", d.truth.Seq())
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 	_ = old.c.CloseNow()
 	<-old.done
 	for drained := false; !drained; {
@@ -357,7 +364,6 @@ func (s *sweeper) rejoin(seat game.Seat) {
 			drained = true
 		}
 	}
-	wasHeld := d.expectR[seat] || d.held[seat]
 	w, _, err := d.e.dial(t, testOrigin)
 	if err != nil {
 		t.Fatal(err)
@@ -371,28 +377,25 @@ func (s *sweeper) rejoin(seat game.Seat) {
 		t.Fatalf("rejoin welcome %s", fw.raw)
 	}
 	d.p[seat] = w
+	// No hold: the rejoin is welcome then the current state, always.
 	f := s.nextFrame(seat)
-	switch f.T {
-	case "responding":
-		if !wasHeld {
-			t.Fatalf("seat %d rejoined to responding without a hold", seat)
-		}
-		if wel.Status != statusPlaying {
-			t.Fatalf("held seat %d rejoined to welcome %q", seat, wel.Status)
-		}
-		d.expectR[seat], d.held[seat] = true, false
-		s.cov.heldReconnects++
-	case "state":
-		if d.expectR[seat] {
-			// The responding went down with the old socket. The state is
-			// still held to the hold's minimum and the answer.
-			d.expectR[seat], d.held[seat] = false, true
-		}
-	default:
+	if f.T != "state" {
 		t.Fatalf("seat %d rejoined to %s", seat, f.raw)
 	}
 	d.absorb(seat, f)
 	s.cov.reconnects++
+}
+
+// roomSeq is the loaded room's session seq.
+func (e *playEnv) roomSeq(t *testing.T, code string) int {
+	t.Helper()
+	r := e.liveRoom(t, code)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sess == nil {
+		return -1
+	}
+	return r.sess.Seq()
 }
 
 // refusedFrames sends frames the server refuses: a move out of turn, a
@@ -412,12 +415,7 @@ func (s *sweeper) refusedFrames() {
 	move := func(game, seq, index int) map[string]any {
 		return map[string]any{"t": "move", "game": game, "seq": seq, "index": index}
 	}
-	if !d.held[other] {
-		s.refused(other, move(g, seq, 0), CodeNotYourTurn, &seq, true)
-	}
-	if d.held[actor] {
-		return
-	}
+	s.refused(other, move(g, seq, 0), CodeNotYourTurn, &seq, true)
 	old := seq - 1
 	s.refused(actor, move(g, old, 0), CodeStale, &old, true)
 	s.refused(actor, move(g+1, seq, 0), CodeStale, &seq, true)
@@ -448,76 +446,6 @@ func (s *sweeper) refused(seat game.Seat, v map[string]any, code string, seq *in
 		}
 		d.absorb(seat, f)
 	}
-}
-
-// probeHold runs while mover's counterable move is held: the mover's own
-// move and rematch get fixed bytes, the same before and after the other
-// seat moves; some holds also drop and rejoin the mover.
-func (s *sweeper) probeHold(mover game.Seat) {
-	d, t := s.d, s.t
-	t.Helper()
-	for d.expectR[mover] {
-		if !d.pump(5 * time.Second) {
-			t.Fatalf("no responding for seat %d", mover)
-		}
-	}
-	if !d.held[mover] || time.Since(d.heldFrom[mover]) > d.hold/4 {
-		return // too late to probe inside the hold
-	}
-	s.plan.holdProbes--
-	if s.plan.holdProbes == 0 {
-		d.preferOneOff = false // every later one-off would wait out the long hold
-	}
-	s.heldProbe(mover)
-	other := mover.Other()
-	// The other seat's state for the move is on its way; take it.
-	for d.env[other] == nil || (d.env[other].Seq != d.truth.Seq() && !d.held[other] && !d.expectR[other]) {
-		d.absorb(other, s.nextFrame(other))
-	}
-	if env := d.env[other]; env.Seq == d.truth.Seq() && d.st().Actor == other &&
-		!d.st().Over && !d.held[other] && !d.expectR[other] {
-		answering := d.st().Phase == engine.PhaseAwaitingCounter
-		d.move(other, d.pick(env))
-		// Wait until the server has applied it: the other seat's reply.
-		for d.env[other].Seq != d.truth.Seq() && !d.held[other] {
-			d.absorb(other, s.nextFrame(other))
-		}
-		s.heldProbe(mover)
-		if answering {
-			s.cov.answeredProbes++
-		}
-	}
-	if time.Since(d.heldFrom[mover]) >= d.hold {
-		t.Fatalf("seat %d: the probes outlasted the %v hold; the test is too slow to observe it", mover, d.hold)
-	}
-	if s.plan.holdProbes%2 == 0 {
-		s.rejoin(mover)
-	}
-}
-
-// heldProbe sends a move and a rematch from the held mover and checks the
-// replies are the fixed held bytes.
-func (s *sweeper) heldProbe(mover game.Seat) {
-	d, t := s.d, s.t
-	t.Helper()
-	want := []string{
-		fmt.Sprintf(`{"t":"error","code":"STALE","message":%q}`, errorMessages[CodeStale]),
-		fmt.Sprintf(`{"t":"responding","by":%d}`, mover.Other()),
-	}
-	for _, v := range []map[string]any{
-		{"t": "move", "game": d.gameNo, "seq": d.truth.Seq(), "index": 0},
-		{"t": "rematch", "game": d.gameNo},
-	} {
-		d.p[mover].send(v)
-		for _, wf := range want {
-			f := s.nextFrame(mover)
-			s.see(mover, f)
-			if string(f.raw) != wf {
-				t.Fatalf("held seat %d sent %v: got %s, want %s", mover, v, f.raw, wf)
-			}
-		}
-	}
-	s.cov.heldProbes++
 }
 
 // rematch asks for a rematch from a random seat, lets the other accept and
@@ -579,20 +507,10 @@ func (s *sweeper) violations(seat game.Seat, f frameIn, tally *sweepCov) []strin
 		}
 		return s.stateViolations(seat, f, raw, tally)
 	case "welcome":
-		// A held seat's welcome must say playing; rejoin checks it, as only
-		// the responding that follows proves the server still holds it.
 		decode(new(welcomeIn))
-	case "responding":
-		decode(new(respondingIn))
 	case "presence":
 		decode(new(presenceIn))
 	case "rematch":
-		// On one socket a released hold's state always precedes the
-		// rematch, so the duo still marking the seat held means the server
-		// sent it inside the hold.
-		if s.d.held[seat] || s.d.expectR[seat] {
-			v = append(v, "rematch frame to a held seat")
-		}
 		decode(new(rematchIn))
 	case "error":
 		var er errorIn
@@ -605,6 +523,8 @@ func (s *sweeper) violations(seat game.Seat, f frameIn, tally *sweepCov) []strin
 			T string `json:"t"`
 		}))
 	default:
+		// responding included: there is no counter hold since issue #93
+		// (SPEC §2.12.5), so the server never sends one.
 		v = append(v, "unknown frame type")
 	}
 	// Room metadata names no card, as an object or as text.
@@ -966,6 +886,7 @@ func specDerivations(seat game.Seat, env specEnvelope, rawEnv map[string]any, st
 	if (st.Active != engine.PlayerID(seat) || st.Phase == engine.PhaseGameOver) && len(env.LegalMoves)+len(env.Descriptions) > 0 {
 		fail("legal moves for a seat that doesn't act")
 	}
+	out = append(out, counterRules(seat, env, st)...)
 	var moveTargets func(where string, m specMove)
 	moveTargets = func(where string, m specMove) {
 		for name, tg := range map[string]*specTarget{"Target": m.Target, "JackTarget": m.JackTarget} {
@@ -994,6 +915,61 @@ func specDerivations(seat game.Seat, env specEnvelope, rawEnv map[string]any, st
 		if by, _ := m["by"].(float64); has != (int(by) == int(seat)) {
 			fail("history entry %v: index key present=%v", m, has)
 		}
+	}
+	return out
+}
+
+// counterRules checks the counter rewind's view rules (engine v0.3.0,
+// issue #93) against the truth: counterable is engine.CounterAvailable
+// (engine/apply.go:171) and owedDiscards is Owed, from seat's side; new
+// play never opens the legacy window (phase 1); Counters come last and
+// only when counterable (engine/apply.go:143-147); phase 3 with no pending
+// offers only DiscardPair and Counter; phase 5 offers the Counters then
+// exactly one Decline (engine/apply.go:177-185), and Decline appears
+// nowhere else.
+func counterRules(seat game.Seat, env specEnvelope, st engine.GameState) []string {
+	var out []string
+	fail := func(format string, a ...any) { out = append(out, fmt.Sprintf(format, a...)) }
+	v := env.State
+	if v.Counterable != engine.CounterAvailable(st) {
+		fail("counterable %v, engine %v", v.Counterable, engine.CounterAvailable(st))
+	}
+	if v.OwedDiscards.You != st.Owed[seat] || v.OwedDiscards.Opponent != st.Owed[seat.Other()] {
+		fail("owedDiscards %+v, engine %v", v.OwedDiscards, st.Owed)
+	}
+	if st.Phase == engine.PhaseAwaitingCounter {
+		fail("the legacy counter window (phase 1) opened in new play")
+	}
+	moves := env.LegalMoves
+	phase5 := st.Phase == engine.PhasePendingWin
+	owedStep := st.Phase == engine.PhaseAwaitingDiscard && st.Pending == nil
+	counters, declines := 0, 0
+	for i, m := range moves {
+		switch k := engine.MoveKind(m.Kind); k {
+		case engine.MoveCounter:
+			counters++
+		case engine.MoveDecline:
+			declines++
+			if !phase5 || i != len(moves)-1 {
+				fail("Decline offered other than last in phase 5")
+			}
+		default:
+			if counters > 0 {
+				fail("a move of kind %d after a Counter", m.Kind)
+			}
+			if phase5 {
+				fail("phase 5 offers a move of kind %d", m.Kind)
+			}
+			if owedStep && k != engine.MoveDiscardPair {
+				fail("the owed discard offers a move of kind %d", m.Kind)
+			}
+		}
+	}
+	if phase5 && len(moves) > 0 && declines != 1 {
+		fail("phase 5 offers %d Declines", declines)
+	}
+	if counters > 0 && !v.Counterable {
+		fail("a Counter offered when the last turn is not counterable")
 	}
 	return out
 }
@@ -1210,8 +1186,14 @@ type specView struct {
 		You      specSide `json:"you"`
 		Opponent specSide `json:"opponent"`
 	} `json:"scoreboard"`
-	SevenRevealed []specCard   `json:"sevenRevealed"`
-	Pending       *specPending `json:"pending"`
+	SevenRevealed []specCard `json:"sevenRevealed"`
+	// counterable and owedDiscards: added 2026-10-24 (issue #93).
+	Counterable  bool `json:"counterable"`
+	OwedDiscards struct {
+		You      int `json:"you"`
+		Opponent int `json:"opponent"`
+	} `json:"owedDiscards"`
+	Pending *specPending `json:"pending"`
 }
 
 type specApplied struct {
@@ -1366,11 +1348,14 @@ func TestW9_SweepCheckCatchesLeaks(t *testing.T) {
 			t.Fatalf("a correct view flagged: %v", v)
 		}
 		for name, mutate := range map[string]func(*specEnvelope){
-			"opponent.hand without glasses": func(e *specEnvelope) { h := []specCard{{13, 3}}; e.State.Opponent.Hand = &h },
-			"you.watched":                   func(e *specEnvelope) { e.State.You.Watched = true },
-			"sevenRevealed for a non-actor": func(e *specEnvelope) { e.State.SevenRevealed = []specCard{{10, 0}} },
-			"deckCount":                     func(e *specEnvelope) { e.State.DeckCount = 2 },
-			"a pending one-off":             func(e *specEnvelope) { e.State.Pending = &specPending{Card: specCard{5, 2}} },
+			"opponent.hand without glasses":  func(e *specEnvelope) { h := []specCard{{13, 3}}; e.State.Opponent.Hand = &h },
+			"you.watched":                    func(e *specEnvelope) { e.State.You.Watched = true },
+			"sevenRevealed for a non-actor":  func(e *specEnvelope) { e.State.SevenRevealed = []specCard{{10, 0}} },
+			"deckCount":                      func(e *specEnvelope) { e.State.DeckCount = 2 },
+			"a pending one-off":              func(e *specEnvelope) { e.State.Pending = &specPending{Card: specCard{5, 2}} },
+			"counterable":                    func(e *specEnvelope) { e.State.Counterable = true },
+			"owedDiscards":                   func(e *specEnvelope) { e.State.OwedDiscards.Opponent = 2 },
+			"a Counter when not counterable": func(e *specEnvelope) { e.LegalMoves = []specMove{{Kind: int(engine.MoveCounter)}} },
 		} {
 			e := env
 			mutate(&e)
@@ -1405,6 +1390,7 @@ func TestW9_SweepCheckCatchesLeaks(t *testing.T) {
 			`{"t":"error","code":"STALE","message":"that move is out of date 10♣"}`,
 			`{"t":"presence","opponentOnline":true,"x":{"Rank":13}}`,
 			`{"t":"responding","by":1,"card":{"Rank":13,"Suit":3}}`,
+			`{"t":"responding","by":1}`,
 			`{"t":"welcome","seat":0,"names":["K♠",null],"status":"playing"}`,
 		} {
 			var f frameIn
