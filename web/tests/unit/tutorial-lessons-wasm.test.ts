@@ -399,7 +399,8 @@ const STEP_LINES: Record<string, { main: string; staged?: string; success?: stri
   '1.5': {
     main: 'Your 9 gets you to 21. Drag it onto your Points row.',
     staged: 'Nothing counts until you confirm. Tap Confirm.',
-    success: '21. You win!',
+    // T12b: "You win!" is the bubble's headline (announced with the copy), so the line doesn't repeat it.
+    success: '21.',
     tapRoute: 'Tap your 9, then your Points row, then Confirm.',
   },
   '2.1': {
@@ -455,7 +456,7 @@ const STEP_LINES: Record<string, { main: string; staged?: string; success?: stri
   '5.4': {
     main: 'A King lowers the points you need to win. With one King you need 14. You have 15.',
     staged: 'Tap Confirm to play your King.',
-    success: 'You need 14, and you have 15. You win!',
+    success: 'You need 14, and you have 15.',
     tapRoute: 'Tap your King, then your Permanents row, then Confirm.',
   },
 };
@@ -556,6 +557,12 @@ describe('copy fits', () => {
     expect(BLAKE_THINKING).toBe("Blake's turn.");
     expect(NEXT_FIRST).toBe('Tap Next first.');
     expect(SNAG_LINE).toBe('This lesson hit a snag.');
+  });
+
+  it('no line says "You win!": the bubble headline says it, once (T12b)', () => {
+    for (const id of [1, 2, 3, 4, 5] as const) {
+      for (const { where, text } of copyLines(lessonOf(id))) expect(text, where).not.toMatch(/you win/i);
+    }
   });
 
   for (const id of [1, 2, 3, 4, 5] as const) {

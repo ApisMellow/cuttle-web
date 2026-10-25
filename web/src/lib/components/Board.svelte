@@ -98,12 +98,42 @@
     const parsed = parseTargetKey(key);
     if (parsed !== null) ontap(parsed);
   }
+
+  // T12b: the score bar is sticky at the top of this scrolling board, so the
+  // board keeps a scroll padding of the bar's height (CSS below). Then
+  // `scrollIntoView({block:'nearest'})` (the tutorial coach, keyboard focus)
+  // stops a card just below the bar instead of under it. The bar's height
+  // follows its content (a long name or the Kings marker can wrap it past
+  // the 44 px token), so it is measured here; without ResizeObserver the
+  // token stands in. Scroll padding changes no layout and no scroll position
+  // by itself.
+  let boardEl = $state<HTMLElement>();
+  let scoreBarHeight = $state<number | null>(null);
+
+  $effect(() => {
+    const bar = boardEl?.querySelector<HTMLElement>(':scope > [data-testid="score-bar"]');
+    if (!bar || typeof ResizeObserver === 'undefined') return;
+    const measure = (): void => {
+      scoreBarHeight = bar.offsetHeight > 0 ? bar.offsetHeight : null;
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    measure();
+    return () => observer.disconnect();
+  });
 </script>
 
 <!-- W25: a pointer convenience only. Every target is its own <button>, so
      keyboard users clear a selection by re-selecting or with Cancel. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="board" data-testid="board" data-inert={inert ? 'true' : 'false'} onclick={blankTap}>
+<div
+  class="board"
+  data-testid="board"
+  data-inert={inert ? 'true' : 'false'}
+  onclick={blankTap}
+  bind:this={boardEl}
+  style:--cu-score-bar-height={scoreBarHeight === null ? undefined : `${scoreBarHeight}px`}
+>
   <ScoreBar
     scoreboard={view.scoreboard}
     opponentName={names[opponentId]}
@@ -183,5 +213,7 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
+    /* T12b: keep scrolled-to cards clear of the sticky score bar (see the script). */
+    scroll-padding-top: var(--cu-score-bar-height, var(--cu-zone-score, 44px));
   }
 </style>

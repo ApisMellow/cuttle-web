@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 // T4 — CoachSpotlight render tests (docs/tutorial-design.md §7.1 layers 1-2).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -122,5 +125,68 @@ describe('CoachSpotlight', () => {
     expect(layer.getAttribute('data-visible')).toBe('true');
     expect(layer.getAttribute('data-ring')).toBe('ochre');
     expect(host.querySelectorAll('mask rect.coach-spotlight__window')).toHaveLength(2);
+  });
+});
+
+// T12b: ring timing. A ring belongs to its target, so a new target gets a new
+// ring (its fade-in and pulse start fresh) and a kept target keeps its ring.
+describe('CoachSpotlight rings (T12b)', () => {
+  interface KeyedProps extends Props {
+    keys?: string[];
+  }
+
+  const rings = (): HTMLElement[] => [...(host?.querySelectorAll<HTMLElement>('[data-coach-hole]') ?? [])];
+
+  function mountKeyed(props: KeyedProps): void {
+    cleanup();
+    host = document.createElement('div');
+    document.body.append(host);
+    instance = mount(CoachSpotlight, { target: host, props });
+    flushSync();
+  }
+
+  it('keys each ring by its target: a changed target is a new ring, a kept target keeps its ring', () => {
+    const props = $state<KeyedProps>({ holes: [hand], keys: ['hand-card-0'], ring: 'iris', visible: true });
+    mountKeyed(props);
+    const handRing = rings()[0];
+    expect(handRing.getAttribute('data-coach-hole')).toBe('hand-card-0');
+
+    // The hand card stays spotlit and the drop zone joins it: same ring for the card.
+    props.holes = [hand, deck];
+    props.keys = ['hand-card-0', 'deck-pile'];
+    flushSync();
+    expect(rings()).toHaveLength(2);
+    expect(rings()[0]).toBe(handRing);
+
+    // A different single target in the same slot: a new ring, not the old one moved.
+    props.holes = [deck];
+    props.keys = ['deck-pile'];
+    flushSync();
+    expect(rings()).toHaveLength(1);
+    expect(rings()[0]).not.toBe(handRing);
+    expect(rings()[0].getAttribute('data-coach-hole')).toBe('deck-pile');
+  });
+
+  it('marks a ring wider than 360 px as wide (opacity-only pulse), a card ring not', () => {
+    const zone: Box = { x: 10, y: 520, width: 373, height: 84 };
+    mountKeyed({ holes: [hand, zone], keys: ['hand-card-0', 'zone-points'], ring: 'iris', visible: true });
+    const [cardRing, zoneRing] = rings();
+    expect(cardRing.hasAttribute('data-wide')).toBe(false);
+    expect(zoneRing.getAttribute('data-wide')).toBe('true');
+  });
+
+  it('delays the pulse by the fade-in, and the wide pulse never scales; reduced motion keeps no animation', () => {
+    const src = readFileSync(join(__dirname, '..', '..', 'src', 'lib', 'components', 'CoachSpotlight.svelte'), 'utf8');
+    const css = src.slice(src.indexOf('<style>'));
+    const ringRule = /\.coach-spotlight__ring\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    // ring-in over --cu-dur-med, then the pulse, delayed by that same --cu-dur-med.
+    expect(ringRule).toMatch(/coach-spotlight-ring-in var\(--cu-dur-med, 200ms\)/);
+    expect(ringRule).toMatch(/coach-spotlight-pulse 1400ms var\(--cu-ease-in-out, ease-in-out\) var\(--cu-dur-med, 200ms\) 3/);
+    const wideRule = /\.coach-spotlight__ring\[data-wide='true'\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(wideRule).toMatch(/coach-spotlight-pulse-flat 1400ms var\(--cu-ease-in-out, ease-in-out\) var\(--cu-dur-med, 200ms\) 3/);
+    const flat = /@keyframes coach-spotlight-pulse-flat\s*\{([\s\S]*?)\n {2}\}/.exec(css)?.[1] ?? '';
+    expect(flat).toContain('opacity');
+    expect(flat).not.toMatch(/transform|scale/);
+    expect(css).toMatch(/\.coach-spotlight\[data-reduced='true'\] \.coach-spotlight__ring\s*\{\s*animation: none;/);
   });
 });

@@ -188,6 +188,8 @@
         animations.push(el.animate(actor.frames, timing));
         const flipper = el.querySelector<HTMLElement>('[data-part="flipper"]');
         if (flipper && actor.flipFrames) animations.push(flipper.animate(actor.flipFrames, timing));
+        const glasses = el.querySelector<HTMLElement>('[data-part="glasses"]');
+        if (glasses && actor.glassesFrames) animations.push(glasses.animate(actor.glassesFrames, timing));
       }
       for (const hold of script.holds) {
         const el = holdTarget(hold.target, cap, root);
@@ -240,6 +242,24 @@
         {#if a.face}
           <span class="flight__side" data-side="face" style:transform={a.back ? 'rotateY(180deg)' : undefined}>
             <theme.Face card={a.face} size={a.size} />
+            {#if a.glassesFrames}
+              <!-- T12b: the glasses face, exactly as PermanentRow draws a glasses
+                   8 (variant glasses, field size, a landscape box). It is laid
+                   out one card-height wide, centred and turned -90deg inside the
+                   upright clone, so the clone's own 90deg turn leaves it level:
+                   the card lands looking like the card that replaces it. -->
+              <span
+                class="flight__glasses"
+                data-part="glasses"
+                style:left="{(a.box.width - a.box.height) / 2}px"
+                style:top="{(a.box.height - a.box.width) / 2}px"
+                style:width="{a.box.height}px"
+                style:height="{a.box.width}px"
+                style:transform="rotate(-90deg)"
+              >
+                <theme.Face card={a.face} size="field" variant="glasses" />
+              </span>
+            {/if}
           </span>
         {/if}
       </div>
@@ -292,6 +312,16 @@
     box-shadow: 0 8px 16px rgb(0 0 0 / 42%);
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+  }
+
+  /* T12b: the glasses face over the plain 8. Its box is set inline (landscape,
+     centred, turned back); hidden until its fade-in starts, and the fade is
+     opacity only. */
+  .flight__glasses {
+    position: absolute;
+    display: block;
+    overflow: hidden;
+    opacity: 0;
   }
 
   /* Reduced motion: the change is still marked, with nothing moving. */

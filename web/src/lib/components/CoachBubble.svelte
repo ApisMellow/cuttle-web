@@ -31,7 +31,7 @@
     placement: BubblePlacement;
     /** Counter; every change shakes the bubble once (design §8.2). */
     shake: number;
-    /** Display-face line above the copy ("You win!"). */
+    /** Display-face line above the copy ("You win!"), announced with it in the one live region. */
     headline?: string;
     /** Present = the lesson hit a snag: Restart lesson and Leave only. */
     error?: { onrestart?: () => void };
@@ -110,19 +110,23 @@
     ></span>
   {/if}
 
-  {#if headline}
-    <p class="coach__headline">{headline}</p>
-  {/if}
-
-  <div class="coach__body">
-    {#if tone === 'success'}
-      <span class="coach__chip" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="16" height="16" focusable="false">
-          <path d="M3.5 8.5 6.6 11.5 12.5 4.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </span>
+  <!-- One polite live region holds the headline and the copy, so a win is
+       announced once, headline first, with its line (design §9; T12b). -->
+  <div class="coach__live" aria-live="polite" tabindex="-1">
+    {#if headline}
+      <p class="coach__headline">{headline}</p>
     {/if}
-    <p class="coach__copy" aria-live="polite" tabindex="-1">{#key text}<span class="coach__line">{text}</span>{/key}</p>
+
+    <div class="coach__body">
+      {#if tone === 'success'}
+        <span class="coach__chip" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" focusable="false">
+            <path d="M3.5 8.5 6.6 11.5 12.5 4.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+      {/if}
+      <p class="coach__copy">{#key text}<span class="coach__line">{text}</span>{/key}</p>
+    </div>
   </div>
 
   <div class="coach__footer">
@@ -244,13 +248,17 @@
     gap: var(--cu-space-2, 8px);
   }
 
+  /* Focus lands here at lesson start for screen readers; no ring for it. */
+  .coach__live {
+    outline: none;
+  }
+
   .coach__copy {
     flex: 1 1 auto;
     min-width: 0;
     margin: 0;
     font-size: var(--cu-text-md, 16px);
     line-height: 1.35;
-    outline: none;
   }
 
   .coach__line {

@@ -11,12 +11,19 @@
   interface CoachSpotlightProps {
     /** Target rects in viewport coordinates, unpadded; at most two. */
     holes: Box[];
+    /**
+     * Each hole's target (its testid), in the same order (T12b). A ring is
+     * keyed by it, so a new target gets a fresh ring (fade-in, then pulse)
+     * and a target that stays spotlit keeps its ring running. Without keys,
+     * rings are keyed by position.
+     */
+    keys?: readonly string[];
     /** iris = play here; ochre = a successful drop (200 ms flash, T9 drives it). */
     ring: 'iris' | 'ochre';
     visible: boolean;
   }
 
-  let { holes, ring, visible }: CoachSpotlightProps = $props();
+  let { holes, keys = [], ring, visible }: CoachSpotlightProps = $props();
 
   const uid = $props.id();
   const maskId = `coach-mask-${uid}`;
@@ -33,8 +40,20 @@
 
   const still = $derived(settings.reducedMotion || osReduces());
 
+  /**
+   * A ring wider than this pulses in opacity only: a 6% scale on a
+   * full-width ring would push its edges off the screen (T12b).
+   */
+  const WIDE_RING_PX = 360;
+
   const padded = $derived(
-    holes.map((h) => ({ x: h.x - pad, y: h.y - pad, width: h.width + pad * 2, height: h.height + pad * 2 })),
+    holes.map((h, i) => ({
+      key: keys[i] ?? `#${i}`,
+      x: h.x - pad,
+      y: h.y - pad,
+      width: h.width + pad * 2,
+      height: h.height + pad * 2,
+    })),
   );
 </script>
 
@@ -50,7 +69,7 @@
     <defs>
       <mask id={maskId}>
         <rect x="0" y="0" width="100%" height="100%" fill="white" />
-        {#each padded as hole, i (i)}
+        {#each padded as hole (hole.key)}
           <rect
             class="coach-spotlight__window"
             x={hole.x}
@@ -67,10 +86,11 @@
     <rect class="coach-spotlight__shade" x="0" y="0" width="100%" height="100%" mask="url(#{maskId})" />
   </svg>
 
-  {#each padded as hole, i (i)}
+  {#each padded as hole (hole.key)}
     <div
       class="coach-spotlight__ring"
-      data-coach-hole=""
+      data-coach-hole={keys.length > 0 ? hole.key : ''}
+      data-wide={hole.width > WIDE_RING_PX ? 'true' : undefined}
       style="left: {hole.x}px; top: {hole.y}px; width: {hole.width}px; height: {hole.height}px"
     ></div>
   {/each}
@@ -119,9 +139,19 @@
     box-sizing: border-box;
     border-radius: var(--cu-radius-well, 10px);
     opacity: 0.9;
+    /* The pulse waits out the fade-in: both animate opacity, and a running
+       pulse would override the fade (T12b). */
     animation:
       coach-spotlight-ring-in var(--cu-dur-med, 200ms) var(--cu-ease-out, ease-out),
-      coach-spotlight-pulse 1400ms var(--cu-ease-in-out, ease-in-out) 3;
+      coach-spotlight-pulse 1400ms var(--cu-ease-in-out, ease-in-out) var(--cu-dur-med, 200ms) 3;
+  }
+
+  /* A full-width ring (a zone, the score bar) pulses in opacity only, so its
+     edges stay on the screen (T12b). */
+  .coach-spotlight__ring[data-wide='true'] {
+    animation:
+      coach-spotlight-ring-in var(--cu-dur-med, 200ms) var(--cu-ease-out, ease-out),
+      coach-spotlight-pulse-flat 1400ms var(--cu-ease-in-out, ease-in-out) var(--cu-dur-med, 200ms) 3;
   }
 
   .coach-spotlight__ring::before,
@@ -170,6 +200,16 @@
     }
     50% {
       transform: scale(1.06);
+      opacity: 0.55;
+    }
+  }
+
+  @keyframes coach-spotlight-pulse-flat {
+    0%,
+    100% {
+      opacity: 0.9;
+    }
+    50% {
       opacity: 0.55;
     }
   }

@@ -67,7 +67,7 @@ export interface Reading {
   /** The counter prompt's own text (heading and played lines), when it is up. */
   promptText: { id: string; box: Box }[];
   scroll: { id: string; scrollWidth: number; clientWidth: number }[];
-  /** Each spotlit target (`data-coach-targets`) and whether a hit-test at its centre lands inside it. */
+  /** Each spotlit target (`data-coach-targets`) and whether a hit-test at its centre or near an edge lands inside it. */
   targets: { id: string; ok: boolean; hit: string }[];
   sizes: { id: string; width: number; height: number }[];
   /** False when the geometry never stopped changing. */
@@ -78,6 +78,11 @@ export interface Reading {
 export async function settled(page: Page): Promise<Reading> {
   return page.evaluate(async (testids) => {
     const box = (r: DOMRect): Box => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+    // The bubble and hole boxes are LAYOUT boxes (offsetLeft/offsetTop), so a
+    // running transform (the bubble's shake or entry, a ring's pulse) never
+    // reads as a move. They are viewport boxes only because the bubble and the
+    // spotlight are `position: fixed` at inset 0; if either stops being fixed
+    // there, switch these to getBoundingClientRect.
     const layout = (el: HTMLElement): Box => ({ x: el.offsetLeft, y: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight });
     const byId = (id: string) => Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${id}"]`));
 
@@ -391,11 +396,11 @@ export async function stageWrong(page: Page, setup: WrongSetup, via: 'click' | '
     return;
   }
   await press(handCard(page, setup.source));
-  // The wrong target is, by definition, not spotlit, and the bubble may sit
-  // over unspotlit board (design §7.3), so it is activated the way a key press
-  // would, not by a pointer hit-test.
-  if (typeof setup.target === 'string') await page.getByTestId(setup.target).dispatchEvent('click');
-  else if (setup.target) await opponentPoint(page, setup.target).dispatchEvent('click');
+  // A real tap: the wrong target is not spotlit, but it is lit (a legal place
+  // for the selected card), and at `selected` the bubble keeps clear of every
+  // lit target (T12b), so nothing covers it.
+  if (typeof setup.target === 'string') await press(page.getByTestId(setup.target));
+  else if (setup.target) await press(opponentPoint(page, setup.target));
 }
 
 /** The learner closes the card popover opened by step 5.3. */
@@ -480,7 +485,12 @@ export async function readProgress(page: Page): Promise<number[] | null> {
   return [...parsed.done].sort((a, b) => a - b);
 }
 
-/** Seeds `cuttle-web:settings` before the page loads (and only if nothing is there yet). */
+/**
+ * Seeds `cuttle-web:settings` before the page loads (and only if nothing is
+ * there yet). The init script runs on EVERY navigation and reload, so once
+ * the key is missing it is written again: don't rely on it across a reload
+ * when a test checks that the key was deleted.
+ */
 export async function seedSettings(page: Page, value: Record<string, unknown>): Promise<string> {
   const raw = JSON.stringify(value);
   await page.addInitScript(

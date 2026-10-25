@@ -106,10 +106,24 @@ describe('CoachBubble', () => {
 
   it('puts the copy in a polite live region that can take programmatic focus', () => {
     const el = render(baseProps());
-    const copy = el.querySelector('p[aria-live]');
-    expect(copy?.getAttribute('aria-live')).toBe('polite');
-    expect(copy?.getAttribute('tabindex')).toBe('-1');
-    expect(copy?.textContent).toBe('Your 9 gets you to 21. Drag it onto your Points row.');
+    const live = el.querySelectorAll('[aria-live]');
+    expect(live).toHaveLength(1);
+    expect(live[0].getAttribute('aria-live')).toBe('polite');
+    expect(live[0].getAttribute('tabindex')).toBe('-1');
+    expect(live[0].textContent?.trim()).toBe('Your 9 gets you to 21. Drag it onto your Points row.');
+    expect(live[0].querySelector('.coach__copy')?.textContent).toBe('Your 9 gets you to 21. Drag it onto your Points row.');
+  });
+
+  it('announces the headline with the copy: both sit in the one live region, the headline first (T12b)', () => {
+    const el = render(baseProps({ tone: 'success', headline: 'You win!', text: '21.' }));
+    const live = el.querySelectorAll('[aria-live]');
+    expect(live).toHaveLength(1);
+    const headline = el.querySelector('.coach__headline');
+    expect(headline).not.toBeNull();
+    expect(live[0].contains(headline)).toBe(true);
+    expect(live[0].textContent?.trim()).toMatch(/^You win!\s*21\.$/);
+    // The headline appears in the bubble exactly once.
+    expect(el.textContent?.match(/You win!/g)).toHaveLength(1);
   });
 
   it('positions itself from the placement and aims the notch', () => {
@@ -193,7 +207,7 @@ describe('CoachBubble', () => {
     expect(byId(host, 'coach-bubble')).toBe(bubble);
     expect(bubble?.getAttribute('data-tone')).toBe('nudge');
     expect(bubble?.getAttribute('data-stage')).toBe('staged-wrong');
-    expect(host.querySelector('p[aria-live]')?.textContent).toBe('Not quite. Tap Cancel to try again.');
+    expect(host.querySelector('[aria-live] .coach__copy')?.textContent).toBe('Not quite. Tap Cancel to try again.');
   });
 
   describe('shake', () => {
