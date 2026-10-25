@@ -5,7 +5,9 @@
 // table, the viewer's own selected or staged card, and the popover for the
 // viewer's own dimmed card. Never on a back (the opponent's hidden hand, the
 // deck), never on the opponent's hand even when glasses turn it face up
-// (labels are for the table and your own choices), and never behind the
+// (labels are for the table and your own choices; on the passive board nothing
+// is labelled until the viewer taps the exposed hand to inspect it, #94), and
+// never behind the
 // curtain: at handoff, reveal, recap and both kinds of ack there is no
 // label, and nothing the previous player selected or staged carries over.
 //
@@ -209,6 +211,25 @@ describe('Card labels privacy: only face-up cards the viewer can see', () => {
     expectLabelsOnlyWhereAllowed(el);
     expect(el.textContent).not.toContain('Draw Two');
     expect(el.textContent).not.toContain('Royal Wipe');
+    expect(q(el, 'opp-hand-sheet')).toBeNull();
+  });
+
+  it('#94: with glasses, tapping opp-hand-inspect lists exactly those cards; the hidden hand has no inspect', async () => {
+    const hidden = await start();
+    expect(q(hidden, 'opp-hand-inspect')).toBeNull();
+    expect(q(hidden, 'opp-hand')?.querySelector('button, [role="button"]')).toBeNull();
+    cleanup();
+
+    const el = await start(p0View({}, [...BLAKE_HAND]));
+    await click(el, 'opp-hand-inspect');
+    const sheet = q(el, 'opp-hand-sheet')!;
+    const names = [...sheet.querySelectorAll('[data-opp-sheet="name"]')].map((n) => n.textContent);
+    expect(names).toEqual(['Draw Two', 'Royal Wipe']);
+    expect(sheet.querySelectorAll('[data-opp-sheet="effect"]')).toHaveLength(2);
+    // Informational only: nothing staged.
+    expect(q(el, 'staging-bar')).toBeNull();
+    await click(el, 'opp-hand-sheet-close');
+    expect(q(el, 'opp-hand-sheet')).toBeNull();
   });
 
   for (const faceUp of [false, true]) {
