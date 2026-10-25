@@ -701,9 +701,8 @@ export async function touchMove(page: Page, finger: Finger, step: MoveStep): Pro
   const source = locateSpot(page, step.source);
   if (step.source.kind === 'hand') {
     expect(await hookHasMove(page, step.expect.kind, await handIndexOf(source))).toBe(true);
+    // Issue #51: the drop applies at once; walkLesson waits for what follows.
     await dragCardTo(page, finger, source, locateSpot(page, step.target));
-    await waitStage(page, 'staged-right');
-    await page.getByTestId('staging-confirm').tap();
   } else if (step.source.kind === 'testid' && step.source.id === 'deck-pile') {
     await source.tap(); // stages the draw
     await waitStage(page, 'staged-right');

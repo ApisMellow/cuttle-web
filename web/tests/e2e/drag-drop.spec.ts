@@ -94,9 +94,9 @@ async function touch(page: Page): Promise<Touch> {
 test.describe('touch, 393x852', () => {
   test.use({ viewport: { width: 393, height: 852 }, hasTouch: true, isMobile: true });
 
-  test('drag a card to the points zone, then Confirm; nothing of the drag reaches the curtain', async ({ page }) => {
+  test('drag a card to the points zone: it applies at once; nothing of the drag reaches the curtain', async ({ page }) => {
     await startGolden(page);
-    const { handIndex, text } = await twoForPoints(page);
+    const { handIndex } = await twoForPoints(page);
     const card = page.getByTestId(`hand-card-${handIndex}`);
     const finger = await touch(page);
 
@@ -111,13 +111,10 @@ test.describe('touch, 393x852', () => {
     await finger.move(target);
     await finger.end();
 
-    // The drop only stages (R12).
-    await expect(page.getByTestId('staging-bar')).toContainText(text);
-    await expect(card).toHaveAttribute('data-dragging', 'false');
-    expect(await hook(page, (h) => h.seq())).toBe(0);
-
-    await page.getByTestId('staging-confirm').tap();
+    // Issue #51: the drop applies at once; no staging bar, no Confirm.
     await expect(page.getByTestId('curtain-gate')).toBeVisible();
+    expect(await hook(page, (h) => h.seq())).toBe(1);
+    await expect(page.getByTestId('staging-bar')).toHaveCount(0);
     await expect(page.getByTestId('curtain-gate')).toContainText('Blake');
     expect(await hook(page, (h) => h.seq())).toBe(1);
     await expect(page.getByTestId('board')).toHaveCount(0);
@@ -176,13 +173,13 @@ test.describe('touch, 393x852', () => {
   });
 });
 
-test('short 393x660 view: a drag does not scroll the board, and still stages', async ({ browser }) => {
+test('short 393x660 view: a drag does not scroll the board, and still applies', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 393, height: 660 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   try {
     await startGolden(page);
-    const { handIndex, text } = await twoForPoints(page);
-    const board = page.getByTestId('board');
+    const { handIndex } = await twoForPoints(page);
+    const board =page.getByTestId('board');
     const before = await board.evaluate((el) => el.scrollTop);
     const finger = await touch(page);
 
@@ -191,16 +188,16 @@ test('short 393x660 view: a drag does not scroll the board, and still stages', a
     expect(await board.evaluate((el) => el.scrollTop)).toBe(before);
     await finger.end();
 
-    await expect(page.getByTestId('staging-bar')).toContainText(text);
-    expect(await board.evaluate((el) => el.scrollTop)).toBe(before);
+    await expect(page.getByTestId('curtain-gate')).toBeVisible();
+    expect(await hook(page, (h) => h.seq())).toBe(1);
   } finally {
     await context.close();
   }
 });
 
-test('mouse: press, drag and release on the points zone stages the move', async ({ page }) => {
+test('mouse: press, drag and release on the points zone applies the move', async ({ page }) => {
   await startGolden(page);
-  const { handIndex, text } = await twoForPoints(page);
+  const { handIndex } = await twoForPoints(page);
   const grip = await cardGrip(page, `hand-card-${handIndex}`);
   const target = await centre(page, 'zone-points');
   await page.mouse.move(grip.x, grip.y);
@@ -208,10 +205,8 @@ test('mouse: press, drag and release on the points zone stages the move', async 
   await page.mouse.move(target.x, target.y, { steps: 10 });
   await expect(page.getByTestId(`hand-card-${handIndex}`)).toHaveAttribute('data-dragging', 'true');
   await page.mouse.up();
-  await expect(page.getByTestId('staging-bar')).toContainText(text);
-  await expect(page.getByTestId(`hand-card-${handIndex}`)).toHaveAttribute('data-staged', 'true');
-  await expect(page.getByTestId(`hand-card-${handIndex}`)).toHaveAttribute('data-dragging', 'false');
-  expect(await hook(page, (h) => h.seq())).toBe(0);
+  await expect(page.getByTestId('curtain-gate')).toBeVisible();
+  expect(await hook(page, (h) => h.seq())).toBe(1);
 });
 
 test('reduced motion: the snap back has no animation', async ({ page }) => {

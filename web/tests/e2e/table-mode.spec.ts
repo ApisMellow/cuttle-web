@@ -1,7 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { plainMoveText } from '../../src/lib/recap';
-
 // Issue #37 (SPEC §5.10): table mode. The phone lies flat between the
 // players: player 1 (Alice, seat 0) at its bottom edge, player 2 (Blake,
 // seat 1) at its top edge. Player 2's screens are turned 180°, so their side
@@ -142,7 +140,7 @@ test.describe('table mode, touch, 393x852', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 
-  test('a drag by player 2 in the turned view follows the finger and stages the right zone; then player 1 is upright at the bottom', async ({ page }) => {
+  test('a drag by player 2 in the turned view follows the finger and applies the right zone; then player 1 is upright at the bottom', async ({ page }) => {
     await startBlakeFirst(page);
     await passGate(page);
     const moves = await hook(page, (h) => h.moves());
@@ -172,10 +170,9 @@ test.describe('table mode, touch, 393x852', () => {
 
     await finger.move(to);
     await finger.end();
-    await expect(page.getByTestId('staging-bar')).toContainText(plainMoveText(play.description));
-    expect(await hook(page, (h) => h.seq())).toBe(0);
-
-    await page.getByTestId('staging-confirm').tap();
+    // Issue #51: the drop applies the move for the zone under the finger.
+    await expect(page.getByTestId('staging-bar')).toHaveCount(0);
+    expect(await hook(page, (h) => h.seq())).toBe(1);
     // Alice's handoff faces Alice: upright, and the board is gone.
     await expect(page.getByTestId('curtain-gate')).toContainText('Alice');
     await expect(page.getByTestId('game-screen')).toHaveAttribute('data-table-rotated', 'false');
