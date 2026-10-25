@@ -3,7 +3,7 @@ module github.com/ApisMellow/cuttle-web
 go 1.25.2
 
 require (
-	github.com/ApisMellow/cuttle v0.2.1
+	github.com/ApisMellow/cuttle v0.3.0
 	github.com/coder/websocket v1.8.15
 	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.59.0
