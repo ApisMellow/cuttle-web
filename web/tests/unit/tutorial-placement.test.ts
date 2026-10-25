@@ -233,3 +233,43 @@ describe('placeBubble', () => {
     expectClear(short);
   });
 });
+
+// T14 judge M2: during a success or Blake beat the cards in flight are `soft`
+// boxes. The bubble keeps clear of all of them when there is room; when there
+// isn't, the last (least important) is dropped first, then the next, and the
+// hard `avoid` boxes and holes are never given up.
+describe('placeBubble: soft boxes (the cards in flight)', () => {
+  const hit = { x: 14, y: 175, width: 60, height: 70 }; // the scuttled point card
+  const scrap = { x: 323, y: 340, width: 60, height: 84 };
+  const source = { x: 70, y: 705, width: 60, height: 78 }; // where the card left the hand
+
+  it('keeps clear of every soft box when there is room', () => {
+    const i = input({ avoid: [{ x: 10, y: 48, width: 373, height: 42 }], soft: [hit, scrap, source] });
+    const p = placeBubble(i);
+    for (const b of [...i.avoid, hit, scrap, source]) expect(intersects(boxOf(p, i), b), JSON.stringify(b)).toBe(false);
+    // Without the soft boxes it would have docked right over the hit.
+    const plain = placeBubble({ ...i, soft: [] });
+    expect(intersects(boxOf(plain, i), hit)).toBe(true);
+  });
+
+  it('drops the soft boxes from the end until a spot is clear, never the first ones first', () => {
+    // A band so tight that only dropping the last soft box leaves room.
+    const blocker = { x: 0, y: 260, width: 393, height: 80 };
+    // The second soft box fills everything below the blocker: only dropping it leaves room.
+    const tight = input({ avoid: [blocker], soft: [hit, { x: 0, y: 345, width: 393, height: 447 }] });
+    const p = placeBubble(tight);
+    expect(intersects(boxOf(p, tight), blocker)).toBe(false);
+    expect(intersects(boxOf(p, tight), hit), 'the first soft box is kept').toBe(false);
+  });
+
+  it('never trades a hard box for a soft one: with no room at all it docks as before', () => {
+    const wall = { x: 0, y: 44, width: 393, height: 748 };
+    const i = input({ avoid: [], soft: [wall] });
+    expect(placeBubble(i)).toEqual(placeBubble(input({ avoid: [] })));
+  });
+
+  it('soft boxes are ignored by a candidate that already clears them (below a hole)', () => {
+    const i = input({ holes: [{ x: 160, y: 380, width: 60, height: 84 }], soft: [scrap] });
+    expect(placeBubble(i)).toEqual(placeBubble(input({ holes: i.holes })));
+  });
+});

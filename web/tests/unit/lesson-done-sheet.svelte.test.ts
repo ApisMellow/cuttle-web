@@ -109,3 +109,28 @@ describe('LessonDoneSheet', () => {
     expect(el.querySelector('.done__sr')?.textContent).toBe('2 of 5 lessons done');
   });
 });
+
+// T14 judge nice-to-have 1: the finale fills the five pips in sequence.
+describe('LessonDoneSheet: the finale pips', () => {
+  it('on the final sheet the pips carry the finale and their order (--i 0..4); other sheets do not', () => {
+    const el = render({ lesson: 5, doneLine: line, done: [1, 2, 3, 4, 5], final: true });
+    const pips = el.querySelector<HTMLElement>('.done__pips')!;
+    expect(pips.getAttribute('data-finale')).toBe('true');
+    const order = [...el.querySelectorAll<HTMLElement>('.done__pip')].map((p) => p.style.getPropertyValue('--i'));
+    expect(order).toEqual(['0', '1', '2', '3', '4']);
+    const plain = render({ lesson: 2, doneLine: line, done: [1, 2], final: false });
+    expect(plain.querySelector('.done__pips')?.hasAttribute('data-finale')).toBe(false);
+  });
+
+  it('animates transform and opacity only, staggered 90 ms, and stops under reduced motion', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(__dirname, '..', '..', 'src', 'lib', 'components', 'LessonDoneSheet.svelte'), 'utf8');
+    const frames = /@keyframes done-pip-fill\s*\{([\s\S]*?)\n {2}\}/.exec(src)?.[1] ?? '';
+    expect(frames).not.toBe('');
+    const props = [...frames.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
+    expect(new Set(props)).toEqual(new Set(['opacity', 'transform']));
+    expect(src).toContain('var(--i) * 90ms');
+    expect(src).toMatch(/\.done\[data-reduced='true'\] \.done__pips\[data-finale='true'\] \.done__pip::after\s*\{\s*animation: none;/);
+  });
+});

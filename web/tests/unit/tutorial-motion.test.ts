@@ -3,10 +3,13 @@
 // and the ghost-demo keyframes (docs/tutorial-design.md §8.2, §8.3).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { MoveKind } from '../../src/lib/enums';
 import {
   dragDemoFrames,
   dragRingFrames,
+  flightBoxes,
   motionOn,
+  type FlightCapture,
   readMotionTokens,
   tapDemoFrames,
 } from '../../src/lib/tutorial/motion';
@@ -300,5 +303,51 @@ describe('tapDemoFrames (design §8.3 tap timeline)', () => {
 
   it('the dot stays down in place: no translate', () => {
     for (const f of tapDemoFrames(2).dot) expect(String(f.transform)).not.toMatch(/translate\(\s*[1-9]/);
+  });
+});
+
+// T14 judge M2: what the coach bubble keeps clear of while a move flies.
+describe('flightBoxes', () => {
+  const box = (x: number, y: number) => ({ x, y, width: 60, height: 78 });
+  const base = (over: Partial<FlightCapture>): FlightCapture => ({
+    kind: MoveKind.Scuttle,
+    rects: {},
+    cards: {},
+    plan: 'scuttle',
+    landing: 'scuttle',
+    by: 0,
+    mine: true,
+    glasses: false,
+    sideways: false,
+    row: null,
+    ...over,
+  });
+
+  it('a scuttle: the hit card, then the scrap, then where the attacker started (most important first)', () => {
+    const cap = base({ rects: { source: box(70, 705), target: box(14, 175), scrap: box(323, 340), oneoff: box(84, 340), oppHand: box(10, 48) } });
+    expect(flightBoxes(cap, null)).toEqual([box(14, 175), box(323, 340), box(70, 705)]);
+  });
+
+  it("an Ace one-off: every swept point card, the one-off spot, the scrap, then the hand", () => {
+    const cap = base({
+      kind: MoveKind.OneOff,
+      plan: 'oneOff',
+      landing: 'oneOff',
+      rects: {
+        source: box(70, 705),
+        scrap: box(323, 340),
+        oneoff: box(84, 340),
+        'sweep:point-1-0': box(14, 175),
+        'sweep:point-1-1': box(78, 175),
+        'sweep:point-0-0': box(14, 525),
+      },
+    });
+    expect(flightBoxes(cap, null)).toEqual([box(14, 175), box(78, 175), box(14, 525), box(84, 340), box(323, 340), box(70, 705)]);
+  });
+
+  it('a card to a row: where it lands comes before where it started; the landing is copied field by field', () => {
+    const cap = base({ kind: MoveKind.PlayPoint, plan: 'toRow', landing: 'toRow', row: 'point', rects: { source: box(70, 705) } });
+    const landing = { x: 80, y: 530, width: 60, height: 78, top: 530 } as unknown as DOMRect;
+    expect(flightBoxes(cap, landing)).toEqual([box(80, 530), box(70, 705)]);
   });
 });

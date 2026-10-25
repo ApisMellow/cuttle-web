@@ -24,8 +24,9 @@ import GameScreen from '../../src/lib/components/GameScreen.svelte';
 import { MoveKind } from '../../src/lib/enums';
 import { session } from '../../src/lib/stores/session.svelte';
 import { settings } from '../../src/lib/stores/settings.svelte';
-import type { CoachClock, CoachFrames } from '../../src/lib/tutorial/coach.svelte';
-import { BLAKE_THINK_MS, SUCCESS_BEAT_MS, TutorialTable } from '../../src/lib/tutorial/table.svelte';
+import { DEMO_ENTRY_MS, type CoachClock, type CoachFrames } from '../../src/lib/tutorial/coach.svelte';
+import { COUNTER_ONEOFF_MS } from '../../src/lib/tutorial/motion';
+import { BLAKE_DONE_BEAT_MS, BLAKE_THINK_MS, SUCCESS_BEAT_MS, TutorialTable } from '../../src/lib/tutorial/table.svelte';
 import { TutorialStore } from '../../src/lib/tutorial/tutorial.svelte';
 import type { LessonId } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
@@ -119,14 +120,19 @@ async function settle(): Promise<void> {
   flushSync();
 }
 
-async function startLesson(id: LessonId, stepId: string | null = null, pick = 0): Promise<TutorialTable> {
+async function startLesson(
+  id: LessonId,
+  stepId: string | null = null,
+  pick = 0,
+  coach: { clock?: CoachClock; frames?: CoachFrames } = {},
+): Promise<TutorialTable> {
   store.start(id);
   const table = store.table!;
   if (stepId !== null) walkTo(table, stepId, { pick });
   host = document.createElement('div');
   document.body.append(host);
   screen = mount(GameScreen, { target: host, props: { source: table } });
-  overlay = mount(CoachOverlay, { target: host, props: { table, store, clock: idleClock, frames: idleFrames } });
+  overlay = mount(CoachOverlay, { target: host, props: { table, store, clock: coach.clock ?? idleClock, frames: coach.frames ?? idleFrames } });
   await settle();
   return table;
 }
@@ -241,7 +247,7 @@ describe('flights (design §8.4)', () => {
     expect(calls.some((a) => a.el.hasAttribute('data-flash'))).toBe(false);
 
     // 2.2: Alice draws, then Blake draws a card she can't see.
-    await advance(1200);
+    await advance(BLAKE_DONE_BEAT_MS);
     expect(table.step?.id).toBe('2.2');
     await playMove(table);
     const mine = clones().filter((x) => x.actor === 'mover').at(-1)!;
@@ -321,7 +327,7 @@ describe('the lesson-1 deal (design §8.5)', () => {
   it('a tap on the coach\'s own controls or the menu button does not skip the deal (T9\'s exclusion)', async () => {
     await startLesson(1);
     const dealAnims = [...calls];
-    for (const id of ['coach-show-me', 'menu-button']) {
+    for (const id of ['coach-next', 'coach-leave', 'menu-button']) {
       q(`[data-testid="${id}"]`)!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     }
     await settle();
@@ -520,5 +526,133 @@ describe('motion pieces are decoration only', () => {
     } finally {
       process.off('unhandledRejection', onRejection);
     }
+  });
+});
+
+// T14 judge nice-to-have 2: as glasses go down (5.1) and Blake's hand turns
+// face up, his hand gets a brief iris ring, from the moment the 8 lands. Reduced
+// motion keeps the FlightLayer's static ring there (ringTargets: 'oppHand').
+describe('the glasses ring (5.1)', () => {
+  it('flashes an iris ring around his hand as it flips, transform and opacity only; other moves do not', async () => {
+    const table = await startLesson(5);
+    calls = [];
+    await playMove(table); // 5.1: the 8 of clubs as glasses
+    const oppHand = q('[data-testid="opp-hand"]')!.getBoundingClientRect();
+    const rings = calls.filter((a) => a.el.getAttribute('data-flash-tone') === 'iris');
+    expect(rings).toHaveLength(1);
+    const ring = rings[0];
+    expect((ring.el as HTMLElement).style.left).toBe(`${oppHand.x - 6}px`);
+    expect((ring.el as HTMLElement).style.top).toBe(`${oppHand.y - 6}px`);
+    expect(ring.options.delay).toBe(420); // as the 8 lands and his cards start to turn
+    expect(Number(ring.options.duration)).toBeGreaterThanOrEqual(600);
+    for (const f of ring.frames) for (const k of Object.keys(f)) expect(['offset', 'easing', 'opacity', 'transform']).toContain(k);
+    // The ochre landing flash is still there for the 8 itself.
+    expect(calls.some((a) => a.el.getAttribute('data-flash-tone') === 'ochre')).toBe(true);
+
+    // A plain points play draws no iris ring.
+    cleanup();
+    const t2 = await startLesson(2);
+    calls = [];
+    await playMove(t2);
+    expect(calls.some((a) => a.el.getAttribute('data-flash-tone') === 'iris')).toBe(false);
+  });
+
+  it('reduced motion: no flash animation at all (the flight layer draws its static ring on his hand)', async () => {
+    settings.reducedMotion = true;
+    const table = await startLesson(5);
+    calls = [];
+    await playMove(table);
+    expect(calls.some((a) => a.el.hasAttribute('data-flash'))).toBe(false);
+    expect(qa('.flight-layer [data-part="ring"]').length).toBeGreaterThanOrEqual(2); // the 8's landing and his hand
+  });
+});
+
+// T14 judge nice-to-have 3: Blake's 4 (4.1 -> 4.2) opens the counter window,
+// so the board unmounts under the prompt. His card flies to the prompt's own
+// thumbnail of it, not into the empty space where the one-off spot was, and
+// the step's first demo waits until it has landed.
+describe('the counter window flight (4.2)', () => {
+  it("Blake's 4 ends on the prompt's thumbnail of it", async () => {
+    const table = await startLesson(4);
+    await playMove(table); // 4.1: the Ace
+    await advance(SUCCESS_BEAT_MS);
+    calls = [];
+    await advance(BLAKE_THINK_MS); // he plays the 4; the window opens
+    expect(table.step?.id).toBe('4.2');
+    expect(q('[data-testid="board"]')).toBeNull();
+    const thumb = q('[data-testid="counter-prompt"] .counter-prompt__line:last-child .counter-prompt__face')!.getBoundingClientRect();
+    const flight = calls.find((a) => a.el.getAttribute('data-actor') === 'mover');
+    expect(flight, 'his card flies').toBeDefined();
+    const el = flight!.el as HTMLElement;
+    const box = { x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: parseFloat(el.style.width), h: parseFloat(el.style.height) };
+    const last = String(flight!.frames[flight!.frames.length - 1].transform);
+    const [dx, dy] = [...last.matchAll(/(-?[\d.]+)px/g)].slice(0, 2).map((m) => Number(m[1]));
+    expect(box.x + box.w / 2 + dx).toBeCloseTo(thumb.x + thumb.width / 2, 1);
+    expect(box.y + box.h / 2 + dy).toBeCloseTo(thumb.y + thumb.height / 2, 1);
+    expect(flight!.frames[flight!.frames.length - 1].opacity).toBe(0);
+  });
+});
+
+// T14 review N1, N4: the overlay's entry hold for the counter window's demo.
+describe('the 4.2 entry hold, from the overlay', () => {
+  /** The coach's own clock and frames, run by hand (the table's beats stay on vi's timers). */
+  function coachTime() {
+    let now = 0;
+    let id = 0;
+    const timers = new Map<number, { at: number; fn: () => void }>();
+    const queue: (() => void)[] = [];
+    const clock: CoachClock = {
+      set: (fn, ms) => (timers.set(++id, { at: now + ms, fn }), id),
+      clear: (h) => void timers.delete(h),
+    };
+    const frames: CoachFrames = { request: (fn) => (queue.push(fn), ++id), cancel: () => {} };
+    return {
+      clock,
+      frames,
+      async tick(ms: number) {
+        now += ms;
+        for (const [k, t] of [...timers].sort((a, b) => a[1].at - b[1].at)) {
+          if (t.at > now) continue;
+          timers.delete(k);
+          t.fn();
+        }
+        await settle();
+        while (queue.length) queue.shift()!();
+        await settle();
+      },
+    };
+  }
+  const played = (name: string) => calls.filter((a) => a.el.getAttribute('data-part') === name);
+
+  it("N1: the tap demo waits for Blake's 4 to land in the prompt (COUNTER_ONEOFF_MS + 250), not the usual 250 ms", async () => {
+    const t = coachTime();
+    const table = await startLesson(4, null, 0, t);
+    await playMove(table);
+    await advance(SUCCESS_BEAT_MS);
+    await advance(BLAKE_THINK_MS);
+    expect(table.step?.id).toBe('4.2');
+    calls = [];
+    await t.tick(0);
+    expect(played('tap-dot'), 'no demo while his card lands').toEqual([]);
+    await t.tick(DEMO_ENTRY_MS);
+    expect(played('tap-dot'), 'not at the usual entry time').toEqual([]);
+    await t.tick(COUNTER_ONEOFF_MS + 250 - DEMO_ENTRY_MS);
+    expect(played('tap-dot').length).toBeGreaterThan(0);
+  });
+
+  it('N4: a restart from 4.2 does not carry the hold back to 4.1 (its drag demo shows at once)', async () => {
+    const t = coachTime();
+    const table = await startLesson(4, null, 0, t);
+    await playMove(table);
+    await advance(SUCCESS_BEAT_MS);
+    await advance(BLAKE_THINK_MS);
+    expect(table.step?.id).toBe('4.2');
+    await t.tick(0);
+    table.restart();
+    await settle();
+    expect(table.step?.id).toBe('4.1');
+    calls = [];
+    await t.tick(0);
+    expect(played('dot').length, "4.1's drag demo plays on entry, unheld").toBeGreaterThan(0);
   });
 });

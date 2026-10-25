@@ -17,6 +17,7 @@ import { testIdForKey } from '../../src/lib/dragDrop';
 import { MoveKind } from '../../src/lib/enums';
 import { LESSONS, SNAG_LINE } from '../../src/lib/tutorial/lessons';
 import { TUTORIAL_KEY } from '../../src/lib/tutorial/progress';
+import { BLAKE_THINK_MS, SUCCESS_BEAT_MS } from '../../src/lib/tutorial/table.svelte';
 import type { LessonId } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
 import { expectedIndex, walkTo } from './tutorial-driver';
@@ -248,7 +249,7 @@ describe('routing (design §6.4)', () => {
     const i = expectedIndex(table);
     await stage(table.envelope!, i);
     await click('staging-confirm');
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
     await settle();
     expect(q('coach-lesson-done')!.textContent).toContain("You've learned Cuttle");
     await click('coach-play');
@@ -386,7 +387,7 @@ describe('Leave works on its first tap during a beat (review B1)', () => {
       await click('staging-confirm');
       expect(table.phase).toBe('success');
       if (beat === 'narration') {
-        vi.advanceTimersByTime(1200 + 700);
+        vi.advanceTimersByTime(SUCCESS_BEAT_MS + BLAKE_THINK_MS);
         await settle();
         expect(q('coach-bubble')!.querySelector('[aria-live]')!.textContent).toContain('Blake played a 6');
       }

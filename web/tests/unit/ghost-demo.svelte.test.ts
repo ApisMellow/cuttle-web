@@ -266,6 +266,20 @@ describe('GhostDemo, motion on', () => {
     expect(second.filter((c) => c.part === 'tap-dot')).toHaveLength(1);
   });
 
+  it('T14: on a wide labelled button (4.2\u2019s counter option) the tap lands near its right end, off the label', () => {
+    // "Counter with 2 of hearts: stop their card." is centred in a 358 x 44 pill.
+    const option: Box = { x: 16, y: 500, width: 358, height: 44 };
+    render(base({ demo: { kind: 'tap', at: [option] } }));
+    const dot = part('tap-dot')[0].el;
+    const ripple = part('tap-ripple')[0].el;
+    expect(dot.style.left).toBe(`${16 + 358 - 28}px`);
+    expect(dot.style.top).toBe('522px');
+    expect(ripple.style.left).toBe(dot.style.left);
+    // A card-shaped target (the deck) is still tapped in its centre.
+    render(base({ demo: { kind: 'tap', at: [deck] } }));
+    expect(part('tap-dot').at(-1)!.el.style.left).toBe('198px');
+  });
+
   it('taps in two different places play one after the other', () => {
     render(base({ demo: { kind: 'tap', at: [deck, confirm] } }));
     expect(part('tap-dot')).toHaveLength(2);
@@ -329,9 +343,20 @@ describe('GhostDemo, motion off (reduced-motion markers)', () => {
     el = render(base({ motion: false, confirmBox: confirm }));
     const markers = [...el.querySelectorAll<HTMLElement>('[data-part="marker"]')];
     expect(markers.map((m) => m.textContent?.trim())).toEqual(['1', '2', '3']);
-    // The top-right corner of the Confirm box, so the "3" never covers its label.
-    expect(markers[2].style.left).toBe('360px');
-    expect(markers[2].style.top).toBe('796px');
+    // Above the Confirm box's top-right corner, inside its right edge, so the
+    // "3" (28 px round) never reaches its label (T14: it covered the "m").
+    expect(markers[2].style.left).toBe('356px');
+    expect(markers[2].style.top).toBe('780px');
+    const bottom = 780 + 14;
+    expect(bottom, 'the marker ends above the label line').toBeLessThanOrEqual(confirm.y + 4);
+  });
+
+  it('T14: with motion off the tap marker on a wide button sits near its right end too', () => {
+    const option: Box = { x: 16, y: 500, width: 358, height: 44 };
+    const el = render(base({ motion: false, demo: { kind: 'tap', at: [option] } }));
+    const marker = el.querySelector<HTMLElement>('[data-part="marker"]')!;
+    expect(marker.style.left).toBe(`${16 + 358 - 28}px`);
+    expect(marker.style.top).toBe('522px');
   });
 
   it('numbers tap markers in order, and keeps two taps at one spot apart', () => {

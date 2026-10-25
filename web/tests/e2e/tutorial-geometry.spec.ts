@@ -1,15 +1,20 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import {
+  BEAT_MS,
   VIEWPORTS,
   bubble,
   cancel,
   closePopover,
+  dragCardTo,
   geometryProblems,
   handRank,
+  locateSpot,
+  newFinger,
   openLesson,
   openLessons,
   playExpected,
+  playThrough,
   reach,
   settled,
   shot,
@@ -23,6 +28,7 @@ import {
   confirm,
   type Reading,
 } from './helpers/tutorial';
+import type { MoveStep } from '../../src/lib/tutorial/types';
 
 // Learn to play, plan T12 (R25.7, criterion L2): design §7.3 holds at all three
 // phone viewports for every step. For each step of each lesson and each stage
@@ -157,6 +163,100 @@ for (const viewport of VIEWPORTS) {
 }
 
 // ---------------------------------------------------------------------------
+// T14 judge, M1: after a real DRAG the staged card eases back into the hand
+// (HandCard's `translate` transition) after the coach first measured it in
+// flight. The bubble must re-place once the card settles, so at `staged-right`
+// it covers neither the staged card nor anything else (the same L2 rules).
+// ---------------------------------------------------------------------------
+
+test.describe('393x852 by touch: the bubble re-places once a dragged card settles', () => {
+  const viewport = { width: 393, height: 852 };
+  test.use({ viewport, hasTouch: true, isMobile: true });
+
+  const DRAG_STEPS: [number, string][] = [
+    [1, '1.5'],
+    [2, '2.1'],
+    [3, '3.1'],
+    [3, '3.2'],
+    [4, '4.1'],
+    [5, '5.2'],
+  ];
+
+  for (const [lessonId, id] of DRAG_STEPS) {
+    test(`${id}: staged-right after a drag`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const finger = await newFinger(page);
+      await openLesson(page, lessonId);
+      await playThrough(page, lessonId, id);
+      await waitStep(page, id, BEAT_MS);
+      await waitStage(page, 'idle', BEAT_MS);
+      const step = stepsOf(lessonId).find((s): s is MoveStep => s.id === id && s.kind === 'move');
+      if (!step) throw new Error(`${id} is not a move step`);
+      await dragCardTo(page, finger, locateSpot(page, step.source), locateSpot(page, step.target));
+      await waitStage(page, 'staged-right');
+      const reading = await settled(page);
+      expect(reading.avoid.some((a) => a.id.startsWith('staged hand-card-')), 'the staged card is checked').toBe(true);
+      const problems = geometryProblems(reading, viewport);
+      expect(problems, problems.join('\n')).toEqual([]);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T14 judge, M2: the success beat must not hide the hit. In 3.1 and 3.2 the
+// scuttle lands on one of Blake's point cards, and in 4.1 the Ace sweeps them
+// all; the bubble keeps clear of every card of his points row as it was when
+// the move was made (the coach gets the flights' boxes from the overlay).
+// ---------------------------------------------------------------------------
+
+test.describe('393x852: the success beat keeps the hit in sight', () => {
+  const viewport = { width: 393, height: 852 };
+  test.use({ viewport });
+
+  const HIT_STEPS: [number, string][] = [
+    [3, '3.1'],
+    [3, '3.2'],
+    [4, '4.1'],
+  ];
+
+  for (const [lessonId, id] of HIT_STEPS) {
+    test(`${id}: at \`done\` the bubble covers none of Blake's point cards it hit or swept`, async ({ page }) => {
+      test.setTimeout(120_000);
+      await openLesson(page, lessonId);
+      await playThrough(page, lessonId, id);
+      await waitStep(page, id, BEAT_MS);
+      await waitStage(page, 'idle', BEAT_MS);
+      const step = stepsOf(lessonId).find((s): s is MoveStep => s.id === id && s.kind === 'move');
+      if (!step) throw new Error(`${id} is not a move step`);
+      await tapSource(page, step);
+      await tapTarget(page, step);
+      await waitStage(page, 'staged-right');
+      // His points row as the move is made: what the flight hits or sweeps.
+      const row = page.locator('[data-testid^="point-1-"]');
+      const boxes = (await row.evaluateAll((els) =>
+        els
+          .filter((el) => /^point-1-\d+$/.test(el.getAttribute('data-testid') ?? ''))
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return { id: el.getAttribute('data-testid') ?? '', box: { x: r.x, y: r.y, width: r.width, height: r.height } };
+          }),
+      ));
+      expect(boxes.length, 'his points row is on the board').toBeGreaterThan(0);
+      await confirm(page);
+      const reading = await reach(page, 'done');
+      expect(reading.bubble).not.toBeNull();
+      const covered = boxes.filter((b) => {
+        const a = reading.bubble!;
+        return a.x < b.box.x + b.box.width && b.box.x < a.x + a.width && a.y < b.box.y + b.box.height && b.box.y < a.y + a.height;
+      });
+      expect(covered.map((b) => b.id), `bubble ${JSON.stringify(reading.bubble)}`).toEqual([]);
+      const problems = geometryProblems(reading, viewport);
+      expect(problems, problems.join('\n')).toEqual([]);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // scrollIntoView (design §7.2): at 393x660 the board scrolls, and the coach
 // brings the spotlit target into view. jsdom has no layout, so it is proved here.
 // ---------------------------------------------------------------------------
@@ -195,10 +295,11 @@ test.describe('393x660: the coach scrolls the board to the spotlit target', () =
 // ---------------------------------------------------------------------------
 // Presses on the coach's own controls during a beat (the regression: a press
 // that lasts a moment, as a finger does, must act on its first tap and must
-// not skip the beat or move the bubble out from under the finger).
+// not skip the beat or move the bubble out from under the finger). Show me
+// is not offered during a beat (T14 M4), so Leave and the menu button carry it.
 // ---------------------------------------------------------------------------
 
-test.describe('realistic presses on Leave and Show me', () => {
+test.describe('realistic presses on Leave and the menu button', () => {
   test.use({ viewport: { width: 393, height: 852 } });
 
   /** Lesson 2, step 2.1 played: the success beat, then Blake's narration. */
@@ -221,11 +322,15 @@ test.describe('realistic presses on Leave and Show me', () => {
       await expect(page.getByTestId('tutorial-lessons')).toBeVisible();
     });
 
-    test(`Show me during ${name} neither skips the beat nor moves the bubble`, async ({ page }) => {
+    // T14 M4: a beat has no demo, so it offers no Show me. The press that
+    // must not skip it is the menu button's (an own control too).
+    test(`during ${name} there is no Show me, and the menu button neither skips the beat nor moves the bubble`, async ({ page }) => {
       await toBeat(page, beat);
+      await expect(page.getByTestId('coach-show-me')).toHaveCount(0);
       const before = await bubble(page).boundingBox();
-      await page.getByTestId('coach-show-me').click({ delay: 100 });
-      // The press is the coach's own control: the beat is still the same beat.
+      await page.getByTestId('menu-button').click({ delay: 100 });
+      await expect(page.getByTestId('game-menu')).toBeVisible();
+      // The press is one of the coach's own controls: the beat is still the same beat.
       await expect(bubble(page)).toHaveAttribute('data-stage', beat);
       await expect(bubble(page)).toHaveAttribute('data-step', '2.1');
       const after = await bubble(page).boundingBox();

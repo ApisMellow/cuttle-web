@@ -400,7 +400,7 @@ const STEP_LINES: Record<string, { main: string; staged?: string; success?: stri
     main: 'Your 9 gets you to 21. Drag it onto your Points row.',
     staged: 'Nothing counts until you confirm. Tap Confirm.',
     // T12b: "You win!" is the bubble's headline (announced with the copy), so the line doesn't repeat it.
-    success: '21.',
+    success: 'You reached 21.',
     tapRoute: 'Tap your 9, then your Points row, then Confirm.',
   },
   '2.1': {
@@ -602,7 +602,7 @@ describe('lesson structure', () => {
       'You know the goal: reach 21 first.',
       'One thing per turn: play a card or draw.',
       'Scuttle with a bigger card, or the same number in a higher suit.',
-      'A one-off happens at once, and only a 2 can stop it. Rules in the menu lists every one-off.',
+      'A one-off happens at once, and only a 2 can stop it. The Rules page in the menu lists every one-off.',
       "That's Cuttle. Jacks steal, Queens protect, Kings lower your goal, and an 8 can be glasses. You're ready to play.",
     ]);
     const blake = LESSONS.flatMap((l) => l.steps.flatMap((s) => (s.kind === 'move' ? s.blake.map((b) => `${s.id}:${b.thinking}|${b.done ?? '-'}`) : [])));
@@ -627,7 +627,9 @@ describe('lesson structure', () => {
         const m: MoveStep = s;
         expect(m.generic.length, m.id).toBeGreaterThan(0);
         expect(m.demo.kind, m.id).not.toBe('none');
-        expect(m.spot, m.id).toEqual([m.source]);
+        // The idle spotlight is the source; only the very first move (1.5)
+        // also lights its drop target, the Points row its line names (T14).
+        expect(m.spot, m.id).toEqual(m.id === '1.5' ? [m.source, { kind: 'testid', id: 'zone-points' }] : [m.source]);
       }
     }
   });

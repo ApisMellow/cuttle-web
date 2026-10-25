@@ -28,7 +28,7 @@ import type { CoachClock, CoachFrames } from '../../src/lib/tutorial/coach.svelt
 import { CANCEL_SUFFIX, LESSONS, NEXT_FIRST, SNAG_LINE } from '../../src/lib/tutorial/lessons';
 import { nudgeFor } from '../../src/lib/tutorial/match';
 import { TUTORIAL_KEY } from '../../src/lib/tutorial/progress';
-import { TutorialTable, type TutorialEngine } from '../../src/lib/tutorial/table.svelte';
+import { BLAKE_THINK_MS, SUCCESS_BEAT_MS, TutorialTable, type TutorialEngine } from '../../src/lib/tutorial/table.svelte';
 import { TutorialStore } from '../../src/lib/tutorial/tutorial.svelte';
 import type { Lesson, LessonId, MoveStep } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
@@ -361,8 +361,13 @@ function enabled(el: HTMLElement | null): boolean {
 function expectWayForward(table: TutorialTable, label: string): void {
   expect(table.phase, label).toBe('step');
   expect(overlayRoot().getAttribute('data-covered'), label).toBe('false');
-  for (const id of ['coach-leave', 'coach-show-me', 'menu-button']) expect(enabled(q(id)), `${label}: ${id}`).toBe(true);
+  for (const id of ['coach-leave', 'menu-button']) expect(enabled(q(id)), `${label}: ${id}`).toBe(true);
   const step = table.step!;
+  // T14 M4: Show me is there exactly when the step has a demo to show.
+  const stage = bubble().dataset.stage ?? '';
+  const demo = step.kind === 'move' && step.demo.kind !== 'none' && ['idle', 'selected', 'refused'].includes(stage);
+  if (demo) expect(enabled(q('coach-show-me')), `${label}: Show me`).toBe(true);
+  else expect(q('coach-show-me'), `${label}: no Show me without a demo`).toBeNull();
   if (step.kind === 'next') {
     expect(enabled(q('coach-next')), `${label}: Next`).toBe(true);
     return;
@@ -587,7 +592,7 @@ describe('R25.5: cuttle-web:tutorial is written when the done sheet mounts, not 
     expect(q('coach-lesson-done')).toBeNull();
     expect(tutorialWrites()).toBe(0);
     expect(store.done).toEqual([]);
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
     await settle();
     expect(q('coach-lesson-done')).not.toBeNull();
     expect(tutorialWrites()).toBe(1);
@@ -661,7 +666,7 @@ describe('controls', () => {
     const t5 = startAt(5, '5.4');
     await mountLesson(t5);
     await playExpected(t5);
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS);
     await settle();
     expect(q('coach-lesson-done')!.textContent).toContain("You've learned Cuttle");
     expect(q('coach-next-lesson')).toBeNull();
@@ -746,25 +751,29 @@ describe('errors are never a dead end', () => {
   });
 });
 
-describe('Leave and Show me act on their first tap during a beat (review B1)', () => {
-  it('a pointerdown on Leave or Show me during the success and narration beats does not skip; the click then acts', async () => {
+describe('Leave and the menu button act on their first tap during a beat (review B1)', () => {
+  it('a pointerdown on Leave or the menu button during the success and narration beats does not skip; the click then acts', async () => {
     const table = startAt(2, null);
     const leave = vi.spyOn(store, 'leave');
     await mountLesson(table);
     await playExpected(table);
     expect(table.phase).toBe('success');
+    // T14 M4: a beat has no demo, so no Show me; its slot is not a control.
+    expect(q('coach-show-me')).toBeNull();
     const snapshot = () => [table.phase, table.stepIndex, bubble().dataset.step, bubble().dataset.stage, copy()];
-    for (const id of ['coach-show-me', 'coach-leave', 'menu-button']) {
+    for (const id of ['coach-leave', 'menu-button']) {
       const before = snapshot();
       q(id)!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
       await settle();
       expect(snapshot(), `success beat: ${id}`).toEqual(before);
     }
-    await click('coach-show-me');
+    await click('menu-button');
+    expect(table.phase).toBe('success');
+    await click('menu-close');
     expect(table.phase).toBe('success');
     expect(leave).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(1200 + 700);
+    vi.advanceTimersByTime(SUCCESS_BEAT_MS + BLAKE_THINK_MS);
     await settle();
     expect(copy()).toBe('Blake played a 6. He has 10.');
     const before = snapshot();
@@ -908,7 +917,8 @@ describe('the bubble copy is not a control: taps and Enter/Space on it skip a be
 
 describe('T12b wiring', () => {
   it('each spotlight ring is keyed by the target it rings', async () => {
-    const table = startAt(1, '1.5');
+    // 2.1: one hole at rest (1.5 lights two from the start, T14), two once selected.
+    const table = startAt(2, '2.1');
     const queue: (() => void)[] = [];
     const run = async () => {
       while (queue.length) queue.shift()!();
@@ -920,10 +930,10 @@ describe('T12b wiring', () => {
     const targets = () => (overlayRoot().getAttribute('data-coach-targets') ?? '').split(' ').filter(Boolean);
     expect(targets()).toHaveLength(1);
     expect(ringKeys()).toEqual(targets());
-    const nine = table.envelope!.state.you.hand.findIndex((c) => c.Rank === 9 && c.Suit === 1);
-    await click(`hand-card-${nine}`);
+    const seven = table.envelope!.state.you.hand.findIndex((c) => c.Rank === 7 && c.Suit === 0);
+    await click(`hand-card-${seven}`);
     await run();
-    expect(targets()).toEqual([`hand-card-${nine}`, 'zone-points']);
+    expect(targets()).toEqual([`hand-card-${seven}`, 'zone-points']);
     expect(ringKeys()).toEqual(targets());
   });
 

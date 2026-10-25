@@ -22,8 +22,9 @@
 // after two wrong tries the idle and selected line is the tap route (§7.4).
 //
 // Holes are resolved to testids against Alice's public view at the moment of
-// use, and measured once per animation frame, after every change, on resize
-// and on any scroll inside the root. Nothing here awaits anything.
+// use, and measured once per animation frame, after every change, on resize,
+// on any scroll inside the root and when a transition inside it ends (a
+// dragged card easing home, T14 M1). Nothing here awaits anything.
 
 import { untrack } from 'svelte';
 
@@ -109,10 +110,31 @@ export interface CoachDeps {
   headline?: () => string | undefined;
   clock?: CoachClock;
   frames?: CoachFrames;
+  /**
+   * T14 M2: the boxes of the cards in flight (CoachOverlay, from its flight
+   * captures), most important first. Read at measure time, and only during
+   * their own beat: the learner's move at `done`, Blake's reply at `blake`.
+   */
+  flights?: () => CoachFlights | null;
+  /**
+   * T14: ms before a new step's first demo may play, read as the step
+   * begins (a flight still landing where the demo would point, lesson 4's 4
+   * flying into the counter prompt). Never shorter than `DEMO_ENTRY_MS`.
+   */
+  entryDelay?: () => number;
+}
+
+/** The cards in flight during one beat, most important first (they are `soft` to placement). */
+export interface CoachFlights {
+  beat: 'done' | 'blake';
+  boxes: readonly Box[];
 }
 
 /** GhostDemo's input: viewport boxes, re-measured every frame. */
 export type CoachDemo = { kind: 'drag'; from: Box; to: Box; card: Card } | { kind: 'tap'; at: Box[] } | null;
+
+/** Page geometry changes these end; each one schedules a measure (T14 M1). */
+const SETTLE_EVENTS = ['transitionend', 'transitioncancel'] as const;
 
 const EMPTY_PAGE: StagedPage = { selectedHand: null, source: null, target: null, confirm: false, counter: null };
 const START_PLACEMENT: BubblePlacement = { x: PLACEMENT.gutter, y: 56, notch: null, notchX: PLACEMENT.gutter + BUBBLE_MAX_WIDTH / 2 };
@@ -193,6 +215,8 @@ export class CoachController {
   readonly #headline: () => string | undefined;
   readonly #clock: CoachClock;
   readonly #frames: CoachFrames;
+  readonly #flights: () => CoachFlights | null;
+  readonly #entryDelay: () => number;
   readonly #win: Window | null;
   readonly #observer: MutationObserver;
   readonly #stopEffects: () => void;
@@ -212,6 +236,8 @@ export class CoachController {
   #inStagedWrong = false;
   #autoPlays = 0;
   #scrolledFor = '';
+  /** T14: the step's entry is held (`entryDelay`); no demo is offered until the entry timer fires. */
+  #holdDemo = false;
 
   // What the overlay renders.
   #stage = $state<CoachStage>('idle');
@@ -228,6 +254,7 @@ export class CoachController {
   #placement = $state.raw<BubblePlacement>(START_PLACEMENT);
   #page = $state.raw<StagedPage>(EMPTY_PAGE);
   #blockTop = $state(0);
+  #canShowMe = $state(false);
 
   get stage(): CoachStage {
     return this.#stage;
@@ -281,6 +308,14 @@ export class CoachController {
   get blockTop(): number {
     return this.#blockTop;
   }
+  /**
+   * T14 M4: Show me would show something now. The step has a demo and the
+   * stage plays it (`#demoStage`). Everywhere else the bubble keeps the
+   * button's slot empty, so its footer doesn't jump.
+   */
+  get canShowMe(): boolean {
+    return this.#canShowMe;
+  }
 
   constructor(deps: CoachDeps) {
     this.#table = deps.table;
@@ -290,6 +325,8 @@ export class CoachController {
     this.#headline = deps.headline ?? (() => undefined);
     this.#clock = deps.clock ?? defaultClock;
     this.#frames = deps.frames ?? defaultFrames;
+    this.#flights = deps.flights ?? (() => null);
+    this.#entryDelay = deps.entryDelay ?? (() => 0);
     this.#win = this.#root.ownerDocument.defaultView;
     this.#refusalsSeen = this.#table.refusals;
 
@@ -302,6 +339,10 @@ export class CoachController {
     win?.addEventListener('resize', this.#onLayout);
     // Scroll doesn't bubble; capturing on the root sees the board's own scroll.
     this.#root.addEventListener('scroll', this.#onLayout, { capture: true, passive: true });
+    // T14 M1: a card that moves without an attribute change (a dragged hand
+    // card easing back into its slot after the drop) is measured again once
+    // its transition ends, so the bubble never keeps clear of where it was.
+    for (const type of SETTLE_EVENTS) this.#root.addEventListener(type, this.#onLayout, { capture: true, passive: true });
 
     // The table's run state changes without touching the page (a beat timer,
     // a refusal at the counter prompt), so it is watched too.
@@ -323,9 +364,15 @@ export class CoachController {
     this.#update();
   }
 
+  /** Measure and place again on the next frame (the overlay's flight boxes changed). */
+  relayout(): void {
+    this.#schedule();
+  }
+
   /** Show me: replay the demo now. */
   showMe(): void {
     if (this.#disposed) return;
+    this.#releaseDemo();
     this.#playKey += 1;
   }
 
@@ -340,6 +387,7 @@ export class CoachController {
     win?.removeEventListener('keydown', this.#onKey, true);
     win?.removeEventListener('resize', this.#onLayout);
     this.#root.removeEventListener('scroll', this.#onLayout, { capture: true });
+    for (const type of SETTLE_EVENTS) this.#root.removeEventListener(type, this.#onLayout, { capture: true });
     if (this.#frame !== null) this.#frames.cancel(this.#frame);
     this.#frame = null;
     this.#clearTimers();
@@ -387,11 +435,23 @@ export class CoachController {
   #autoPlay = (): void => {
     this.#entryTimer = null;
     this.#idleTimer = null;
-    if (this.#disposed || this.#autoPlays >= DEMO_AUTO_PLAYS) return;
+    if (this.#disposed) return;
+    this.#releaseDemo();
+    if (this.#autoPlays >= DEMO_AUTO_PLAYS) return;
     this.#autoPlays += 1;
     this.#playKey += 1;
     if (this.#autoPlays < DEMO_AUTO_PLAYS) this.#idleTimer = this.#clock.set(this.#autoPlay, DEMO_IDLE_MS);
   };
+
+  /**
+   * Ends an entry hold: the demo is measured (and so offered) again. GhostDemo
+   * plays as soon as a demo appears, so holding `playKey` alone would not do.
+   */
+  #releaseDemo(): void {
+    if (!this.#holdDemo) return;
+    this.#holdDemo = false;
+    this.#schedule();
+  }
 
   #clearTimers(): void {
     if (this.#entryTimer !== null) this.#clock.clear(this.#entryTimer);
@@ -409,9 +469,12 @@ export class CoachController {
     this.#autoPlays = 0;
     this.#refusalsSeen = this.#table.refusals;
     this.#clearTimers();
+    this.#holdDemo = false;
     const step = this.#table.step;
     if (this.#table.phase === 'step' && step?.kind === 'move' && step.demo.kind !== 'none') {
-      this.#entryTimer = this.#clock.set(this.#autoPlay, DEMO_ENTRY_MS);
+      const delay = this.#entryDelay();
+      this.#holdDemo = delay > DEMO_ENTRY_MS;
+      this.#entryTimer = this.#clock.set(this.#autoPlay, Math.max(DEMO_ENTRY_MS, delay));
     }
   }
 
@@ -484,6 +547,7 @@ export class CoachController {
     this.#inStagedWrong = wrongNow;
 
     this.#stage = stage;
+    this.#canShowMe = step?.kind === 'move' && step.demo.kind !== 'none' && this.#demoStage(stage);
     this.#text = text;
     this.#tone = tone;
     const next = unique(ids);
@@ -520,7 +584,8 @@ export class CoachController {
     this.#lastVerdict = null;
 
     const route = t.wrongTries >= 2 ? step.tapRoute : step.main;
-    const source = this.#resolve(step.source, view, null);
+    // The resting spotlight: the step's `spot`, its source card (1.5 adds the Points row, T14).
+    const source = step.spot.flatMap((s) => this.#resolve(s, view, null));
     if (this.#refused) {
       // On the board the refusal shows its own nudge, without the Cancel
       // sentence. At the counter prompt the refused state IS the fresh prompt
@@ -569,6 +634,15 @@ export class CoachController {
         return id ? [id] : [];
       }
     }
+  }
+
+  /**
+   * The stages that show the demo: the learner is still to make the move.
+   * With motion off its static markers also stay at staged-right, where
+   * Confirm gets its "3" (design §8.3).
+   */
+  #demoStage(stage: CoachStage): boolean {
+    return stage === 'idle' || stage === 'selected' || stage === 'refused' || (stage === 'staged-right' && this.#reduced());
   }
 
   // --- measuring ---------------------------------------------------------------
@@ -654,8 +728,7 @@ export class CoachController {
     const demoBoxes: Box[] = [];
     let confirmBox: Box | undefined;
     const stage = this.#stage;
-    const showDemo = stage === 'idle' || stage === 'selected' || stage === 'refused' || (stage === 'staged-right' && this.#reduced());
-    if (step?.kind === 'move' && showDemo && step.demo.kind !== 'none') {
+    if (step?.kind === 'move' && this.#demoStage(stage) && step.demo.kind !== 'none' && !this.#holdDemo) {
       const spec = step.demo;
       if (spec.kind === 'drag') {
         const fromId = this.#resolve(spec.from, view, null)[0];
@@ -726,6 +799,20 @@ export class CoachController {
       if (el) avoid.push(boxOf(el));
     }
 
+    // T14 M2: the cards in flight during this beat (the hit card, the swept
+    // points, where they land, the scrap). Soft: dropped last-first when the
+    // board has no room for them all, never traded for a hard box.
+    const flights = this.#flights();
+    const soft = flights !== null && flights.beat === stage ? [...flights.boxes] : [];
+    // T14: at staged-wrong the nudge points at the step's real target ("Drop
+    // the 10 on his cards"); keep it in sight when there is room.
+    if (stage === 'staged-wrong' && step?.kind === 'move') {
+      for (const id of this.#resolve(step.target, view, null)) {
+        const el = this.#el(id);
+        if (el) soft.push(boxOf(el));
+      }
+    }
+
     const board = this.#el('board');
     const scoreBar = this.#el('score-bar') ?? this.#el('menu-button');
     const scoreBarBottom = scoreBar ? scoreBar.getBoundingClientRect().bottom : 0;
@@ -744,6 +831,7 @@ export class CoachController {
       viewport,
       holes,
       avoid,
+      soft,
       actionBarTop,
       scoreBarBottom,
       bubble,

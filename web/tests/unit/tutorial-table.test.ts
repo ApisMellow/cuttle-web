@@ -451,7 +451,7 @@ describe('P3 beat order', () => {
     vi.advanceTimersByTime(1);
     expect(snap()).not.toBe(before);
     expect(BLAKE_THINK_REDUCED_MS).toBe(400);
-    expect([SUCCESS_BEAT_MS, BLAKE_THINK_MS, BLAKE_DONE_BEAT_MS]).toEqual([1200, 700, 1200]);
+    expect([SUCCESS_BEAT_MS, BLAKE_THINK_MS, BLAKE_DONE_BEAT_MS]).toEqual([2200, 700, 2200]);
   });
 
   it('skipBeat during success moves on at once; the old success timer never fires twice', () => {
@@ -463,7 +463,7 @@ describe('P3 beat order', () => {
     vi.advanceTimersByTime(BLAKE_THINK_MS);
     const afterBlake = snap();
     expect(t.line.text).toBe('Blake played a 6. He has 10.');
-    // The original success timer was due at 1200 ms: it must not restart Blake.
+    // The original success timer was due at SUCCESS_BEAT_MS: it must not restart Blake.
     vi.advanceTimersByTime(SUCCESS_BEAT_MS);
     expect(snap()).toBe(afterBlake);
     expect(t.step?.id).toBe('2.2');
@@ -489,7 +489,7 @@ describe('P3 beat order', () => {
     expect(t.line).toEqual({ text: (t.step as MoveStep).main, tone: 'main' });
   });
 
-  it('a step with no reply: success, then the next step (or finished) after 1200 ms, never pending', () => {
+  it('a step with no reply: success, then the next step (or finished) after SUCCESS_BEAT_MS, never pending', () => {
     const t = make(3);
     walkTo(t, '3.2');
     void t.apply(expectedIndex(t));
@@ -553,7 +553,7 @@ describe('P3 beat order', () => {
     void t.apply(draw);
     expect(t.step?.id).toBe('2.2');
     expect(t.phase).toBe('success');
-    // 2.1's narration timer (due 1200 ms after it began) must not advance 2.2 early.
+    // 2.1's narration timer (due BLAKE_DONE_BEAT_MS after it began) must not advance 2.2 early.
     vi.advanceTimersByTime(SUCCESS_BEAT_MS - 1);
     expect(t.step?.id).toBe('2.2');
     expect(t.phase).toBe('success');

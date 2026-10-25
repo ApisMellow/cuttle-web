@@ -24,6 +24,7 @@ import {
   flightMoveOf,
   flightPlan,
   flightScript,
+  intoPrompt,
   snapshot,
   type FlightAfter,
   type FlightCapture,
@@ -727,6 +728,35 @@ describe('flightScript', () => {
     expect(s.actors.map((a) => a.key)).toEqual(['mover']);
     expect(s.holds).toEqual([]);
     expect(s.actors[0].frames[s.actors[0].frames.length - 1].opacity).toBe(0);
+  });
+
+  it('T14: in a counter window, a one-off aimed at the prompt\u2019s thumbnail shrinks into it, then fades', () => {
+    const thumb = { x: 40, y: 120, width: 32, height: 42 };
+    const root = board();
+    const cap = capture(move(K.OneOff, { Card: ace, HandIndex: 0 }), view(), root);
+    document.body.replaceChildren();
+    const aimed = intoPrompt(cap, thumb);
+    expect(aimed.rects.oneoff).toEqual(thumb);
+    expect(cap.rects.oneoff, 'the capture itself is left alone').not.toEqual(thumb);
+    const s = scriptOf(aimed, { scrap: null });
+    expect(s.actors.map((a) => a.key)).toEqual(['mover']);
+    const frames = s.actors[0].frames;
+    checkFrames(frames);
+    const last = frames[frames.length - 1];
+    expect(last.opacity).toBe(0);
+    // It ends at the thumbnail's size and centre (fitInto), not a hand card's.
+    const src = cap.rects.source;
+    const scale = Math.min(thumb.width / ENDS.card.width, thumb.height / ENDS.card.height);
+    expect(num(/scale\(([\d.]+)/, String(last.transform))).toBeCloseTo((ENDS.card.width * scale) / src.width, 2);
+    const dx = num(/translate\((-?[\d.]+)px/, String(last.transform));
+    expect(src.x + src.width / 2 + dx).toBeCloseTo(thumb.x + thumb.width / 2, 1);
+  });
+
+  it('intoPrompt leaves every other kind of flight alone', () => {
+    const root = board();
+    const cap = capture(move(K.PlayPoint, { Card: nine, HandIndex: 0 }), view(), root);
+    document.body.replaceChildren();
+    expect(intoPrompt(cap, { x: 1, y: 2, width: 3, height: 4 })).toBe(cap);
   });
 
   it('a counter has no clone: the scrap pile arrives', () => {

@@ -43,11 +43,14 @@
   import { getTheme } from '../theme';
   // `ownsInput`: the coach's own controls act on their first tap, so a press on
   // one never finishes the deal (the same rule as the coach's beat skip).
-  import { CoachController, ownsInput, type CoachClock, type CoachFrames } from '../tutorial/coach.svelte';
+  import { CoachController, ownsInput, type CoachClock, type CoachFlights, type CoachFrames } from '../tutorial/coach.svelte';
   import {
+    COUNTER_ONEOFF_MS,
     capture,
     captureReply,
+    flightBoxes,
     flipFrames,
+    intoPrompt,
     lastIndexed,
     motionOn,
     oppHandSlots,
@@ -124,6 +127,8 @@
       headline: () => headline,
       clock: untrack(() => clock),
       frames: untrack(() => frames),
+      flights: () => inFlight,
+      entryDelay: takeDemoHold,
     });
     coach = controller;
     const detach = untrack(() => store.attachMotion?.(table, lessonMotion));
@@ -174,10 +179,59 @@
   let learnerCap: FlightCapture | null = null;
   let replySnap: FlightSnapshot | null = null;
 
+  // T14 judge M2: the cards in flight during a beat, for the bubble to keep
+  // clear of (the coach reads them only during their own beat). Set from the
+  // capture as the move applies, then again once the new state has rendered,
+  // when the landing spot can be measured.
+  let inFlight: CoachFlights | null = null;
+
+  // T14: Blake's one-off that opens the counter window (lesson 4's 4) lands
+  // on the counter prompt's own thumbnail of it; the next step's demo waits
+  // for it. Coupling point: CounterPrompt's line markup (no testid: the
+  // mini face is not a tap target). The played card is the last line's face.
+  let demoHold = 0;
+
+  /**
+   * The hold is for the one step the flight opens: the coach reads it as that
+   * step begins, and reading spends it. So no restart (Restart lesson, the
+   * DEV hook's newGame) can carry it to another step (T14 review N4).
+   */
+  function takeDemoHold(): number {
+    const hold = demoHold;
+    demoHold = 0;
+    return hold;
+  }
+  const PROMPT_THUMB = '[data-testid="counter-prompt"] .counter-prompt__line:last-child .counter-prompt__face';
+
+  function promptThumb(root: FlightRoot): RectLike | null {
+    if (root.querySelector('[data-testid="board"]')) return null;
+    const r = root.querySelector(PROMPT_THUMB)?.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 ? toRect(r) : null;
+  }
+
+  /** Where the moving card lands, once rendered: the newest card of the mover's row, or Alice's new hand card. */
+  function landingRect(cap: FlightCapture, root: FlightRoot): RectLike | null {
+    const el =
+      cap.row !== null
+        ? lastIndexed(root, `${cap.row}-${cap.by}-`)
+        : cap.by === 0 && (cap.landing === 'drawFlip' || cap.landing === 'drawBack')
+          ? lastIndexed(root, 'hand-card-')
+          : null;
+    const r = el?.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 ? toRect(r) : null;
+  }
+
+  function setInFlight(beat: CoachFlights['beat'], cap: FlightCapture, root: FlightRoot | null): void {
+    inFlight = { beat, boxes: flightBoxes(cap, root ? landingRect(cap, root) : null) };
+    coach?.relayout();
+  }
+
   /** What the table calls around every move. Each argument is seat-0 data (TutorialTableDeps). */
   const lessonMotion: LessonMotion = {
     beforeApply(move: Move, view0: PlayerView) {
       learnerCap = null;
+      inFlight = null;
+      demoHold = 0;
       if (boardRoot) learnerCap = capture(move, view0, boardRoot);
     },
     afterApply() {
@@ -187,14 +241,19 @@
       const after = table.envelope?.state ?? null;
       const root = boardRoot;
       if (!cap || !root) return;
+      setInFlight('done', cap, null);
       afterRender(() => {
+        setInFlight('done', cap, root);
         layer?.play(cap, root, after);
         if (!lively()) return;
         flashLanding(cap, root);
+        if (cap.plan === 'glassesFlip') flashGlasses(root);
         if (table.lesson.win && after?.winner === 0) winBeats(root);
       });
     },
     beforeReply(view0: PlayerView) {
+      inFlight = null;
+      demoHold = 0;
       replySnap = boardRoot ? snapshot(view0, boardRoot) : null;
     },
     afterReply(entry: AppliedMove) {
@@ -202,9 +261,17 @@
       replySnap = null;
       const root = boardRoot;
       if (!snap || !root) return;
-      const cap = captureReply(snap, entry);
+      const captured = captureReply(snap, entry);
       const after = table.envelope?.state ?? null;
-      afterRender(() => layer?.play(cap, root, after));
+      // A counter window opened: the board is about to unmount under the prompt.
+      if (captured.landing === 'oneOff' && table.curtain.kind === 'ack' && lively()) demoHold = COUNTER_ONEOFF_MS + DEMO_AFTER_LANDING_MS;
+      setInFlight('blake', captured, null);
+      afterRender(() => {
+        const thumb = promptThumb(root);
+        const cap = thumb ? intoPrompt(captured, thumb) : captured;
+        setInFlight('blake', cap, root);
+        layer?.play(cap, root, after);
+      });
     },
   };
 
@@ -214,6 +281,8 @@
     id: number;
     box: RectLike;
     delay: number;
+    /** Ochre answers the learner's drop; iris says "look here" (Blake's hand turning over). */
+    tone: 'ochre' | 'iris';
   }
   let flashes = $state<Flash[]>([]);
   let nextId = 0;
@@ -225,6 +294,10 @@
 
   const RING_PAD = 6; // the spotlight's hole padding (placement.ts holePad)
   const FLASH_MS = 360;
+  /** After a counter-window flight lands, the demo starts this much later (design §8.3's entry gap). */
+  const DEMO_AFTER_LANDING_MS = 250;
+  /** Long enough for his whole hand to turn over (four cards, 70 ms apart, 240 ms each) and a beat to read it. */
+  const GLASSES_RING_MS = 720;
   // When the moving card arrives where the flash is drawn (motion.ts flight timelines).
   const SCUTTLE_LANDS_MS = 300 + 80 + 320;
   const ONEOFF_LANDS_MS = 300 + 240 + 320;
@@ -252,25 +325,41 @@
   function flashLanding(cap: FlightCapture, root: FlightRoot): void {
     const tokens = readMotionTokens(rootEl ?? (root as Element));
     const { el, at } = landingOf(cap, root, tokens.flight);
-    if (!el) return;
+    if (el) flashRing(el, at, FLASH_MS, 'ochre', tokens.easeLand);
+  }
+
+  /**
+   * T14: glasses go down (5.1). As the 8 lands, Blake's cards turn over 70 ms
+   * apart; his hand gets an iris ring for that moment. Reduced motion never
+   * gets here: the FlightLayer draws its static ring there instead.
+   */
+  function flashGlasses(root: FlightRoot): void {
+    const tokens = readMotionTokens(rootEl ?? (root as Element));
+    const hand = root.querySelector('[data-testid="opp-hand"]');
+    if (hand) flashRing(hand, tokens.flight, GLASSES_RING_MS, 'iris', tokens.easeLand);
+  }
+
+  /** One ring round `el`, in, held, out: transform and opacity only, `fill: none`, gone after. */
+  function flashRing(el: Element, at: number, ms: number, tone: Flash['tone'], easeIn: string): void {
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return;
     const flash: Flash = {
       id: nextId++,
       box: { x: r.x - RING_PAD, y: r.y - RING_PAD, width: r.width + RING_PAD * 2, height: r.height + RING_PAD * 2 },
       delay: at,
+      tone,
     };
     flashes = [...flashes, flash];
     flushSync();
     const node = rootEl?.querySelector<HTMLElement>(`[data-flash="${flash.id}"]`);
     const anim = node?.animate(
       [
-        { opacity: 0, transform: 'scale(1.14)', easing: tokens.easeLand },
+        { opacity: 0, transform: 'scale(1.14)', easing: easeIn },
         { opacity: 1, transform: 'scale(1)', offset: 0.3 },
         { opacity: 1, transform: 'scale(1)', offset: 0.72, easing: 'ease-in' },
         { opacity: 0, transform: 'scale(1.03)' },
       ],
-      { duration: FLASH_MS, delay: at, fill: 'none' },
+      { duration: ms, delay: at, fill: 'none' },
     );
     const stop = (): void => {
       clearTimeout(timer);
@@ -278,7 +367,7 @@
       anim?.cancel();
       if (!destroyed) flashes = flashes.filter((f) => f.id !== flash.id);
     };
-    const timer = setTimeout(stop, at + FLASH_MS + 50);
+    const timer = setTimeout(stop, at + ms + 50);
     beats.add(stop);
   }
 
@@ -551,6 +640,7 @@
         <div
           class="coach-motion__flash"
           data-flash={flash.id}
+          data-flash-tone={flash.tone}
           style:left="{flash.box.x}px"
           style:top="{flash.box.y}px"
           style:width="{flash.box.width}px"
@@ -572,6 +662,7 @@
       stepId={table.step?.id ?? ''}
       {stage}
       showNext={stage === 'next'}
+      showMe={coach.canShowMe}
       onnext={() => table.next()}
       onshowme={() => coach?.showMe()}
       onleave={() => store.leave()}
@@ -648,6 +739,11 @@
     border: var(--cu-ring-width, 3px) solid var(--cu-ochre, #f0b54a);
     border-radius: var(--cu-radius-well, 10px);
     opacity: 0;
+  }
+
+  /* Iris: "look here" (design §8.1), Blake's hand turning over under glasses. */
+  .coach-motion__flash[data-flash-tone='iris'] {
+    border-color: var(--cu-iris, #5ccfc4);
   }
 
   .coach-overlay__block {
