@@ -1,3 +1,7 @@
+# Lean testing (2026-10-24, ApisMellow): from this date, entries are updated
+# once per feature, at merge, with the PR number as evidence. Older evidence
+# strings and "Strict tier" notes are history and are not rewritten.
+
 meta:
   round: 3
   launch: 1
@@ -442,53 +446,99 @@ requirements:
   # ---------------------------------------------------------------------
   # R14 — Counter window without information leak
   # ---------------------------------------------------------------------
+  # R14 rewritten 2026-10-24 (ApisMellow, issue #93, PRD A-9, SPEC §4.3,
+  # docs/counter-rewind-design.md). Supersedes the 2026-09-29 counter-window
+  # entries R14.1-R14.4 (real window, no prompt without a 2, chain parity, the
+  # 7 with no counter), all of which were implemented; their evidence is in
+  # this file's git history before this change.
   - id: R14.1
     prd: R14
-    title: "Real counter window renders correctly"
+    title: "A one-off leaks nothing: the mover's view is identical whether or not the opponent holds a 2"
     acceptance:
-      - "e2e-test: fixture `counter-chain` — when the opponent holds an unfrozen 2, CounterPrompt shows the played one-off, its target, and one button per legal 2 plus 'Let it resolve' (PRD R14, SPEC §4.3 Presentation table)"
-      - "unit-test (added 2026-09-29, ruling; SPEC §4.3 'No duplicate recap before the prompt'): before the counter prompt the recap leaves out the one-off and the 2s the prompt shows, keeps every other unseen entry, and is skipped when nothing else is left"
-    verify: [e2e-test, unit-test]
-    status: implemented
-    evidence: "IMPLEMENTED round-04 (W13: CounterPrompt serves both the real window and the synthetic ack, merged at 7e6f694). No e2e reaches a real window yet; game-happy-path.spec.ts covers only the synthetic path. Open: fixture `counter-chain`. | 2026-09-29 (fix/27-five-draw-reveal, ruling; pending review): the prompt is the counter window only (no synthetic ack), always with at least one Counter option. Recap trim: vitest curtain.test.ts 'ruling 2026-09-29: no recap line the counter prompt already shows' (5 cases: one-off only and counter-back skipped, a discard kept with the chain dropped, an earlier 7 kept, a board recap untouched), curtain-one-off-ruling.test.ts (store: straight to the prompt; a discard still recapped without the 5), game-screen.svelte.test.ts 'the prompt follows the reveal directly, showing the one-off once'; e2e keyboard.spec.ts '1440x900: the counter prompt…' and menu.spec.ts 'R17.2…' / 'R4 privacy…' reach Alice's real window (she holds 2♥) straight after the reveal. Open: fixture `counter-chain`."
+      - "unit-test (engine): from twin states differing only in whether the opponent holds an unfrozen 2 (same card count), Apply of every one-off rank, a 7 with each kind of pick, and a counter turn yields the same phase and Active (design §8 E1)"
+      - "unit-test (bridge): over seeds 1-240 the mover's post-apply envelope and View(mover) are byte-identical between twins after every non-winning move (design §8 B1)"
+      - "unit-test (client, real wasm): the curtain sequence and every saved curtain after a one-off are identical between twins; the handoff reason is 'turn' (or 'discard' after a 4) (design §8 C1, SPEC §4.3, §5.10)"
+      - "e2e-test: the golden deal with and without a 2 in the responder's hand shows the mover identical screens"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
     fails: 0
 
   - id: R14.2
     prd: R14
-    title: "A one-off the opponent cannot answer resolves at once, with no prompt (ruling 2026-09-29)"
+    title: "Counter is the first action of the counterer's turn, played from the board"
     acceptance:
-      - "unit-test: for every counterable MoveKind (OneOff, Counter, SevenPick-wrapping-OneOff), every rank and every post phase without a counter window, the curtain follows SPEC §4.1's predicate alone: no ack step and no 'acknowledge' handoff; an ack follows exactly when post.phase === PhaseAwaitingCounter (SPEC §4.3)"
-      - "unit-test: through the real engine across seeded games, a responder who holds no legal 2 never gets an ack, and every ack offers at least one Counter (SPEC §4.3)"
-      - "e2e-test: the golden deal's 5♥ by Blake with Alice holding no 2 — Blake sees his draw, then passes the phone for Alice's normal turn, and no counter prompt or 'Let it resolve' appears on any of her screens (SPEC §4.3, §4.7)"
+      - "unit-test (engine): Counter is legal only as the first move after a counterable turn (a one-off from hand, or a turn that began with a counter), once per unfrozen 2, never on a game's first turn; any other first move removes it (design §8 E2)"
+      - "unit-test (client): selecting a 2 lights the last-turn marker (counter-link, >= 44 px); a drop or tap stages 'Counter with 2X: undo NAME's last turn.' and Confirm applies the engine's index; with nothing selected the board markup is identical between twins; no counter prompt in new play (design §8 C2, SPEC §4.3 Presentation)"
     verify: [unit-test, e2e-test]
-    status: implemented
-    evidence: "2026-09-29 (fix/27-five-draw-reveal, pending review): ruling by the product owner supersedes the original acceptance ('Synthetic ack indistinguishable from real decline': e2e counter-chain vs no-counter-ack identical; needsSyntheticAck fires whenever post.phase !== PhaseAwaitingCounter). Accepted leak recorded in SPEC §4.3 and PRD R14; closes GitHub issue #23. The synthetic ack, needsSyntheticAck, the responderHandEmpty flag and the 'acknowledge' reason are deleted. Bullet 1: vitest curtain.test.ts 'SPEC §4.3 (ruling 2026-09-29): no acknowledgment for a one-off that opened no window' and the rewritten §4.4 table rows; store level curtain-one-off-ruling.test.ts (Blake with 0 or 3 cards and no 2: turn handoff, recap, board, live and restored at each step; a cancelled chain: the counterer plays on with no curtain, live and restored) and game-curtain.test.ts. Bullet 2: game-draw-reveal-wasm.test.ts asserts at every step of 100 seeded games that no 'acknowledge' handoff exists, every ack is at phase AwaitingCounter with a Counter offered, and a counterable move that opened no window is followed by no ack. Bullet 3: e2e draw-reveal.spec.ts and game-happy-path.spec.ts. Pre-ruling saves: snapshot.test.ts 'a pre-ruling save', game-resume-gate.test.ts 'Resume at a pre-ruling synthetic ack…'. History of the superseded requirement: PARTIAL round-01 (W1): unit bullet done — web/tests/unit/curtain.test.ts 'R14.2: fires for OneOff, Counter, and SevenPick-wrapping-OneOff whenever post.phase !== PhaseAwaitingCounter, for every rank', plus 'R14.2: real and synthetic paths walk identical curtain sequences' and the handoff-label tests (SPEC §4.5 amended 2026-09-27: one neutral label); Decline omitted from recap (SPEC §4.6 amended; recap.test.ts 'R20.2: a history differing only by a Decline entry yields an identical visible recap'). Green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e counter-chain vs no-counter-ack indistinguishability. | IMPLEMENTED round-04 (W13, merged at 7e6f694). e2e 2026-09-28, web/tests/e2e/game-happy-path.spec.ts: the synthetic ack shows only 'Let it resolve' (>=44 px, lower two-thirds), writes no history, and the board is absent. Open: the A/B e2e comparing `counter-chain` with `no-counter-ack`. | 2026-09-28 (W25 playtest fixes, merged @ b8238db, PR #11): 'Let it resolve' is disabled only while a counter is staged, a state the synthetic ack cannot reach; vitest web/tests/unit/counter-prompt.svelte.test.ts 'PRIVACY: unstaged, the real window and the synthetic ack still match (no disabled attribute on either)'. SPEC §4.3 amended. | 2026-09-29 (loop/r14-resume, pending review): SPEC §4.3 'An empty hand needs no disguise' — no synthetic ack when the responder holds no cards (a public count), read from the post-move count live and on restore; vitest web/tests/unit/curtain-empty-responder.test.ts (pure rows for a one-off, a 7, a SevenPick one-off and a cancelled chain; store live vs restore at handoff/reveal/recap agree for 0 and 3 cards). Resume: a real window and a synthetic ack resume behind byte-identical gates (SPEC §5.7), vitest resume-gate-dom.svelte.test.ts and e2e menu.spec.ts 'R4 privacy'."
+    status: todo
+    evidence: ""
     fails: 0
 
   - id: R14.3
     prd: R14
-    title: "Counter chain parity and repeated curtains"
+    title: "Rewind exactness and chains"
     acceptance:
-      - "unit-test: curtain resolution respects SPEC §4.4's PhaseAwaitingCounter parity rule — even chain length resolves the one-off's own effect, odd length cancels with no effect — issuing a curtain per counter link"
-      - "e2e-test: fixture `counter-chain` extended to a 2-counters-2 exchange — each link curtains to the next decider in turn, matching pending.counterChain growth (SPEC §4.3)"
+      - "unit-test (engine): a counter restores the counterer's last turn end exactly (hands and order, board, deck order with drawn or revealed cards back on top, scrap order, owed discards), then scraps the countered cards (only if in their player's hand) and the 2, clears every frozen mark and sets PassesInARow to 0; per rank A, 2, 3, 4, 5, 6, 7 (whole turn, pick back to the deck), 9 (design §8 E3, E8)"
+      - "unit-test (engine): chains of 2, 3 and 4 counters, including a countered card that is in the other player's hand in the restored position (design §2.2, §8 E4)"
+      - "e2e-test: a counter, a counter-back that erases the counterer's whole turn, and a further counter"
     verify: [unit-test, e2e-test]
-    status: implemented
-    evidence: "PARTIAL round-01 (W1): unit bullet done — curtain.test.ts 'R14.3: issues one counter curtain per counter link', even-chain (0, 2) and odd-chain cancel cases; green in round-01 post-integration gate on loop/integration @ 08bc32f: 9/9 green (go build, wasm build, go vet, go test, svelte-check, lint, vitest 11 files/217 tests, test:smoke 6/6, test:e2e 1/1). Open: e2e 2-counters-2 scenario. | IMPLEMENTED round-04 (W13: counter chain rendered from history as mini faces). Open: the e2e 2-counters-2 scenario. | 2026-09-29 (ruling, pending review): a link curtains only to a next decider who holds a 2; with none the chain resolves on the counter's own apply and §4.1 decides (curtain.test.ts counter-chain parity cases rewritten)."
+    status: todo
+    evidence: ""
     fails: 0
 
   - id: R14.4
     prd: R14
-    title: "A 7 with no counter goes straight to the seven panel (ruling 2026-09-29)"
+    title: "'Not So Fast!': a win on a counterable turn waits for a 2-holder's choice"
     acceptance:
-      - "e2e-test: a 7 played when the opponent holds no 2 leaves the phone with the actor, who goes straight to the seven-reveal panel with no handoff (SPEC §4.3 'The 7 costs no round trip any more', §8 OQ-6 resolved)"
-    verify: [e2e-test]
-    status: implemented
-    evidence: "2026-09-29 (fix/27-five-draw-reveal, pending review): supersedes 'Seven's synthetic-ack round trip' (a curtain to the opponent for a synthetic ack, then back). e2e pickers.spec.ts (seed 17): Alice's 7 against Blake, who holds no 2, stays on Alice's screen (curtain none, viewer Alice) straight into SevenRevealPanel. vitest curtain.test.ts rows 'Normal/OneOff rank 7, no 2' and the SevenPick 7 row; game-curtain.test.ts 'a 7 with no 2 against it: no curtain…'. History: IMPLEMENTED round-04 (W13/W15). e2e 2026-09-28, web/tests/e2e/pickers.spec.ts walks the 7's round trip (Alice -> Blake 'Your response' -> Let it resolve -> Alice 'Your turn' -> SevenRevealPanel) but doesn't pin that Blake's screen was the synthetic ack rather than a real window. Open: an e2e at a position where the opponent holds no 2. | 2026-09-29 (loop/r14-resume, pending review; SPEC §4.3 'An empty hand needs no disguise'): the round trip applies only when the opponent holds cards; with an empty hand (public count) the 7 goes straight to the seven panel with no handoff. vitest web/tests/unit/curtain-empty-responder.test.ts 'a 7: no round trip, the actor stays for the reveal'."
+      - "unit-test (engine): a win reached on a counterable turn enters PhasePendingWin with the opponent active exactly when they hold an unfrozen 2 (marks for the turn now starting), else ends the game; legal moves there are the Counters plus Decline; Decline makes the mover the winner; a Counter rewinds and starts the opponent's normal turn; a counter-back that restores the win re-enters the phase; the mover's claim comes before the opponent's start-of-turn win (design §8 E6)"
+      - "unit-test (client): the winner's screen shows the victory start, then a 'Not So Fast!' banner that is not a dialog and has no buttons, then 'NAME is deciding…' online or the handoff in pass-and-play; it never appears on the opponent's screen nor when the opponent has no unfrozen 2 (design §8 C5, SPEC §4.3)"
+      - "unit-test (client): the opponent at a pending win sees the normal board, one 'Let it happen' button (let-it-happen, >= 44 px, one tap) and draggable 2s; nothing is auto-selected and no chooser appears (design §8 C6)"
+      - "e2e-test: a pending win settled by 'Let it happen' (result line names the winner's move) and by a counter"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+
+  - id: R14.5
+    prd: R14
+    title: "The 4 leaves an owed discard paid at the debtor's turn start"
+    acceptance:
+      - "unit-test (engine): a 4 adds 2 to the opponent's owed discards and discards nothing; at their turn start they counter (debt gone with the rewind) or discard min(owed, hand) two at a time and play on without the turn ending; counter-back restores the debt; a second 4 after a counter-back stacks to 4; countering a paying turn restores the debt and the cards; empty hand clears the debt (design §5, §8 E7)"
+      - "unit-test (client): at an owed discard the DiscardPicker and the 2 drag are both available; after paying, the same player plays on with no curtain (design §8 C7)"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
+    fails: 0
+
+  - id: R14.6
+    prd: R14
+    title: "Freeze lasts one turn; a counter clears marks (fixes the v0.2.1 stale freeze)"
+    acceptance:
+      - "unit-test (engine): a card returned by a 9 is frozen for the turn right after the 9 only; endTurn clears both players' marks before the 9 sets its own; a counter clears every mark; the reviewer's stale-freeze repro passes as a regression test (design §3, §8 E5)"
+    verify: [unit-test]
+    status: todo
+    evidence: ""
+    fails: 0
+
+  - id: R14.7
+    prd: R14
+    title: "Save/resume across counters, pending wins and owed discards"
+    acceptance:
+      - "unit-test (bridge): snapshot v3 round-trips the turn-end snapshots, counterable flag and owed discards; v2 saves load (no counter offered at that turn start) and legacy phase-1/phase-3 saves finish through the frozen path; a malformed nested snapshot is rejected without a panic (design §8 B3, SPEC §5.7)"
+      - "unit-test (client): resume at a counter-eligible board, a pending win and an owed discard raises the same resume gate; the 'Not So Fast!' beat is not replayed; v2 -> v3 migration (design §8 C4)"
+    verify: [unit-test, e2e-test]
+    status: todo
+    evidence: ""
     fails: 0
 
   # ---------------------------------------------------------------------
   # R15 — Four-discard handoff
   # ---------------------------------------------------------------------
+  # R15 note (2026-10-24, ApisMellow, issue #93): a 4 now leaves the discard
+  # owed and the opponent pays it at the start of their own turn (R14.5). The
+  # screens R15.1-R15.3 describe are unchanged: a 'discard' curtain to the
+  # opponent, the DiscardPicker on their screen, then their live view.
   - id: R15.1
     prd: R15
     title: "Four curtains to opponent for discard"
@@ -983,16 +1033,16 @@ requirements:
 
   - id: R24.11
     prd: R24
-    title: "Uniform 'responding' hold after every counterable move"
+    title: "No hold: every move reaches both phones at once (amended 2026-10-24, ApisMellow, issue #93)"
     acceptance:
-      - "unit-test: after a OneOff, a SevenPick whose sub-move is a one-off, or a Counter, the mover gets responding at once and no state until both the answer is in and the minimum hold has passed (CUTTLE_RESPOND_MIN_MS, default 1500), whether or not a counter window opened; the responder gets its own state at once (A-7 'R14 online', plan §6)"
-      - "unit-test: with and without a 2 in the responder's hand, the mover's frames match in type and order; a reconnect during the hold gets responding again (plan §6, §12 'Hold test')"
-      - "unit-test: only the responder's phone shows the counter prompt, and only when it holds a legal 2 (plan §6)"
+      - "unit-test: the server never sends 'responding'; after every move, a counter and a pending win included, both seats get state at once, and the mover's frames match byte for byte between twins differing only in whether the opponent holds a 2 (design §8 S1, SPEC §2.12.5)"
+      - "unit-test: the W9 wire sweep exercises counters, counter-backs, a countered 7 and 5 (restored deck cards stay hidden), an owed discard and a pending win (design §8 S2)"
+      - "unit-test: -respond-min-ms / CUTTLE_RESPOND_MIN_MS are still accepted, as no-ops, for one release"
     verify: [unit-test]
-    status: implemented
-    evidence: "IMPLEMENTED (every half merged to main). Client half merged (W12, PR #58 @ 21d029e): vitest web/tests/unit/online-game-store.test.ts 'OnlineGameStore: responding, presence, rematch' ('responding holds the board (pending) until the state arrives', 'after a reconnect, welcome then responding holds the board again'); online-game-screen.svelte.test.ts 'plays a move: state -> Confirm -> pending -> responding -> state'. The 'responding' panel (W13b, SPEC §2.12.9): vitest online-polish-screen.svelte.test.ts 'the hold shows \"Blake is responding…\" with the card Alice played, and no board', 'W13b privacy: no hold tell after the hold' ('the declined path and the no-window path render the same screen'); online-polish-store.test.ts 'the post-hold jump over only her own move and a Decline recaps nothing (no hold tell)', 'the responding panel gets the card this seat just played, and loses it with the state', 'names what the other seat is doing, from public phase and turn only'. Server hold, merged (W7, PR #60): go internal/server/ws_test.go TestWS_HoldWithoutWindow, TestWS_HoldDeclineAfterHoldReleasesOnDecline, TestWS_HoldQuickDeclineStillWaitsForHold, TestWS_HoldCounterReleasesMoverAndHoldsCounterer, TestWS_HoldReconnectGetsResponding; ws_hold_limits_test.go TestWS_HeldMoverFramesRevealNothing, TestWS_HeldSeatAtGameOverLearnsNothing; the W9 sweep (R24.4) also probes held movers."
+    status: todo
+    evidence: ""
     fails: 0
-    notes: "Plan W7 (server hold, merged with W6 in PR #60) and W13b (the 'responding' panel, done). A long think still tells; that leak is accepted by R14."
+    notes: "Supersedes the 2026-09-29 'Uniform responding hold after every counterable move' (implemented; plan W7 + W13b; evidence in this file's git history before this change). The hold existed only to mask the counter consult that issue #93 removes."
 
   - id: R24.12
     prd: R24

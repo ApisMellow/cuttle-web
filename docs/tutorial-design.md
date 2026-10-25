@@ -190,7 +190,7 @@ On entry the deal plays (§8.5).
 
 `CounterPrompt` is once-only: after any of its buttons fires, it sets `acted = true` and ignores every later tap until it unmounts (`CounterPrompt.svelte:61-81`). "Let it resolve" goes straight to `applyMove` through `GameScreen.resolveAck`. If the gate refuses that Decline and nothing else changes, the prompt stays mounted and locked, which is a dead end. **Ruling (option (a), minimal form):** GameScreen keys the `CounterPrompt` on the source's refusal counter (§6.3), so a move the gate refuses remounts a fresh prompt. There is no logic change inside `CounterPrompt`.
 
-The curtain stays `{kind:'ack', to:0}` for the whole window. It never drops to `none`, so the board never mounts while the counter window is open (AGENTS "Redaction rules": no board at an ack).
+The curtain stays `{kind:'ack', to:0}` for the whole window. It never drops to `none`, so the board never mounts while the counter window is open (SPEC §4.2: the live view comes only after the ack).
 
 | State | How the coach knows | Spotlight | Copy | Learner can |
 |---|---|---|---|---|
@@ -200,6 +200,8 @@ The curtain stays `{kind:'ack', to:0}` for the whole window. It never drops to `
 | Fresh again | GameScreen's `{#key}` remounts the prompt: `acted` and `staged` reset, heading focused, key guard re-armed | the counter option, demo replays once | "Letting it happen costs you 2 cards. Use your 2: tap it, then Confirm." (after two refusals, the §7.4 tap-route line) | everything in the first row again |
 
 The window has only one legal Counter (2H), so a staged counter is always the right move: the staged-wrong check of §7.2 never applies inside this prompt. Its only wrong move is the one-tap Decline, which the remount handles. A test pins every row (S3, S4).
+
+*(Note 2026-10-24: this step is built on the legacy counter prompt. It must be reworked when the #93 client work lands; see `docs/counter-rewind-design.md` §7.)*
 
 ### 5.6 Lesson 5, Royals and glasses
 
@@ -259,7 +261,7 @@ The bridge already restores any structurally valid snapshot: `__cuttleRestore(sn
 ```
 
 - Positions are authored as data in `lib/tutorial/lessons.ts` (numeric Rank/Suit, no glyphs) and serialized to this string at load. Authoring a position is writing, not reading: no TypeScript ever reads inside an engine state that came back from the bridge (SPEC §3.3).
-- Every authored point entry has `JackStack: null, JackOwners: null` (no Jack starts on the board). `[]PlayerID` marshals as base64 (AGENTS "WASM bridge landmines"), so the authoring format avoids non-empty `JackOwners`.
+- Every authored point entry has `JackStack: null, JackOwners: null` (no Jack starts on the board). `[]PlayerID` marshals as base64 (SPEC §2.8), so the authoring format avoids non-empty `JackOwners`.
 - `validateState` doesn't check that the 52 cards are unique. The strict test does (§11).
 - This is the same mechanism as R4 resume, given a different source. No bridge or engine change is needed.
 
@@ -353,7 +355,7 @@ While the menu, Rules, the scrap browser or a card popover is open, the overlay 
 
 ### 7.2 Targets and spotlight stages
 
-Targets are named by **testid**, which is already contract (SPEC §5.1, AGENTS "Testids and tap targets"): `score-bar`, `opponent-zone`, `center-zone`, `player-zone`, `player-hand`, `hand-card-<i>`, `deck-pile`, `zone-points`, `zone-permanents`, `zone-oneoff`, `point-<owner>-<i>`, `counter-option-<i>`, `staging-confirm`. Card targets are written as card identity in lesson data and resolved to a testid against Alice's public view at the moment of use (the 9D in her hand is `hand-card-0` now and may be `hand-card-2` later).
+Targets are named by **testid**, which is already contract (SPEC §5.1, §5.9): `score-bar`, `opponent-zone`, `center-zone`, `player-zone`, `player-hand`, `hand-card-<i>`, `deck-pile`, `zone-points`, `zone-permanents`, `zone-oneoff`, `point-<owner>-<i>`, `counter-option-<i>`, `staging-confirm`. Card targets are written as card identity in lesson data and resolved to a testid against Alice's public view at the moment of use (the 9D in her hand is `hand-card-0` now and may be `hand-card-2` later).
 
 A `move` step watches the existing DOM state on the game-screen root with a `MutationObserver` (attributes and child list). It never reads the staging store and never writes the DOM. It reads:
 

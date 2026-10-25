@@ -84,7 +84,7 @@ Every item's brief includes these. Values are copied from the design.
 - **Devices:** 393×852 primary, 430×932, and the 393×660 toolbar view. Every new `[data-testid]` is ≥ 44×44. No horizontal scroll.
 - **Testids are contract.** New ones: `learn-to-play`, `tutorial-lessons`, `tutorial-lessons-back`, `tutorial-lesson-1`…`-5`, `tutorial-continue`, `coach-bubble`, `coach-next`, `coach-show-me`, `coach-leave`, `coach-restart`, `coach-lesson-done`, `coach-next-lesson`, `coach-lessons`, `coach-play`. Select them by exact match: `coach-next` is a prefix of `coach-next-lesson`. The scrim, rings, ghost and flights carry no testid (they are `aria-hidden`).
 - **Public repo:** sample names Alice and Blake; decisions credited to ApisMellow; no machine-local paths, hostnames or secrets.
-- **Svelte 5 runes only;** component tests per AGENTS "Svelte 5 conventions". Wasm-backed jsdom tests follow `web/tests/unit/glasses-leave-restore.test.ts` (boot with `await createWasmEngine()`, then the production `lib/bridge/engine.ts` calls).
+- **Svelte 5 runes only;** component tests per `git show 2514079:AGENTS.md`, section "Svelte 5 conventions". Wasm-backed jsdom tests follow `web/tests/unit/glasses-leave-restore.test.ts` (boot with `await createWasmEngine()`, then the production `lib/bridge/engine.ts` calls).
 
 ## 3. Review focus
 
@@ -301,7 +301,7 @@ afterReply?(entry: AppliedMove): void;  // Blake only: the new last seat-0 histo
 
 ## 6. Work items
 
-Commands use `<wt>` for the absolute worktree path. Every item ends with `<wt>/scripts/ci.sh` at 9/9. A targeted unit run is `npm --prefix <wt>/web run test:unit -- tests/unit/<file>`, after `<wt>/scripts/build-wasm.sh` for any wasm-backed file. e2e runs only through `ci.sh`. **Models:** strict tier = Opus developer and Opus reviewer with mutation probes; light tier = Sonnet developer and Sonnet reviewer blocking only on real defects (loop-workflow §4.5). Briefs override the agent files' default model.
+Commands use `<wt>` for the absolute worktree path. Process for later work follows AGENTS.md (lean testing, 2026-10-24). A targeted unit run is `npm --prefix <wt>/web run test:unit -- tests/unit/<file>`, after `<wt>/scripts/build-wasm.sh` for any wasm-backed file. e2e runs only through `ci.sh`. **Models:** strict tier = Opus developer and Opus reviewer with mutation probes; light tier = Sonnet developer and Sonnet reviewer blocking only on real defects (loop-workflow §4.5). Briefs override the agent files' default model.
 
 ### T1. Spike: the board at game over under curtain `none` (B6)
 
@@ -542,7 +542,7 @@ Revise routing, the three-strike stall and the post-merge gate are loop-workflow
 2. **The design's engine reading meets the engine in round 1.** If a position, a counter window or a win check doesn't behave as design §5 says, lesson copy or positions change, which is ApisMellow's call. Front-loading T3 keeps that from surfacing after the overlay is built.
 3. **Timers across lessons** (Review focus 3). The generation check in T5 is the guard; T9's Leave and Restart tests exercise it through the UI.
 4. **Unit-suite run time.** T6 and T9 mount GameScreen on the real wasm for every legal move at every step (roughly 150 stagings across the five lessons). Keep one bridge per file and one mount per step; if the `test:unit` row grows past a minute, the orchestrator splits the files by lesson.
-5. **e2e flakiness from motion.** T12 and T13 wait on `data-stage` and `data-step`, never on timeouts, and a retry under `CI=1` is a finding (AGENTS "Running the gate").
+5. **e2e flakiness from motion.** T12 and T13 wait on `data-stage` and `data-step`, never on timeouts, and a retry under `CI=1` is a finding (`git show 2514079:AGENTS.md`, section "Running the gate").
 6. **B6 fallback.** If T1 fails, the lesson 1 and 5 finales show the pre-win board under the overlay; the done sheet and progress are unaffected.
 
 ## Appendix A. Copy the design leaves open (planner's drafts)
