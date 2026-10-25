@@ -460,8 +460,8 @@ requirements:
       - "unit-test (client, real wasm): the curtain sequence and every saved curtain after a one-off are identical between twins; the handoff reason is 'turn' (or 'discard' after a 4) (design §8 C1, SPEC §4.3, §5.10)"
       - "e2e-test: the golden deal with and without a 2 in the responder's hand shows the mover identical screens"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114 (engine v0.3.0, ApisMellow/cuttle #12): engine TestCounterRewind_E1_TwinsSamePhaseAndActive; bridge TestB1_TwinStatesLookIdenticalToAlice (3 fixed twin games, lean testing, not seeds 1-240); server TestWS_S1_TwinRoomsLookIdenticalToAlice; client counter-rewind-wasm.test.ts C1; screens C2 in counter-rewind-screens.svelte.test.ts"
     fails: 0
 
   - id: R14.2
@@ -471,8 +471,8 @@ requirements:
       - "unit-test (engine): Counter is legal only as the first move after a counterable turn (a one-off from hand, or a turn that began with a counter), once per unfrozen 2, never on a game's first turn; any other first move removes it (design §8 E2)"
       - "unit-test (client): selecting a 2 lights the last-turn marker (counter-link, >= 44 px); a drop or tap stages 'Counter with 2X: undo NAME's last turn.' and Confirm applies the engine's index; with nothing selected the board markup is identical between twins; no counter prompt in new play (design §8 C2, SPEC §4.3 Presentation)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: engine TestCounterRewind_E2_WhenOffered, TestOpeningCounter (ruled 2026-10-25: the second player may counter the opening one-off); client staging-counter.test.ts, counter-rewind-screens.svelte.test.ts C2; e2e counter-rewind.spec.ts"
     fails: 0
 
   - id: R14.3
@@ -483,8 +483,8 @@ requirements:
       - "unit-test (engine): chains of 2, 3 and 4 counters, including a countered card that is in the other player's hand in the restored position (design §2.2, §8 E4)"
       - "e2e-test: a counter, a counter-back that erases the counterer's whole turn, and a further counter"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: engine TestCounterRewind_E3_ExactRestorePerRank, TestCounterRewind_E4_Chains, TestCounterRewind_E4_ThreeDiamondsExample, TestCounterRewind_E8_StateHygiene; e2e counter-rewind.spec.ts (counter, then counter-back by tap)"
     fails: 0
 
   - id: R14.4
@@ -496,8 +496,8 @@ requirements:
       - "unit-test (client): the opponent at a pending win sees the normal board, one 'Let it happen' button (let-it-happen, >= 44 px, one tap) and draggable 2s; nothing is auto-selected and no chooser appears (design §8 C6)"
       - "e2e-test: a pending win settled by 'Let it happen' (result line names the winner's move) and by a counter"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: engine pending_win_test.go (TestPendingWin_E6_*); bridge TestB2_PendingWinThroughTheBridge; client counter-rewind-screens.svelte.test.ts C5, C6; e2e counter-rewind.spec.ts (Let it happen; countered by drag)"
     fails: 0
 
   - id: R14.5
@@ -507,8 +507,8 @@ requirements:
       - "unit-test (engine): a 4 adds 2 to the opponent's owed discards and discards nothing; at their turn start they counter (debt gone with the rewind) or discard min(owed, hand) two at a time and play on without the turn ending; counter-back restores the debt; a second 4 after a counter-back stacks to 4; countering a paying turn restores the debt and the cards; empty hand clears the debt (design §5, §8 E7)"
       - "unit-test (client): at an owed discard the DiscardPicker and the 2 drag are both available; after paying, the same player plays on with no curtain (design §8 C7)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: engine owed_discard_test.go (TestOwed_E7_*); bridge TestB2_CounterableAndOwedDiscardsAtKnownPoints; client counter-rewind-screens.svelte.test.ts C7; e2e counter-rewind.spec.ts (a 4 countered by drag at the debtor's turn start)"
     fails: 0
 
   - id: R14.6
@@ -517,8 +517,8 @@ requirements:
     acceptance:
       - "unit-test (engine): a card returned by a 9 is frozen for the turn right after the 9 only; endTurn clears both players' marks before the 9 sets its own; a counter clears every mark; the reviewer's stale-freeze repro passes as a regression test (design §3, §8 E5)"
     verify: [unit-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: engine TestStaleFreezeBlocksCounter, TestCounterRewind_E5_FreezeClears, edge case 34_FreezeLastsOnlyTheTurnAfterTheNine"
     fails: 0
 
   - id: R14.7
@@ -528,8 +528,8 @@ requirements:
       - "unit-test (bridge): snapshot v3 round-trips the turn-end snapshots, counterable flag and owed discards; v2 saves load (no counter offered at that turn start) and legacy phase-1/phase-3 saves finish through the frozen path; a malformed nested snapshot is rejected without a panic (design §8 B3, SPEC §5.7)"
       - "unit-test (client): resume at a counter-eligible board, a pending win and an owed discard raises the same resume gate; the 'Not So Fast!' beat is not replayed; v2 -> v3 migration (design §8 C4)"
     verify: [unit-test, e2e-test]
-    status: todo
-    evidence: ""
+    status: done
+    evidence: "PR #114: bridge TestB3_SnapshotV3RoundTrip, TestB3_V2SaveLoads, TestB3_LegacyV2SavesFinish, TestB3_MalformedTurnStateRejected; client counter-rewind-wasm.test.ts C4; e2e keyboard.spec.ts legacy counter-window save"
     fails: 0
 
   # ---------------------------------------------------------------------
