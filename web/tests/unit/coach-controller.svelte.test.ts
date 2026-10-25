@@ -32,7 +32,7 @@ import {
   type CoachFrames,
 } from '../../src/lib/tutorial/coach.svelte';
 import { CANCEL_SUFFIX, LESSONS } from '../../src/lib/tutorial/lessons';
-import { intersects, type Box } from '../../src/lib/tutorial/placement';
+import { PLACEMENT, intersects, type Box } from '../../src/lib/tutorial/placement';
 import { BLAKE_DONE_BEAT_MS, SUCCESS_BEAT_MS, TutorialTable } from '../../src/lib/tutorial/table.svelte';
 import type { Lesson, LessonId, MoveStep } from '../../src/lib/tutorial/types';
 import { createWasmEngine } from '../scenario/wasm-engine';
@@ -1516,5 +1516,71 @@ describe('T14 review B1: Show me releases the entry hold', () => {
     frames.run();
     expect(c.demo?.kind).toBe('tap');
     expect(c.playKey).toBeGreaterThan(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The 393x660 lesson 3 geometry flake (CI, after T14fix). At 3.1 `selected`
+// the holes are the 10 and Blake's two point cards, and the lit Points row
+// (a legal but wrong drop) fills the only gap between them. With the lit
+// targets as hard boxes no spot was clear, so the dock gave up at the top and
+// covered his point cards whenever the board sat scrolled by 22 px (the
+// browser's focus scroll to the 10; at 0 px it missed them by 7 px). The
+// rects below are the failing run's, measured in Chromium at 393x660.
+// ---------------------------------------------------------------------------
+
+describe('393x660, 3.1 selected with the board scrolled 22 px: no hole is covered', () => {
+  const RECTS_660: Record<string, Box> = {
+    'score-bar': { x: 0, y: 0, width: 393, height: 44 },
+    'menu-button': { x: 339, y: 0, width: 44, height: 44 },
+    board: { x: 0, y: 0, width: 393, height: 599 },
+    'opp-hand': { x: 10, y: 26, width: 373, height: 42 },
+    'point-1-0': { x: 14, y: 152, width: 52, height: 68 },
+    'point-1-1': { x: 72, y: 152, width: 52, height: 68 },
+    'deck-pile': { x: 10, y: 233, width: 60, height: 84 },
+    'zone-oneoff': { x: 82, y: 233, width: 229, height: 84 },
+    'scrap-pile': { x: 323, y: 233, width: 60, height: 78 },
+    'zone-points': { x: 10, y: 327, width: 373, height: 84 },
+    'zone-permanents': { x: 10, y: 415, width: 373, height: 84 },
+    'hand-card-0': { x: 103, y: 509, width: 60, height: 78 },
+    'hand-card-1': { x: 167, y: 509, width: 60, height: 78 },
+    'hand-card-2': { x: 231, y: 509, width: 60, height: 78 },
+  };
+
+  it('the bubble keeps clear of every hole (a lit target may be covered when nothing else fits)', async () => {
+    const table = newTable(3);
+    walkTo(table, '3.1');
+    const c = await mountWith(table);
+    const ten = handIndexOf(table, { Rank: 10, Suit: 2 });
+    expect(ten).toBe(0);
+    const origWidth = window.innerWidth;
+    const origHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 393 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 660 });
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const b = RECTS_660[this.getAttribute('data-testid') ?? ''] ?? { x: 0, y: 0, width: 0, height: 0 };
+      return { ...b, top: b.y, left: b.x, right: b.x + b.width, bottom: b.y + b.height, toJSON: () => b } as DOMRect;
+    });
+    try {
+      await click('hand-card-0');
+      frames.run();
+      expect(c.stage).toBe('selected');
+      expect(c.targets).toEqual(['hand-card-0', 'point-1-0', 'point-1-1']);
+      const pad = PLACEMENT.holePad;
+      const bubble = bubbleBox(c);
+      for (const id of c.targets) {
+        const h = RECTS_660[id];
+        const padded = { x: h.x - pad, y: h.y - pad, width: h.width + pad * 2, height: h.height + pad * 2 };
+        expect(intersects(bubble, padded), `bubble ${JSON.stringify(bubble)} over hole ${id}`).toBe(false);
+      }
+      // ...and it stays on the board, above the action bar.
+      expect(bubble.y).toBeGreaterThanOrEqual(44);
+      expect(bubble.y + bubble.height).toBeLessThanOrEqual(599 - PLACEMENT.clearance);
+      for (const id of ['menu-button']) expect(intersects(bubble, RECTS_660[id])).toBe(false);
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: origWidth });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: origHeight });
+    }
   });
 });
